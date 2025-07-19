@@ -1,7 +1,7 @@
 # Algorand-Powered AI Oracle for Real-World Assets (Multi-RWA Ready)
 
 A modular AI + Blockchain oracle that evaluates and monitors **Real World Assets (RWA)** beginning with real estate and designed from day one to extend to **art, logistics, agriculture, renewable energy, and industrial assets**.  
-It produces structured AI insights and publishes verifiable summaries to the Algorand blockchain.
+It produces structured AI insights and publishes verifiable summaries (planned) to the Algorand blockchain.
 
 ---
 
@@ -9,12 +9,12 @@ It produces structured AI insights and publishes verifiable summaries to the Alg
 
 This project establishes a reusable oracle layer that:
 
-- Estimates asset value (initially property valuation)
-- Assesses condition / risk via environmental & structural indicators
+- Estimates asset value (initial focus: property valuation)
+- Assesses condition / risk via environmental & structural indicators (simulated; will evolve)
 - Detects anomalies (planned) using statistical + ML methods
 - Publishes compact, verifiable summaries to Algorand (TestNet → MainNet)
 - Prepares a sensor / edge ingestion path (Raspberry Pi, IoT)
-- Supports *multiple asset categories* via a unified schema and model registry
+- Supports *multiple asset categories* via a unified schema, model registry, and pluggable preprocessing
 
 ---
 
@@ -25,18 +25,19 @@ While Phase 1 focuses on **property (asset_type = "property")**, the architectur
 | Asset Type (future) | Example Features | Primary Tasks |
 |---------------------|------------------|---------------|
 | `property` (current) | size, rooms, humidity, energy_class | valuation, condition, anomaly |
-| `art` | medium, year_created, artist_reputation, storage_humidity | authenticity probability, condition scoring, valuation |
+| `art` | medium, year_created, artist_reputation, storage_humidity | authenticity prob., condition, valuation |
 | `greenhouse` | temperature, humidity, light, CO₂, soil_moisture | crop risk, yield score, anomaly |
-| `warehouse` | vibration, temp stability, occupancy pattern | integrity flag, compliance, risk |
+| `warehouse` | vibration, temp stability, occupancy pattern | integrity, compliance, risk |
 | `energy_asset` | panel_efficiency, irradiance, degradation_rate | performance index, maintenance trigger |
 | `container` | geo_path, temperature_mean, shock_events | spoilage risk, compliance, anomaly |
 
 **Design Principles for Extensibility:**
 
-- `asset_type` field mandatory on every record
+- Mandatory `asset_type` field on every record
 - Unified output schema with flexible `metrics` and `flags`
-- Model registry keyed by asset type (e.g. `models/property/…`, `models/art/…`)
-- Pluggable feature pipeline per asset type
+- Model registry keyed by asset type (e.g. `models/property/...`, `models/art/...`)
+- Pluggable feature pipeline per asset type (config-driven)
+- Separation of **data generation / preprocessing / inference / on-chain publishing**
 
 ---
 
@@ -44,33 +45,36 @@ While Phase 1 focuses on **property (asset_type = "property")**, the architectur
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Synthetic real estate dataset (150+ rows) | ✅ | Will add `asset_type` column |
-| EDA & baseline valuation model | ✅ | RandomForest regression |
-| Unified output schema (JSON draft) | Planned | To be finalized early |
-| Anomaly detection module | Planned | IsolationForest / rules |
-| Condition / risk scoring fields | Planned | (`condition_score`, `risk_score`) |
+| Synthetic property dataset (150+ rows) | ✅ | Includes `asset_type`, condition/risk scores |
+| EDA (distribution, correlation, condition/risk) | ✅ | Notebook 02 |
+| Unified training pipeline (OHE + RF) | ✅ | Notebook 03 (saved as joblib) |
+| Model metadata JSON (versioned) | ✅ | Includes features & performance |
+| Inference notebook (single + batch + JSON schema) | ✅ | Notebook 04 |
+| Unified output schema (draft) | ✅ | Implemented in inference; finalization pending |
+| Anomaly detection module | Planned | IsolationForest / rules (Notebook 05) |
+| Condition & risk refinement | Planned | Better linkage to valuation |
 | FastAPI inference API | Planned | `/predict/{asset_type}` |
-| Algorand publishing (Note field) | Planned | Minimal JSON payload |
-| Model registry abstraction | Planned | `MODEL_REGISTRY` structure |
-| Angular dashboard (multi-asset) | Planned | Asset filters & detail view |
+| Algorand publishing (Note field) | Planned | Compact payload → TX ID |
+| Model registry abstraction | Planned | `scripts/model_registry.py` |
+| Angular dashboard (multi-asset) | Planned | Filtering + detail + TX links |
 | Sensor ingestion (simulated) | Future | JSON → API endpoint |
 | Raspberry Pi edge device | Future | Phase 3–4 |
-| PyTEAL smart contract hooks | Future | Update frequency & anomaly triggers |
+| PyTEAL smart contract hooks | Future | Update frequency / anomaly triggers |
 
 ---
 
 ## 4. Tech Stack
 
 | Layer | Current | Future / Optional |
-|------|---------|--------------------|
-| ML / Data | Python, Pandas, NumPy, Scikit-learn | XGBoost, LightGBM, PyTorch (vision), SHAP |
-| Backend | FastAPI (planned) | Auth (JWT), Rate limiting |
-| Frontend | Angular 17 (planned) | Role-based access, Map view |
-| Blockchain | Algorand Python SDK | PyTEAL, ASA metadata, AppCall contracts |
-| Storage | CSV (synthetic), models in `models/` | SQLite → PostgreSQL, IPFS hashes |
-| Orchestration | Notebooks → scripts | DVC, MLflow |
-| Edge | Simulated data | Raspberry Pi + sensors |
-| DevOps | GitHub | GitHub Actions CI, Docker |
+|-------|--------|--------------------|
+| ML / Data | Python, Pandas, NumPy, Scikit-learn | XGBoost, LightGBM, PyTorch, SHAP |
+| Backend | (Not yet) FastAPI planned | Auth (JWT), rate limiting |
+| Frontend | (Not yet) Angular 17 planned | Map view, role-based access |
+| Blockchain | Algorand Python SDK (planned) | PyTEAL, ASA metadata, AppCall |
+| Storage | CSV (synthetic), `models/` pipeline & metadata | SQLite → PostgreSQL, IPFS hashes |
+| Orchestration | Jupyter notebooks | DVC, MLflow |
+| Edge | Simulated | Raspberry Pi + sensors |
+| DevOps | Git + GitHub | GitHub Actions CI, Docker |
 
 ---
 
@@ -79,19 +83,24 @@ While Phase 1 focuses on **property (asset_type = "property")**, the architectur
 ```
 
 algorand-ai-oracle/
-├── data/                      # Datasets (synthetic + future collected)
+├── data/                       # Datasets + prediction logs
 ├── models/
-│   ├── property/              # Property-related models (current)
-│   └── art/                   # Placeholder for future asset type
-├── notebooks/                 # EDA, training, inference prototypes
+│   └── property/
+│       ├── value\_regressor\_v1.joblib
+│       └── value\_regressor\_v1\_meta.json
+├── notebooks/
+│   ├── 01\_generate\_dataset.ipynb
+│   ├── 02\_explore\_dataset.ipynb
+│   ├── 03\_train\_model.ipynb
+│   └── 04\_infer\_single\_sample.ipynb
 ├── scripts/
-│   ├── feature\_pipeline.py    # (planned) Build feature frame per asset\_type
-│   ├── model\_registry.py      # (planned) Paths & loading logic
-│   ├── inference\_api.py       # (planned) FastAPI service
-│   └── blockchain\_publish.py  # (planned) Algorand integration
-├── frontend/                  # Angular app (planned)
+│   ├── feature\_pipeline.py      # (planned)
+│   ├── model\_registry.py        # (planned)
+│   ├── inference\_api.py         # (planned)
+│   └── blockchain\_publish.py    # (planned)
+├── frontend/                    # (planned) Angular app
 ├── schemas/
-│   └── output\_example.json    # (planned) Unified output schema
+│   └── output\_example.json      # (planned) Finalized schema
 ├── README.md
 └── requirements.txt
 
@@ -102,14 +111,14 @@ algorand-ai-oracle/
 ## 6. Dataset (Current + Future Adjustments)
 
 **Current fields (property focus):**  
-`asset_id, location, size_m2, rooms, bathrooms, year_built, floor, building_floors, has_elevator, has_garden, has_balcony, garage, energy_class, humidity_level, temperature_avg, noise_level, air_quality_index, valuation_k`
+`asset_id, asset_type, location, size_m2, rooms, bathrooms, year_built, floor, building_floors, has_elevator, has_garden, has_balcony, garage, energy_class, humidity_level, temperature_avg, noise_level, air_quality_index, valuation_k, condition_score, risk_score, last_verified_ts, age_years`
 
-**Planned additions (multi-RWA readiness):**
-- `asset_type` (string) e.g. `property`
-- `condition_score` (float 0–1, placeholder initially)
-- `risk_score` (float 0–1, placeholder initially)
-- `last_verified_ts` (ISO timestamp)
-- Asset-type specific placeholders left `NaN` until implemented
+**Future additions (per asset type):**
+- `authenticity_prob` (art)
+- `panel_efficiency`, `irradiance` (energy_asset)
+- `shock_events`, `temperature_var` (container)
+- `soil_moisture`, `light_index` (greenhouse)
+- Placeholders stored as `NaN` until populated
 
 ---
 
@@ -142,7 +151,7 @@ Example JSON returned by inference or published on-chain:
 }
 ````
 
-For a future art asset:
+Future art example:
 
 ```json
 {
@@ -171,39 +180,38 @@ For a future art asset:
 ```python
 MODEL_REGISTRY = {
     "property": {
-        "value_regressor": "models/property/regression_value_v1.pkl",
-        "anomaly_model": "models/property/anomaly_iforest_v0.pkl"
+        "value_regressor": "models/property/value_regressor_v1.joblib",
+        "anomaly_model": "models/property/anomaly_iforest_v0.joblib"
     },
     "art": {
-        "valuation_model": None,      # placeholder
+        "valuation_model": None,
         "authenticity_model": None
     }
 }
 ```
 
-A loader function will choose preprocessing + inference pipeline based on `asset_type`.
+A loader function will dispatch preprocessing + inference based on `asset_type`.
 
 ---
 
 ## 9. Workflow Summary
 
 1. Generate / update synthetic dataset (per asset type)
-2. Exploratory analysis (notebooks)
-3. Train baseline models (per asset type folder)
-4. Save models + encoders into structured directories
-5. Inference:
+2. Exploratory analysis (Notebook 02)
+3. Train baseline pipeline (Notebook 03) → save joblib + metadata
+4. Inference:
 
-   * Notebook (initial)
-   * FastAPI endpoint: `POST /predict/{asset_type}`
-6. Output validated against schema
-7. Publish summary (compact JSON) to Algorand (Note field or ASA metadata)
-8. (Future) Integrate sensor streams replacing simulated environment fields
+   * Notebook 04 (single & batch)
+   * (Planned) FastAPI endpoint: `POST /predict/{asset_type}`
+5. Validate output against unified schema
+6. Publish summary (planned) to Algorand (Note field / ASA metadata)
+7. (Future) Integrate sensor streams for environmental updates
 
 ---
 
 ## 10. Blockchain Publishing (Planned Minimal Payload)
 
-On-chain payload kept small:
+Compact on-chain payload (Note field):
 
 ```json
 {
@@ -217,7 +225,7 @@ On-chain payload kept small:
 }
 ```
 
-Extended report anchored off-chain (e.g., IPFS hash) → integrity assured via hash.
+Extended / verbose report anchored off-chain (IPFS / Arweave) via hash reference.
 
 ---
 
@@ -232,64 +240,64 @@ cd algorand-ai-oracle
 conda create -n ai-oracle python=3.11 -y
 conda activate ai-oracle
 
-# Install (initial)
-pip install pandas numpy scikit-learn joblib jupyter matplotlib seaborn algosdk fastapi uvicorn
+# Install (initial minimal set)
+pip install pandas numpy scikit-learn joblib jupyter matplotlib seaborn
 
-# Run notebooks
-jupyter notebook notebooks/
+# (Optional) For future steps
+pip install fastapi uvicorn algosdk
 ```
 
-Run in order:
+Run notebooks in order:
 
 1. `01_generate_dataset.ipynb`
 2. `02_explore_dataset.ipynb`
 3. `03_train_model.ipynb`
-4. `04_infer_single_sample.ipynb` (to be created)
+4. `04_infer_single_sample.ipynb`
 
 ---
 
 ## 12. Roadmap (Condensed)
 
-| Phase | Focus                             | Key Multi-RWA Actions                   |
-| ----- | --------------------------------- | --------------------------------------- |
-| 1     | Property dataset + baseline model | Add `asset_type`, schema draft          |
-| 2     | API + Algorand publishing         | Introduce registry + anomaly model      |
-| 3     | Multi-asset scaffolding           | Add placeholder folders + config        |
-| 4     | Sensor + hardware edge            | Real-time ingestion + on-chain triggers |
-| 5     | New asset domain (e.g. art)       | New feature set + classification tasks  |
+| Phase | Focus                             | Key Multi-RWA Actions           |
+| ----- | --------------------------------- | ------------------------------- |
+| 1     | Property dataset + baseline model | `asset_type`, schema draft      |
+| 2     | API + Algorand publishing         | Registry + anomaly model        |
+| 3     | Multi-asset scaffolding           | New asset folders + configs     |
+| 4     | Sensor + hardware edge            | Real-time ingestion + triggers  |
+| 5     | New asset domain (e.g. art)       | Authenticity & condition models |
 
 ---
 
 ## 13. Planned Enhancements
 
 * IsolationForest / One-Class SVM anomaly detection
-* Condition & risk scoring calibration
-* SHAP-based explanation & feature importance
-* PyTEAL contract for update frequency enforcement
+* Condition & risk score linkage to valuation logic
+* SHAP-based explanation & feature importance panel
+* PyTEAL smart contract enforcing update windows
 * Off-chain IPFS integration + on-chain hash anchoring
-* DAO governance for anomaly dispute resolution
+* DAO governance / dispute resolution module
 * Asset-type plug-ins (e.g. `plugins/art/feature_builder.py`)
 
 ---
 
 ## 14. License
 
-MIT License (to be added in `LICENSE` file).
+MIT License (to be added in `LICENSE`).
 
 ---
 
 ## 15. Disclaimer
 
-All current data is synthetic. No real valuations or risk recommendations are to be considered authoritative. This project is an R\&D effort toward verifiable AI oracles for tokenized assets.
+All current data is synthetic. No real valuations or risk recommendations are authoritative. This is an R\&D project toward verifiable AI oracles for tokenized assets on Algorand.
 
 ---
 
 ## 16. Contact
 
-| Channel     | Link                                                                 |
-| ----------- | -------------------------------------------------------------------- |
-| X (Twitter) | WIP                                                                  |
-| GitHub      | https://github.com/AnVenDev                                          |
-| Email       | anvene.dev@gmail.com                                                 |
+| Channel     | Link                                                       |
+| ----------- | ---------------------------------------------------------- |
+| X (Twitter) | WIP                                                        |
+| GitHub      | [https://github.com/AnVenDev](https://github.com/AnVenDev) |
+| Email       | [anvene.dev@gmail.com](mailto:anvene.dev@gmail.com)        |
 
 If you are building in the Algorand RWA ecosystem and want to collaborate, feel free to reach out.
