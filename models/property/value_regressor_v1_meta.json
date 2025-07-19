@@ -1,0 +1,59 @@
+{
+  "asset_type": "property",
+  "model_task": "valuation_regression",
+  "model_version": "v1",
+  "model_class": "RandomForestRegressor",
+  "n_rows": 150,
+  "training_rows": 120,
+  "test_rows": 30,
+  "features_categorical": [
+    "location",
+    "energy_class",
+    "has_elevator",
+    "has_garden",
+    "has_balcony",
+    "garage"
+  ],
+  "features_numeric": [
+    "size_m2",
+    "rooms",
+    "bathrooms",
+    "year_built",
+    "floor",
+    "building_floors",
+    "humidity_level",
+    "temperature_avg",
+    "noise_level",
+    "air_quality_index",
+    "age_years"
+  ],
+  "target": "valuation_k",
+  "metrics": {
+    "mae_k": 82.7092,
+    "rmse_k": 101.8724,
+    "r2": 0.282
+  },
+  "generated_at": "2025-07-19T16:09:13.261646Z",
+  "feature_importance_top5": [
+    {
+      "feature": "size_m2",
+      "importance": 0.7312063540803266
+    },
+    {
+      "feature": "year_built",
+      "importance": 0.029560496520703257
+    },
+    {
+      "feature": "humidity_level",
+      "importance": 0.027331626340557257
+    },
+    {
+      "feature": "air_quality_index",
+      "importance": 0.026413472362091128
+    },
+    {
+      "feature": "temperature_avg",
+      "importance": 0.02505122699465619
+    }
+  ]
+}
