@@ -1,0 +1,8 @@
+[
+  "tests/test_api.py::test_health",
+  "tests/test_api.py::test_predict_energy_class_error",
+  "tests/test_api.py::test_predict_property",
+  "tests/test_api.py::test_predict_property_derive_age",
+  "tests/test_api.py::test_predict_validation_error",
+  "tests/test_api.py::test_predict_with_publish"
+]

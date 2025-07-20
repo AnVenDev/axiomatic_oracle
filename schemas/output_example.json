@@ -2,8 +2,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/AnVenDev/ai-oracle-rwa/main/schemas/output_example.json",
   "title": "AI Oracle Inference Output (Draft)",
+  "$comment": "Schema for multi-RWA AI oracle inference responses.",
   "type": "object",
   "required": [
+    "schema_version",
     "asset_id",
     "asset_type",
     "timestamp",
@@ -12,17 +14,30 @@
     "model_meta"
   ],
   "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^v\\d+(?:\\.\\d+)?$",
+      "examples": ["v1", "v1.0", "v1.1"]
+    },
     "asset_id": { "type": "string" },
     "asset_type": {
       "type": "string",
-      "examples": ["property", "art", "greenhouse"]
+      "enum": [
+        "property",
+        "art",
+        "greenhouse",
+        "warehouse",
+        "energy_asset",
+        "container"
+      ],
+      "description": "Extend enum when new asset categories are production-ready."
     },
     "timestamp": { "type": "string", "format": "date-time" },
     "metrics": {
       "type": "object",
       "required": ["valuation_base_k"],
       "properties": {
-        "valuation_base_k": { "type": "number" },
+        "valuation_base_k": { "type": "number", "minimum": 0 },
         "condition_score": { "type": "number", "minimum": 0, "maximum": 1 },
         "risk_score": { "type": "number", "minimum": 0, "maximum": 1 },
         "authenticity_prob": { "type": "number", "minimum": 0, "maximum": 1 }
@@ -44,7 +59,9 @@
         "value_model_version": { "type": "string" },
         "value_model_name": { "type": "string" },
         "anomaly_model_version": { "type": "string" },
-        "auth_model_version": { "type": "string" }
+        "auth_model_version": { "type": "string" },
+        "model_hash": { "type": "string", "pattern": "^[a-f0-9]{16,64}$" },
+        "dataset_hash": { "type": "string", "pattern": "^[a-f0-9]{16,64}$" }
       },
       "additionalProperties": true
     },
@@ -56,7 +73,7 @@
       },
       "additionalProperties": true
     },
-    "latency_ms": { "type": "number" },
+    "latency_ms": { "type": "number", "minimum": 0 },
     "publish": {
       "type": "object",
       "properties": {

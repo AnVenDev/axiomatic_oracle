@@ -6,7 +6,7 @@ Responsibilities:
 - Map (asset_type, task) -> local filesystem path
 - Lazy-load & cache pipelines (joblib)
 - Provide metadata loading helper (if available)
-- Offer utility to list available tasks and versions
+- Offer utilities to list available tasks, versions, and cache state
 - Prepare for future remote / versioned storage (e.g. S3, IPFS)
 
 Usage:
@@ -17,7 +17,7 @@ Usage:
 
 Conventions:
 - Each asset_type gets its own subfolder inside /models
-- File naming: <task>_<version>.joblib
+- File naming: <task>_<version>.joblib  (e.g. value_regressor_v1.joblib)
 - Metadata file: <task>_<version>_meta.json
 """
 
@@ -25,67 +25,100 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import hashlib
 from pathlib import Path
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Iterable, Tuple
 
 import joblib
 
-# Base directory for models (can be overridden via env)
-MODELS_BASE = Path(__file__).resolve().parent.parent / "models"
+# -----------------------------------------------------------------------------
+# Configuration
+# -----------------------------------------------------------------------------
+ENV_BASE = os.getenv("AI_ORACLE_MODELS_BASE")
+DEFAULT_BASE = Path(__file__).resolve().parent.parent / "models"
+MODELS_BASE = Path(ENV_BASE).resolve() if ENV_BASE else DEFAULT_BASE
 
-# Registry definition:
-# Each asset_type maps to tasks with relative paths
+MODEL_EXT = ".joblib"
+META_SUFFIX = "_meta.json"
+VERSION_PATTERN = re.compile(r"_(v\d+(?:[a-z0-9\-_\.]*)?)\.joblib$", re.IGNORECASE)
+
+# Registry: (asset_type, task) -> relative path
 MODEL_REGISTRY: Dict[str, Dict[str, str]] = {
     "property": {
         "value_regressor": "property/value_regressor_v1.joblib",
-        # Future example:
+        # Future:
         # "anomaly_model": "property/anomaly_iforest_v0.joblib"
     },
-    # "art": {
-    #     "valuation_model": "art/valuation_regressor_v1.joblib",
-    #     "authenticity_model": "art/auth_classifier_v1.joblib"
-    # },
+    # "art": { ... }
 }
 
-# In-memory cache to avoid re-loading
+# In-memory caches
 _PIPELINE_CACHE: Dict[Path, object] = {}
 _METADATA_CACHE: Dict[Path, dict] = {}
 
 
+# -----------------------------------------------------------------------------
+# Exceptions
+# -----------------------------------------------------------------------------
 class ModelNotFoundError(Exception):
     """Raised when a model path does not exist on disk."""
-    pass
 
 
 class RegistryLookupError(Exception):
     """Raised when (asset_type, task) pair is not defined in MODEL_REGISTRY."""
-    pass
+
+
+# -----------------------------------------------------------------------------
+# Internal helpers
+# -----------------------------------------------------------------------------
+def _normalize_key(s: str) -> str:
+    return s.strip().lower()
 
 
 def _resolve_path(asset_type: str, task: str) -> Path:
+    at = _normalize_key(asset_type)
+    tk = _normalize_key(task)
     try:
-        rel_path = MODEL_REGISTRY[asset_type][task]
+        rel_path = MODEL_REGISTRY[at][tk]
     except KeyError:
         raise RegistryLookupError(
-            f"Unknown asset_type/task combination: '{asset_type}' / '{task}'. "
+            f"Unknown asset_type/task: '{asset_type}' / '{task}'. "
             f"Defined asset_types: {list(MODEL_REGISTRY.keys())}"
         )
     full_path = MODELS_BASE / rel_path
     if not full_path.exists():
-        raise ModelNotFoundError(f"Model file not found at: {full_path}")
+        # Suggest similar versions if available
+        suggestions = suggest_task_versions(at, tk)
+        hint = f" Available versions: {suggestions}" if suggestions else ""
+        raise ModelNotFoundError(f"Model file not found at: {full_path}.{hint}")
     return full_path
 
 
 def _metadata_path_for(model_path: Path) -> Path:
     """
     Given: property/value_regressor_v1.joblib
-    Expect metadata: property/value_regressor_v1_meta.json
+    Expect: property/value_regressor_v1_meta.json
     """
-    stem = model_path.name.replace(".joblib", "")
-    meta_name = f"{stem}_meta.json"
+    stem = model_path.name.replace(MODEL_EXT, "")
+    meta_name = f"{stem}{META_SUFFIX}"
     return model_path.parent / meta_name
 
 
+def _file_hash_sha256(path: Path) -> Optional[str]:
+    try:
+        h = hashlib.sha256()
+        with path.open("rb") as f:
+            for chunk in iter(lambda: f.read(8192), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    except Exception:
+        return None
+
+
+# -----------------------------------------------------------------------------
+# Public API
+# -----------------------------------------------------------------------------
 def get_pipeline(asset_type: str, task: str = "value_regressor"):
     """
     Return a loaded (and cached) model pipeline.
@@ -95,16 +128,15 @@ def get_pipeline(asset_type: str, task: str = "value_regressor"):
     :return: scikit-learn Pipeline object
     """
     model_path = _resolve_path(asset_type, task)
-
     if model_path not in _PIPELINE_CACHE:
         _PIPELINE_CACHE[model_path] = joblib.load(model_path)
-
     return _PIPELINE_CACHE[model_path]
 
 
 def get_model_metadata(asset_type: str, task: str = "value_regressor") -> Optional[dict]:
     """
     Return metadata dict if side-car JSON exists, else None.
+    Adds `model_path` & (if absent) `model_hash` convenience fields.
     """
     model_path = _resolve_path(asset_type, task)
     meta_path = _metadata_path_for(model_path)
@@ -115,6 +147,12 @@ def get_model_metadata(asset_type: str, task: str = "value_regressor") -> Option
     if meta_path not in _METADATA_CACHE:
         with meta_path.open("r", encoding="utf-8") as f:
             _METADATA_CACHE[meta_path] = json.load(f)
+        # Post-process enrich
+        _METADATA_CACHE[meta_path].setdefault("model_path", str(model_path))
+        if "model_hash" not in _METADATA_CACHE[meta_path]:
+            h = _file_hash_sha256(model_path)
+            if h:
+                _METADATA_CACHE[meta_path]["model_hash"] = h
 
     return _METADATA_CACHE[meta_path]
 
@@ -124,9 +162,10 @@ def list_asset_types() -> List[str]:
 
 
 def list_tasks(asset_type: str) -> List[str]:
-    if asset_type not in MODEL_REGISTRY:
+    at = _normalize_key(asset_type)
+    if at not in MODEL_REGISTRY:
         raise RegistryLookupError(f"Unknown asset_type: {asset_type}")
-    return list(MODEL_REGISTRY[asset_type].keys())
+    return list(MODEL_REGISTRY[at].keys())
 
 
 def model_exists(asset_type: str, task: str = "value_regressor") -> bool:
@@ -145,8 +184,7 @@ def refresh_cache(asset_type: Optional[str] = None, task: Optional[str] = None) 
         try:
             path = _resolve_path(asset_type, task)
             _PIPELINE_CACHE.pop(path, None)
-            meta_path = _metadata_path_for(path)
-            _METADATA_CACHE.pop(meta_path, None)
+            _METADATA_CACHE.pop(_metadata_path_for(path), None)
         except (RegistryLookupError, ModelNotFoundError):
             pass
     else:
@@ -154,14 +192,89 @@ def refresh_cache(asset_type: Optional[str] = None, task: Optional[str] = None) 
         _METADATA_CACHE.clear()
 
 
+def cache_stats() -> dict:
+    return {
+        "pipelines_cached": len(_PIPELINE_CACHE),
+        "metadata_cached": len(_METADATA_CACHE),
+        "model_paths": [str(p) for p in _PIPELINE_CACHE.keys()]
+    }
+
+
+# -----------------------------------------------------------------------------
+# Version / discovery helpers (optional)
+# -----------------------------------------------------------------------------
+def discover_models_for_asset(asset_type: str) -> List[Path]:
+    """
+    Scan the asset_type directory for *.joblib models (not only those registered).
+    """
+    at_dir = MODELS_BASE / _normalize_key(asset_type)
+    if not at_dir.exists():
+        return []
+    return sorted(at_dir.glob(f"*{MODEL_EXT}"))
+
+
+def parse_task_and_version(model_filename: str) -> Optional[Tuple[str, str]]:
+    """
+    From a filename like value_regressor_v1.joblib -> ("value_regressor", "v1")
+    """
+    if not model_filename.endswith(MODEL_EXT):
+        return None
+    m = VERSION_PATTERN.search(model_filename)
+    if not m:
+        return None
+    version = m.group(1)
+    task_part = model_filename[: model_filename.rfind("_" + version)]
+    return task_part, version
+
+
+def suggest_task_versions(asset_type: str, task: str) -> List[str]:
+    """
+    Return a list of versioned model filenames matching a task prefix.
+    """
+    matches = []
+    for p in discover_models_for_asset(asset_type):
+        parsed = parse_task_and_version(p.name)
+        if parsed:
+            t, v = parsed
+            if t == task:
+                matches.append(p.name)
+    return matches
+
+
+def latest_version_filename(asset_type: str, task: str) -> Optional[str]:
+    """
+    Heuristic: pick highest version number (lexicographic on extracted version).
+    """
+    candidates = suggest_task_versions(asset_type, task)
+    if not candidates:
+        return None
+    # Simple lexicographic sort; adapt if version semantics become complex
+    return sorted(candidates)[-1]
+
+
+# -----------------------------------------------------------------------------
+# Diagnostics when run directly
+# -----------------------------------------------------------------------------
 if __name__ == "__main__":
-    # Simple diagnostics when running directly
-    print("Available asset types:", list_asset_types())
+    print("MODELS_BASE:", MODELS_BASE)
+    print("Available asset types (registry):", list_asset_types())
     for at in list_asset_types():
-        print(f"  {at}: tasks -> {list_tasks(at)}")
+        print(f"\nAsset Type: {at}")
         for t in list_tasks(at):
-            print(f"    - {t}: exists on disk? {model_exists(at, t)}")
-            if model_exists(at, t):
+            exists = model_exists(at, t)
+            print(f"  Task: {t} -> exists: {exists}")
+            if exists:
                 meta = get_model_metadata(at, t)
                 if meta:
-                    print(f"      version: {meta.get('model_version')} | R²: {meta.get('metrics', {}).get('r2')}")
+                    print(f"    version: {meta.get('model_version')} | "
+                          f"R²: {meta.get('metrics', {}).get('r2')} | "
+                          f"hash: {meta.get('model_hash', '')[:16]}")
+        # Discovery (even unregistered)
+        discovered = discover_models_for_asset(at)
+        if discovered:
+            print("  Discovered files:")
+            for p in discovered:
+                parsed = parse_task_and_version(p.name)
+                pv = f"{parsed[0]} ({parsed[1]})" if parsed else "unparsed"
+                print(f"    - {p.name} -> {pv}")
+    print("\nCache stats:", cache_stats())
