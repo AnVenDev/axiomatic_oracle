@@ -1,0 +1,42 @@
+# --- Python bytecode / cache ---
+__pycache__/
+*.py[cod]
+*.pyo
+
+# --- Virtual env (se copiato nella repo) ---
+env/
+venv/
+.ai-oracle/
+*.egg-info/
+
+# --- Notebooks checkpoints ---
+.ipynb_checkpoints/
+*-checkpoint.py
+
+# --- Logs & runtime artifacts ---
+*.log
+*.jsonl
+logs/
+data/api_inference_log.jsonl
+
+# --- Model artifacts you don't want to track (se decidi di ignorarli in futuro) ---
+# models/**/*.joblib
+
+# --- OS / Editor ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# --- Node / Frontend (quando creerai l'Angular app) ---
+frontend/node_modules/
+frontend/dist/
+
+# --- Coverage / test ---
+.coverage
+htmlcov/
+pytest_cache/
+
+# --- Misc ---
+*.tmp
+*.bak
