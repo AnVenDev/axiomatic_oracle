@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": " https://raw.githubusercontent.com/AnVenDev/ai-oracle-rwa/main/schemas/output_example.json",
+  "$id": "https://raw.githubusercontent.com/AnVenDev/ai-oracle-rwa/main/schemas/output_example.json",
   "title": "AI Oracle Inference Output (Draft)",
   "type": "object",
   "required": [
@@ -55,7 +55,18 @@
         "sensor_batch_hash": { "type": ["string", "null"] }
       },
       "additionalProperties": true
-    }
+    },
+    "latency_ms": { "type": "number" },
+    "publish": {
+      "type": "object",
+      "properties": {
+        "status": { "type": "string" },
+        "txid": { "type": "string" }
+      },
+      "required": ["status", "txid"],
+      "additionalProperties": false
+    },
+    "schema_validation_error": { "type": "string" }
   },
   "additionalProperties": false
 }

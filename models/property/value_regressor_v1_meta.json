@@ -3,9 +3,12 @@
   "model_task": "valuation_regression",
   "model_version": "v1",
   "model_class": "RandomForestRegressor",
-  "n_rows": 150,
-  "training_rows": 120,
-  "test_rows": 30,
+  "random_state": 42,
+  "dataset_file": "../data/property_dataset_v1.csv",
+  "dataset_hash_sha256": "350742a3dc604b39746f4bec051edb68c1c658aa48acbdfcc8921c870f076015",
+  "n_rows_total": 150,
+  "n_rows_train": 120,
+  "n_rows_test": 30,
   "features_categorical": [
     "location",
     "energy_class",
@@ -27,33 +30,72 @@
     "air_quality_index",
     "age_years"
   ],
-  "target": "valuation_k",
+  "feature_list_ordered": [
+    "location",
+    "energy_class",
+    "has_elevator",
+    "has_garden",
+    "has_balcony",
+    "garage",
+    "size_m2",
+    "rooms",
+    "bathrooms",
+    "year_built",
+    "floor",
+    "building_floors",
+    "humidity_level",
+    "temperature_avg",
+    "noise_level",
+    "air_quality_index",
+    "age_years"
+  ],
+  "encoded_feature_count": 34,
   "metrics": {
-    "mae_k": 82.7092,
-    "rmse_k": 101.8724,
-    "r2": 0.282
+    "mae_k": 81.7134,
+    "rmse_k": 104.8088,
+    "r2": 0.3354
   },
-  "generated_at": "2025-07-19T16:09:13.261646Z",
-  "feature_importance_top5": [
+  "generated_at": "2025-07-20T14:03:04.118993Z",
+  "feature_importance_top10": [
     {
       "feature": "size_m2",
-      "importance": 0.7312063540803266
-    },
-    {
-      "feature": "year_built",
-      "importance": 0.029560496520703257
-    },
-    {
-      "feature": "humidity_level",
-      "importance": 0.027331626340557257
-    },
-    {
-      "feature": "air_quality_index",
-      "importance": 0.026413472362091128
+      "importance": 0.7369707580545705
     },
     {
       "feature": "temperature_avg",
-      "importance": 0.02505122699465619
+      "importance": 0.035403706293790124
+    },
+    {
+      "feature": "humidity_level",
+      "importance": 0.03490393771717094
+    },
+    {
+      "feature": "air_quality_index",
+      "importance": 0.023537367976219904
+    },
+    {
+      "feature": "age_years",
+      "importance": 0.022832425849620766
+    },
+    {
+      "feature": "year_built",
+      "importance": 0.02244956338679501
+    },
+    {
+      "feature": "noise_level",
+      "importance": 0.017944273785074523
+    },
+    {
+      "feature": "building_floors",
+      "importance": 0.017651331562910665
+    },
+    {
+      "feature": "floor",
+      "importance": 0.010626908233701864
+    },
+    {
+      "feature": "rooms",
+      "importance": 0.0073031109488973294
     }
   ]
 }
