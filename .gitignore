@@ -12,6 +12,7 @@ venv/
 # --- Notebooks checkpoints ---
 .ipynb_checkpoints/
 *-checkpoint.py
+*-checkpoint.ipynb
 
 # --- Logs & runtime artifacts ---
 *.log
