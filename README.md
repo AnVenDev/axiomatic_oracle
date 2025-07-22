@@ -67,13 +67,13 @@ This schema is used for both batch and single-sample inference. Designed to be c
   "asset_type": "property",
   "timestamp": "2025-07-21T14:32:00Z",
   "metrics": {
-  "valuation_base_k": 153.45,
-  "uncertainty": 12.5,
-  "confidence_low_k": 141.2,
-  "confidence_high_k": 165.7,
-  "latency_ms": 45.3,
-  "condition_score": 0.81,
-  "risk_score": 0.22
+    "valuation_base_k": 153.45,
+    "uncertainty": 12.5,
+    "confidence_low_k": 141.2,
+    "confidence_high_k": 165.7,
+    "latency_ms": 45.3,
+    "condition_score": 0.81,
+    "risk_score": 0.22
   },
   "flags": {
     "anomaly": false,
@@ -169,7 +169,7 @@ MODEL_REGISTRY = {
 3. **Train model + export pipeline & metadata** (Notebook 03)
 4. **Save training statistichs (`mean/std`) in `model_meta`**
 5. **Perform prediction, log metrics** (Notebook 04)
-6. **Read training statistichs (`mean/std`) and verify drift**
+6. **Read training statistichs (`mean/std`) and verify drift** (Notebook 04)
 7. **Start API** (`uvicorn scripts.inference_api:app --reload --port 8000`)
 8. **Call `/predict/property`** and verify schema compliance
 9. **Run E2E sanity** (`python scripts/e2e_sanity_check.py`)
