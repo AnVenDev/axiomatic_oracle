@@ -13,6 +13,7 @@ venv/
 .ipynb_checkpoints/
 *-checkpoint.py
 *-checkpoint.ipynb
+/notebooks/.ipynb_checkpoints
 
 # --- Logs & runtime artifacts ---
 *.log
@@ -41,6 +42,3 @@ pytest_cache/
 # --- Misc ---
 *.tmp
 *.bak
-notebooks/.ipynb_checkpoints/01_generate_dataset-checkpoint.ipynb
-/notebooks/.ipynb_checkpoints
-/notebooks/.ipynb_checkpoints
