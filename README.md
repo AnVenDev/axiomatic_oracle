@@ -42,7 +42,7 @@ While the MVP focuses on real estate assets (`asset_type="property"`), the syste
 
 ### Core fields for `property` (MVP):
 
-`asset_id`, `asset_type`, `location`, `size_m2`, `rooms`, `bathrooms`, `year_built`, `age_years`, `floor`, `building_floors`, `has_elevator`, `has_garden`, `has_balcony`, `garage`, `energy_class`, `humidity_level`, `temperature_avg`, `noise_level`, `air_quality_index`, `valuation_k`, `condition_score`, `risk_score`, `last_verified_ts`
+`asset_id`, `asset_type`, `location`, `size_m2`, `rooms`, `bathrooms`, `year_built`, `age_years`, `floor`, `building_floors`, `has_elevator`, `has_garden`, `has_balcony`, `garage`, `energy_class`, `humidity_level`, `temperature_avg`, `noise_level`, `air_quality_index`, `valuation_k`, `condition_score`, `risk_score`, `last_verified_ts`, `prediction_ts`
 
 ### Future asset-specific extensions:
 
@@ -117,6 +117,8 @@ Saved to `/data/monitoring_log.jsonl`
 Basic drift detection compares incoming sample stats to training-time `mean`/`std`
 * Uses metadata from training notebook
 * Flags via `flags.drift_detected`
+  
+*NOTE: currently **detection** is based on z-score on main features, without advanced ML techniques*
 
 ### Model Performance (MVP v1, 03_train_model.ipynb)
 
@@ -165,11 +167,13 @@ MODEL_REGISTRY = {
 1. **Generate synthetic asset records** (Notebook 01)
 2. **Visualize and validate data** (Notebook 02)
 3. **Train model + export pipeline & metadata** (Notebook 03)
-4. **Perform prediction, log metrics** (Notebook 04)
-5. **Start API** (`uvicorn scripts.inference_api:app --reload --port 8000`)
-6. **Call `/predict/property`** and verify schema compliance
-7. **Run E2E sanity** (`python scripts/e2e_sanity_check.py`)
-9. **(Planned) Publish minimal payload to Algorand**
+4. **Save training statistichs (`mean/std`) in `model_meta`**
+5. **Perform prediction, log metrics** (Notebook 04)
+6. **Read training statistichs (`mean/std`) and verify drift**
+7. **Start API** (`uvicorn scripts.inference_api:app --reload --port 8000`)
+8. **Call `/predict/property`** and verify schema compliance
+9. **Run E2E sanity** (`python scripts/e2e_sanity_check.py`)
+10. **(Planned) Publish minimal payload to Algorand**
 
 ## Blockchain Payload (Planned)
 
