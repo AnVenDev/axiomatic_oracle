@@ -1,89 +1,21 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/AnVenDev/ai-oracle-rwa/main/schemas/output_example.json",
-  "title": "AI Oracle Inference Output (Draft)",
-  "$comment": "Schema for multi-RWA AI oracle inference responses.",
-  "type": "object",
-  "required": [
-    "schema_version",
-    "asset_id",
-    "asset_type",
-    "timestamp",
-    "metrics",
-    "flags",
-    "model_meta"
-  ],
-  "properties": {
-    "schema_version": {
-      "type": "string",
-      "pattern": "^v\\d+(?:\\.\\d+)?$",
-      "examples": ["v1", "v1.0", "v1.1"]
-    },
-    "asset_id": { "type": "string" },
-    "asset_type": {
-      "type": "string",
-      "enum": [
-        "property",
-        "art",
-        "greenhouse",
-        "warehouse",
-        "energy_asset",
-        "container"
-      ],
-      "description": "Extend enum when new asset categories are production-ready."
-    },
-    "timestamp": { "type": "string", "format": "date-time" },
-    "metrics": {
-      "type": "object",
-      "required": ["valuation_base_k"],
-      "properties": {
-        "valuation_base_k": { "type": "number", "minimum": 0 },
-        "condition_score": { "type": "number", "minimum": 0, "maximum": 1 },
-        "risk_score": { "type": "number", "minimum": 0, "maximum": 1 },
-        "authenticity_prob": { "type": "number", "minimum": 0, "maximum": 1 }
-      },
-      "additionalProperties": true
-    },
-    "flags": {
-      "type": "object",
-      "required": ["anomaly", "needs_review"],
-      "properties": {
-        "anomaly": { "type": "boolean" },
-        "needs_review": { "type": "boolean" }
-      },
-      "additionalProperties": false
-    },
-    "model_meta": {
-      "type": "object",
-      "properties": {
-        "value_model_version": { "type": "string" },
-        "value_model_name": { "type": "string" },
-        "anomaly_model_version": { "type": "string" },
-        "auth_model_version": { "type": "string" },
-        "model_hash": { "type": "string", "pattern": "^[a-f0-9]{16,64}$" },
-        "dataset_hash": { "type": "string", "pattern": "^[a-f0-9]{16,64}$" }
-      },
-      "additionalProperties": true
-    },
-    "offchain_refs": {
-      "type": "object",
-      "properties": {
-        "detail_report_hash": { "type": ["string", "null"] },
-        "sensor_batch_hash": { "type": ["string", "null"] }
-      },
-      "additionalProperties": true
-    },
-    "latency_ms": { "type": "number", "minimum": 0 },
-    "publish": {
-      "type": "object",
-      "properties": {
-        "status": { "type": "string" },
-        "txid": { "type": "string" }
-      },
-      "required": ["status", "txid"],
-      "additionalProperties": false
-    },
-    "schema_validation_error": { "type": "string" }
+  "asset_id": "asset_batch_004",
+  "asset_type": "property",
+  "timestamp": "2025-07-22T18:49:57Z",
+  "metrics": {
+    "valuation_base_k": 6.011
   },
-  "additionalProperties": false
+  "flags": {
+    "anomaly": false,
+    "needs_review": false
+  },
+  "model_meta": {
+    "value_model_version": "v1",
+    "value_model_name": "LGBMRegressor"
+  },
+  "offchain_refs": {
+    "detail_report_hash": null,
+    "sensor_batch_hash": null
+  },
+  "_logged_at": "2025-07-22T18:49:58.092630Z"
 }
