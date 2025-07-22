@@ -24,15 +24,16 @@ Conventions:
 - Metadata file:  <task>_<version>_meta.json
 - Side artifacts (hash, timestamp) enriched automatically
 """
+from __future__ import annotations
 
 import json
+import time
 import os
 import re
 import hashlib
 import joblib
 import logging
 from pathlib import Path
-from __future__ import annotations
 from typing import Dict, Optional, List, Iterable, Tuple
 from difflib import get_close_matches
 
@@ -63,7 +64,7 @@ MODEL_REGISTRY: Dict[str, Dict[str, str]] = {
 # In-memory caches
 _PIPELINE_CACHE: Dict[Path, object] = {}
 _METADATA_CACHE: Dict[Path, dict] = {}
-_PIPELINE_TTL_CACHE = {}
+_PIPELINE_TTL_CACHE: Dict[str, Dict[str, Any]] = {}
 CACHE_TTL_SECONDS = 3600
 
 logger = logging.getLogger("model_registry")
@@ -174,14 +175,16 @@ def get_pipeline(asset_type: str, task: str = "value_regressor", fallback_latest
     now = time.time()
 
     # Check TTL cache
-    if model_path in _PIPELINE_TTL_CACHE:
-        pipeline, ts = _PIPELINE_TTL_CACHE[model_path]
+    cache_key = str(model_path.resolve())
+    if cache_key in _PIPELINE_TTL_CACHE:
+        pipeline, ts = _PIPELINE_TTL_CACHE[cache_key]
         if now - ts < CACHE_TTL_SECONDS:
             return pipeline  # Cache still valid
 
     # Load and cache model
     pipeline = joblib.load(model_path)
-    _PIPELINE_TTL_CACHE[model_path] = (pipeline, now)
+    cache_key = str(model_path.resolve())
+    _PIPELINE_TTL_CACHE[cache_key] = (pipeline, now)
     logger.info(f"Model loaded: {model_path.name}")
     return pipeline
 
@@ -293,12 +296,26 @@ def refresh_cache(asset_type: Optional[str] = None, task: Optional[str] = None) 
 
 
 def cache_stats() -> dict:
-    return {
-        "pipelines_cached": len(_PIPELINE_CACHE),
-        "metadata_cached": len(_METADATA_CACHE),
-        "model_paths": [str(p) for p in _PIPELINE_CACHE.keys()]
-    }
+    now = time.time()
+    cache_info = {}
+    for model_path, (pipeline, timestamp) in _PIPELINE_TTL_CACHE.items():
+        age = now - timestamp
+        cache_info[str(model_path)] = {
+            "age_seconds": round(age, 1),
+            "expires_in": round(CACHE_TTL_SECONDS - age, 1),
+            "expired": age >= CACHE_TTL_SECONDS
+        }
 
+    active_models = sum(1 for v in cache_info.values() if not v["expired"])
+    expired_models = len(cache_info) - active_models
+
+    return {
+        "pipelines_cached": active_models,
+        "pipelines_expired": expired_models,
+        "metadata_cached": len(_METADATA_CACHE),
+        "cache_ttl_seconds": CACHE_TTL_SECONDS,
+        "models": cache_info
+    }
 
 # -----------------------------------------------------------------------------
 # Version / discovery helpers
