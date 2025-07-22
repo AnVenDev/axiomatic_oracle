@@ -67,9 +67,13 @@ This schema is used for both batch and single-sample inference. Designed to be c
   "asset_type": "property",
   "timestamp": "2025-07-21T14:32:00Z",
   "metrics": {
-    "valuation_base_k": 153.45,
-    "condition_score": 0.81,
-    "risk_score": 0.22
+  "valuation_base_k": 153.45,
+  "uncertainty": 12.5,
+  "confidence_low_k": 141.2,
+  "confidence_high_k": 165.7,
+  "latency_ms": 45.3,
+  "condition_score": 0.81,
+  "risk_score": 0.22
   },
   "flags": {
     "anomaly": false,
@@ -78,7 +82,7 @@ This schema is used for both batch and single-sample inference. Designed to be c
   },
   "model_meta": {
     "value_model_version": "v1",
-    "value_model_name": "RandomForestRegressor"
+    "value_model_name": "LGBMRegressor"
   },
   "offchain_refs": {
     "detail_report_hash": null,
@@ -92,7 +96,7 @@ This schema is used for both batch and single-sample inference. Designed to be c
 
 ### Confidence Intervals (via Prediction Variance)
 Simulated prediction intervals provide a low-high estimate around the prediction.
-* Method: stochastic prediction sampling from `RandomForestRegressor`
+* Method: Monte Carlo simulation using t-distribution on LGBM ensemble predictions
 * Output: `uncertainty`, `confidence_low_k`, `confidence_high_k`
 
 ### Rules-Based Anomaly Detection
@@ -113,6 +117,21 @@ Saved to `/data/monitoring_log.jsonl`
 Basic drift detection compares incoming sample stats to training-time `mean`/`std`
 * Uses metadata from training notebook
 * Flags via `flags.drift_detected`
+
+### Model Performance (MVP v1, 03_train_model.ipynb)
+
+- **MAE**: 65.27k€ (realistic for real estate)
+- **RMSE**: 85.80k€
+- **R²**: 0.55 (excellent given multivariate noise and synthetic data)
+
+---
+
+### Advanced Features (MVP v1)
+
+- **Optuna tuning** with early stopping and robust parameter space
+- **Log-transform target** for better regression stability
+- **Z-score-based drift detection** against training stats
+- **Partial fallback system** for model selection by asset_type/version (planned)
 
 ---
 
