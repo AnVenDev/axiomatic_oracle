@@ -1,5 +1,4 @@
 """
-inference_api.py
 FastAPI service exposing AI Oracle inference endpoints (multi-RWA ready: initial asset_type 'property').
 
 Run locally:
@@ -19,12 +18,20 @@ from typing import Optional, Dict, Any
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Path as FPath, Query, Body
 from pydantic import BaseModel, Field, model_validator
+from jsonschema import validate as jsonschema_validate, ValidationError
 
 from scripts.model_registry import (
     get_pipeline,
     get_model_metadata,
     RegistryLookupError,
-    ModelNotFoundError
+    ModelNotFoundError,
+    validate_model_compatibility,
+    health_check_model,
+    refresh_cache,
+    cache_stats,
+    list_tasks,
+    discover_models_for_asset,
+    _PIPELINE_TTL_CACHE
 )
 
 # -----------------------------------------------------------------------------
@@ -33,23 +40,21 @@ from scripts.model_registry import (
 LOG_PATH = Path("data/api_inference_log.jsonl")
 LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-ALLOWED_ENERGY_CLASSES = {"A", "B", "C", "D", "E", "F", "G"}
+SCHEMA_PATH = Path("schemas/output_schema_def.json")
+EXAMPLE_PATH = Path("schemas/output_example.json")
 
-SCHEMA_PATH = Path("schemas/output_example.json")
 try:
     with SCHEMA_PATH.open("r", encoding="utf-8") as f:
         OUTPUT_SCHEMA = json.load(f)
-    SCHEMA_VERSION = OUTPUT_SCHEMA.get("schema_version", "v1")
+    SCHEMA_VERSION = OUTPUT_SCHEMA.get("$id", "v1")
 except Exception as e:
-    OUTPUT_SCHEMA = {
-        "title": "Fallback Output Schema",
-        "type": "object",
-        "properties": {}
-    }
+    OUTPUT_SCHEMA = {}
     SCHEMA_VERSION = "v0-fallback"
-    print(f"[WARN] Could not load schema {SCHEMA_PATH}: {e}")
+    print(f"[WARN] Could not load schema: {e}")
 
-API_VERSION = "0.2.0"
+API_VERSION = "0.3.0"
+
+ALLOWED_ENERGY_CLASSES = {"A", "B", "C", "D", "E", "F", "G"}
 
 # -----------------------------------------------------------------------------
 # Pydantic Request Models
@@ -71,7 +76,7 @@ class PropertyPredictRequest(BaseModel):
     temperature_avg: float
     noise_level: int = Field(..., ge=0, le=150)
     air_quality_index: int = Field(..., ge=0, le=500)
-    age_years: Optional[int] = Field(None, ge=0)  # now optional; derive if missing
+    age_years: Optional[int] = Field(None, ge=0)
 
     @model_validator(mode="after")
     def validate_and_normalize(self):
@@ -81,11 +86,9 @@ class PropertyPredictRequest(BaseModel):
         if ec not in ALLOWED_ENERGY_CLASSES:
             raise ValueError(f"energy_class must be one of {sorted(ALLOWED_ENERGY_CLASSES)}")
         object.__setattr__(self, "energy_class", ec)
-        # Derive age_years if missing
         if self.age_years is None:
             object.__setattr__(self, "age_years", datetime.utcnow().year - self.year_built)
         return self
-
 
 REQUEST_MODELS: Dict[str, Any] = {
     "property": PropertyPredictRequest
@@ -99,7 +102,6 @@ def log_jsonl(record: dict):
     with LOG_PATH.open("a", encoding="utf-8") as f:
         f.write(json.dumps(record) + "\n")
 
-
 def hash_file(path: Path) -> Optional[str]:
     try:
         h = hashlib.sha256()
@@ -110,25 +112,11 @@ def hash_file(path: Path) -> Optional[str]:
     except Exception:
         return None
 
-
-def build_response(
-    asset_type: str,
-    valuation_k: float,
-    model_meta: dict,
-    publish: bool,
-    asset_id: Optional[str] = None
-):
+def build_response(asset_type: str, valuation_k: float, model_meta: dict, publish: bool, asset_id: Optional[str] = None):
     if not asset_id:
         asset_id = f"{asset_type}_{uuid.uuid4().hex[:10]}"
 
-    # Extract possible dataset hash (metadata key naming)
-    dataset_hash = (
-        model_meta.get("dataset_hash_sha256")
-        or model_meta.get("dataset_hash")
-        or None
-    )
-
-    # Optional model file hash attempt (if path in metadata)
+    dataset_hash = model_meta.get("dataset_hash_sha256") or model_meta.get("dataset_hash")
     model_hash = None
     model_path_hint = model_meta.get("model_path")
     if model_path_hint:
@@ -150,7 +138,7 @@ def build_response(
         },
         "model_meta": {
             "value_model_version": model_meta.get("model_version"),
-            "value_model_name": model_meta.get("model_class"),
+            "value_model_name": model_meta.get("model_class")
         },
         "offchain_refs": {
             "detail_report_hash": None,
@@ -161,7 +149,7 @@ def build_response(
     if dataset_hash:
         response["model_meta"]["dataset_hash"] = dataset_hash
     if model_hash:
-        response["model_meta"]["model_hash"] = model_hash[:32]  # truncated if long
+        response["model_meta"]["model_hash"] = model_hash[:32]
 
     if publish:
         response["publish"] = {
@@ -170,7 +158,6 @@ def build_response(
         }
 
     return response
-
 
 # -----------------------------------------------------------------------------
 # FastAPI app
@@ -181,34 +168,25 @@ app = FastAPI(
     description="Inference service for multi-RWA asset valuation (initial: property)."
 )
 
-
 @app.get("/health")
 def health():
     try:
-        meta = get_model_metadata("property", "value_regressor")
+        health_info = health_check_model("property", "value_regressor")
+        cache_info = cache_stats()
         return {
-            "status": "ok",
+            "status": "ok" if health_info["status"] == "healthy" else "degraded",
+            "model_health": health_info,
+            "cache_stats": cache_info,
             "asset_types": list(REQUEST_MODELS.keys()),
-            "property_model_version": meta.get("model_version") if meta else None,
             "schema_version": SCHEMA_VERSION,
             "api_version": API_VERSION,
             "time": datetime.utcnow().isoformat() + "Z"
         }
     except Exception as e:
-        return {
-            "status": "degraded",
-            "error": str(e),
-            "schema_version": SCHEMA_VERSION,
-            "api_version": API_VERSION
-        }
-
+        return {"status": "error", "error": str(e)}
 
 @app.post("/predict/{asset_type}")
-def predict(
-    asset_type: str = FPath(..., description="Asset type (e.g., property)"),
-    publish: bool = Query(False, description="Simulate on-chain publish"),
-    payload: dict = Body(...)
-):
+def predict(asset_type: str = FPath(...), publish: bool = Query(False), payload: dict = Body(...)):
     asset_type = asset_type.lower()
     if asset_type not in REQUEST_MODELS:
         raise HTTPException(status_code=400, detail=f"Unsupported asset_type: {asset_type}")
@@ -219,14 +197,20 @@ def predict(
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Invalid payload: {e}")
 
-    # Load pipeline + metadata
     try:
-        pipeline = get_pipeline(asset_type, "value_regressor")
-        meta = get_model_metadata(asset_type, "value_regressor") or {}
+        pipeline = get_pipeline(asset_type, "value_regressor", fallback_latest=True)
+        meta = get_model_metadata(asset_type, "value_regressor", fallback_latest=True)
+        health = health_check_model(asset_type, "value_regressor")
+        if health["status"] != "healthy":
+            raise HTTPException(status_code=503, detail=health["error"])
     except (RegistryLookupError, ModelNotFoundError) as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    # Inference
+    # Validate compatibility
+    expected_features = list(req_obj.model_dump().keys())
+    if not validate_model_compatibility(pipeline, expected_features):
+        raise HTTPException(status_code=422, detail="Model-input schema mismatch")
+
     start = time.time()
     df_input = pd.DataFrame([req_obj.model_dump()])
     try:
@@ -235,37 +219,38 @@ def predict(
         raise HTTPException(status_code=500, detail=f"Inference error: {e}")
     latency_ms = (time.time() - start) * 1000
 
-    response = build_response(
-        asset_type=asset_type,
-        valuation_k=pred,
-        model_meta=meta,
-        publish=publish
-    )
-    response["latency_ms"] = round(latency_ms, 2)
+    response = build_response(asset_type, pred, meta, publish)
+    response["metrics"]["latency_ms"] = round(latency_ms, 2)
+    response["model_health"] = health
+    response["cache_hit"] = meta.get("model_path") in _PIPELINE_TTL_CACHE
 
-    # Schema validation (non-blocking)
     try:
-        from jsonschema import validate as jsonschema_validate, ValidationError
         jsonschema_validate(instance=response, schema=OUTPUT_SCHEMA)
     except ValidationError as ve:
         response["schema_validation_error"] = str(ve).split("\n", 1)[0][:240]
     except Exception as e:
         response["schema_validation_error"] = f"Schema check failed: {e}"[:240]
 
-    # Log
-    log_jsonl({
-        "event": "prediction",
-        "asset_type": asset_type,
-        "request": req_obj.model_dump(),
-        "response": response
-    })
-
+    log_jsonl({"event": "prediction", "asset_type": asset_type, "request": req_obj.model_dump(), "response": response})
     return response
 
+@app.get("/models/{asset_type}")
+def list_models(asset_type: str):
+    return {
+        "asset_type": asset_type,
+        "tasks": list_tasks(asset_type),
+        "discovered_models": [p.name for p in discover_models_for_asset(asset_type)]
+    }
 
-# -----------------------------------------------------------------------------
-# Main (diagnostic run)
-# -----------------------------------------------------------------------------
+@app.post("/models/{asset_type}/{task}/refresh")
+def refresh_model_cache(asset_type: str, task: str):
+    refresh_cache(asset_type, task)
+    return {"status": "cache_refreshed", "asset_type": asset_type, "task": task}
+
+@app.get("/models/{asset_type}/{task}/health")
+def model_health(asset_type: str, task: str):
+    return health_check_model(asset_type, task)
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("scripts.inference_api:app", host="127.0.0.1", port=8000, reload=True)
