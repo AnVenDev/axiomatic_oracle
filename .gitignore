@@ -42,3 +42,5 @@ pytest_cache/
 # --- Misc ---
 *.tmp
 *.bak
+notebooks/.ipynb_checkpoints/01_generate_dataset-checkpoint.ipynb
+notebooks/.ipynb_checkpoints/02_explore_dataset-checkpoint.ipynb
