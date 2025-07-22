@@ -34,30 +34,69 @@ Phase 1 focuses on property (`asset_type="property"`), while the architecture an
 * **Pluggable feature pipeline** (config-driven)
 * **Clear separation** of data generation → preprocessing → training → inference → (future) on-chain publishing
 
-## Key Features (Current vs Planned)
+## Dataset (Current & Extensible Fields)
 
-| Feature                                         | Status    | Notes                                                                 |
-| ----------------------------------------------- | --------- | --------------------------------------------------------------------- |
-| Synthetic property dataset (150+ rows)          | ✅         | Includes asset\_type, derived age\_years, condition/risk placeholders |
-| EDA (distribution, correlation, condition/risk) | ✅         | Notebook 02                                                           |
-| Training pipeline (OHE + RandomForest)          | ✅         | Notebook 03 (saved as joblib)                                         |
-| Cross-validation + metrics export               | ✅         | Saved in meta.json (train vs CV MAE)                                  |
-| Model metadata JSON (versioned)                 | ✅         | Contains metrics, feature list, timestamp                             |
-| Inference notebook (single + batch)             | ✅         | Notebook 04: validates schema, logs predictions                       |
-| Unified output JSON schema                      | ✅         | `schemas/output_example.json`                                         |
-| FastAPI inference API                           | ✅         | `/predict/property` endpoint, validates input + schema                |
-| Model registry abstraction                      | ✅         | `scripts/model_registry.py` with fallback support                     |
-| E2E sanity check script                         | ✅         | `scripts/e2e_sanity_check.py`                                         |
-| Basic anomaly detection (rules)                 | ✅         | In `04_infer_single_sample` and future script                         |
-| Condition & risk refinement logic               | ⏳ Planned | Rule/ML hybrid scoring                                                |
-| Confidence interval on prediction               | ✅         | Bootstrap ensemble simulated                                          |
-| Algorand publishing (Note field)                | ⏳ Planned | Compact payload + TX ID                                               |
-| Angular dashboard (multi-asset)                 | ⏳ Planned | Filtering + detail + TX links                                         |
-| Sensor ingestion (simulated stream)             | 🔮 Future | Real-time updates                                                     |
-| Raspberry Pi edge device integration            | 🔮 Future | Phase 3–4                                                             |
-| PyTEAL smart contract hooks                     | 🔮 Future | Update frequency / anomaly triggers                                   |
+### Current property fields:
 
-## Runtime Utilities
+`asset_id`, `asset_type`, `location`, `size_m2`, `rooms`, `bathrooms`, `year_built`, `age_years`, `floor`, `building_floors`, `has_elevator`, `has_garden`, `has_balcony`, `garage`, `energy_class`, `humidity_level`, `temperature_avg`, `noise_level`, `air_quality_index`, `valuation_k`, `condition_score`, `risk_score`, `last_verified_ts`
+
+### Future asset-specific extensions:
+
+| Asset             | Additional Fields (planned)                          |
+| ----------------- | ---------------------------------------------------- |
+| **art**           | `medium`, `storage_humidity`, `authenticity_prob`    |
+| **energy\_asset** | `panel_efficiency`, `irradiance`, `degradation_rate` |
+| **container**     | `shock_events`, `temperature_var`, `geo_path`        |
+| **greenhouse**    | `soil_moisture`, `light_index`, `co2_ppm`            |
+| **warehouse**     | `vibration_level`, `occupancy_pattern`               |
+
+*Unpopulated fields remain NaN until implemented.*
+
+## Unified Output Schema (Draft)
+
+### Property example:
+
+```json
+{
+  "schema_version": "v1",
+  "asset_id": "property_0102",
+  "asset_type": "property",
+  "timestamp": "2025-07-18T12:04:55Z",
+  "metrics": {
+    "valuation_base_k": 152.37,
+    "condition_score": 0.82,
+    "risk_score": 0.18
+  },
+  "flags": { "anomaly": false, "needs_review": false },
+  "model_meta": {
+    "value_model_version": "v1",
+    "value_model_name": "RandomForestRegressor"
+  },
+  "offchain_refs": {
+    "detail_report_hash": null,
+    "sensor_batch_hash": null
+  }
+}
+```
+
+## Model Registry
+
+### Simplified conceptual structure:
+
+```python
+MODEL_REGISTRY = {
+    "property": {
+        "value_regressor": "property/value_regressor_v1.joblib"
+        # future: "anomaly_model": "property/anomaly_iforest_v0.joblib"
+    },
+    "art": {
+        # "valuation_model": "...",
+        # "authenticity_model": "..."
+    }
+}
+```
+
+### Runtime Utilities
 
 * Version discovery & hashing
 * Metadata enrichment (`model_hash`, optional `dataset_hash`)
@@ -91,16 +130,66 @@ Phase 1 focuses on property (`asset_type="property"`), while the architecture an
 
 *Extended report anchored off-chain (e.g. IPFS) via hash in `detail_report_hash`.*
 
-## Enhancements Ready Post-MVP
+## Planned Enhancements
 
-* Confidence intervals (via bootstrap prediction)
-* Rules-based anomaly detection
-* Inference latency monitoring
-* Fallback model loading via `model_registry`
-* Drift detection logic placeholder
-* JSON schema validation in inference
-* Batch inference support + logging to `.jsonl`
-* Modular validation pipeline in progress
+* **IsolationForest / One-Class SVM** anomaly detection
+* **Condition & risk score refinement** (probabilistic models)
+* **SHAP explainability** integration
+* **PyTEAL contract** for update cadence & anomaly flagging
+* **Off-chain IPFS anchoring** & hash validation
+* **DAO-style governance** / dispute resolution module
+* **Asset-type plug-ins** (`plugins/<asset_type>/feature_builder.py`)
+* **Docker image + CI pipeline**
+* **Dataset & model lineage tracking** (DVC / MLflow)
+
+## Getting Started
+
+### 1. Clone & Setup
+
+```bash
+# Clone
+git clone https://github.com/AnVenDev/ai-oracle-rwa.git
+cd ai-oracle-rwa
+
+# Environment
+conda create -n ai-oracle python=3.11 -y
+conda activate ai-oracle
+
+# Install core deps
+pip install -r requirements.txt
+# (or minimal)
+# pip install pandas numpy scikit-learn joblib jupyter matplotlib seaborn
+
+# (Optional extras)
+pip install fastapi uvicorn algosdk jsonschema
+```
+
+### 2. Run notebooks in order:
+
+1. `01_generate_dataset.ipynb`
+2. `02_explore_dataset.ipynb`
+3. `03_train_model.ipynb`
+4. `04_infer_single_sample.ipynb`
+
+### 3. Start API:
+
+```bash
+uvicorn scripts.inference_api:app --reload --port 8000
+```
+
+### 4. Test API:
+
+```bash
+curl -X POST http://127.0.0.1:8000/predict/property \
+  -H "Content-Type: application/json" \
+  -d @schemas/sample_property.json
+```
+
+### 5. Run E2E sanity:
+
+```bash
+python scripts/e2e_sanity_check.py
+```
 
 ## License
 
