@@ -6,25 +6,29 @@ A modular AI + Blockchain oracle that evaluates and monitors Real World Assets (
 
 This project establishes a reusable oracle layer that:
 
-* **Estimates asset value** (initial focus: property valuation)
-* **Simulates condition / risk scoring** via environmental & structural indicators (to refine)
-* **Detects anomalies** using statistical + ML rules (coming)
-* **Publishes compact, verifiable summaries** to Algorand (TestNet → MainNet, planned)
-* **Prepares a sensor / edge ingestion path** (Raspberry Pi, IoT)
-* **Supports multiple asset categories** via a unified schema, model registry, and pluggable preprocessing
+- **Estimates asset value** (starting with real estate)
+- **Simulates condition / risk scoring** using interpretable rules and proxy features
+- **Detects anomalies** via simple threshold rules (future: ML-based)
+- **Estimates prediction confidence intervals** to assess output robustness
+- **Monitors inference latency** and logs output + model metadata
+- **Detects potential feature drift** using training-time statistics
+- **(Planned) Publishes summaries** to Algorand TestNet/MainNet
+- **(Planned) Connects to sensor/edge pipelines** (e.g., Raspberry Pi, IoT)
 
 ## Multi-RWA Vision
 
-Phase 1 focuses on property (`asset_type="property"`), while the architecture anticipates additional asset classes:
+While the MVP focuses on real estate assets (`asset_type="property"`), the system is architected for extensibility:
 
-| Asset Type (future)    | Example Features                                             | Primary Tasks                            |
-| ---------------------- | ------------------------------------------------------------ | ---------------------------------------- |
-| **property** (current) | size, rooms, humidity, energy\_class                         | valuation, condition, anomaly            |
-| **art**                | medium, year\_created, artist\_reputation, storage\_humidity | authenticity prob., condition, valuation |
-| **greenhouse**         | temperature, humidity, light, CO₂, soil\_moisture            | crop risk, yield score, anomaly          |
-| **warehouse**          | vibration, temp stability, occupancy pattern                 | integrity, compliance, risk              |
-| **energy\_asset**      | panel\_efficiency, irradiance, degradation\_rate             | performance index, maintenance trigger   |
-| **container**          | geo\_path, temperature\_mean, shock\_events                  | spoilage risk, compliance, anomaly       |
+| Asset Type         | Key Features (Examples)                               | Core Tasks                                     |
+|--------------------|--------------------------------------------------------|------------------------------------------------|
+| **property**       | size, rooms, humidity, energy_class                   | valuation, condition estimation, anomaly check |
+| **art**            | medium, year, artist reputation, storage conditions    | valuation, authenticity scoring                |
+| **greenhouse**     | temperature, CO₂, light, humidity, soil moisture       | yield, crop risk, anomaly detection            |
+| **warehouse**      | vibration, temperature variance, occupancy             | compliance, risk, maintenance prediction       |
+| **energy_asset**   | panel performance, irradiance, degradation rate        | efficiency score, maintenance alert            |
+| **container**      | shock events, geo-path, temperature variation          | spoilage risk, integrity assessment            |
+
+---
 
 ### Extensibility Principles
 
@@ -34,9 +38,9 @@ Phase 1 focuses on property (`asset_type="property"`), while the architecture an
 * **Pluggable feature pipeline** (config-driven)
 * **Clear separation** of data generation → preprocessing → training → inference → (future) on-chain publishing
 
-## Dataset (Current & Extensible Fields)
+## Dataset
 
-### Current property fields:
+### Core fields for `property` (MVP):
 
 `asset_id`, `asset_type`, `location`, `size_m2`, `rooms`, `bathrooms`, `year_built`, `age_years`, `floor`, `building_floors`, `has_elevator`, `has_garden`, `has_balcony`, `garage`, `energy_class`, `humidity_level`, `temperature_avg`, `noise_level`, `air_quality_index`, `valuation_k`, `condition_score`, `risk_score`, `last_verified_ts`
 
@@ -52,22 +56,26 @@ Phase 1 focuses on property (`asset_type="property"`), while the architecture an
 
 *Unpopulated fields remain NaN until implemented.*
 
-## Unified Output Schema (Draft)
+## Output Schema (Unified Draft)
 
-### Property example:
+This schema is used for both batch and single-sample inference. Designed to be compact, extensible, and verifiable.
 
 ```json
 {
   "schema_version": "v1",
   "asset_id": "property_0102",
   "asset_type": "property",
-  "timestamp": "2025-07-18T12:04:55Z",
+  "timestamp": "2025-07-21T14:32:00Z",
   "metrics": {
-    "valuation_base_k": 152.37,
-    "condition_score": 0.82,
-    "risk_score": 0.18
+    "valuation_base_k": 153.45,
+    "condition_score": 0.81,
+    "risk_score": 0.22
   },
-  "flags": { "anomaly": false, "needs_review": false },
+  "flags": {
+    "anomaly": false,
+    "drift_detected": false,
+    "needs_review": false
+  },
   "model_meta": {
     "value_model_version": "v1",
     "value_model_name": "RandomForestRegressor"
@@ -78,6 +86,35 @@ Phase 1 focuses on property (`asset_type="property"`), while the architecture an
   }
 }
 ```
+---
+
+## Notable Features Implemented
+
+### Confidence Intervals (via Prediction Variance)
+Simulated prediction intervals provide a low-high estimate around the prediction.
+* Method: stochastic prediction sampling from `RandomForestRegressor`
+* Output: `uncertainty`, `confidence_low_k`, `confidence_high_k`
+
+### Rules-Based Anomaly Detection
+Simple rules catch outliers based on thresholds (e.g., extreme sizes, missing data)
+* Configurable dictionary of thresholds
+* Output: `flags.anomaly`
+
+### Inference Monitoring & Logs
+Every batch/single prediction logs:
+* Inference time (ms)
+* Model metadata
+* Confidence intervals
+* Anomaly & drift flags
+
+Saved to `/data/monitoring_log.jsonl`
+
+### Feature Drift Detection
+Basic drift detection compares incoming sample stats to training-time `mean`/`std`
+* Uses metadata from training notebook
+* Flags via `flags.drift_detected`
+
+---
 
 ## Model Registry
 
@@ -87,14 +124,16 @@ Phase 1 focuses on property (`asset_type="property"`), while the architecture an
 MODEL_REGISTRY = {
     "property": {
         "value_regressor": "property/value_regressor_v1.joblib"
-        # future: "anomaly_model": "property/anomaly_iforest_v0.joblib"
-    },
-    "art": {
-        # "valuation_model": "...",
-        # "authenticity_model": "..."
     }
 }
 ```
+
+**Includes**:
+* Version control
+* Optional hash validation
+* Fallback support (future)
+
+---
 
 ### Runtime Utilities
 
@@ -104,26 +143,25 @@ MODEL_REGISTRY = {
 
 ## Workflow Summary
 
-1. **Generate dataset** (Notebook 01)
-2. **Explore & validate distributions** (Notebook 02)
+1. **Generate synthetic asset records** (Notebook 01)
+2. **Visualize and validate data** (Notebook 02)
 3. **Train model + export pipeline & metadata** (Notebook 03)
-4. **Single / batch inference experiments** (Notebook 04)
+4. **Perform prediction, log metrics** (Notebook 04)
 5. **Start API** (`uvicorn scripts.inference_api:app --reload --port 8000`)
 6. **Call `/predict/property`** and verify schema compliance
 7. **Run E2E sanity** (`python scripts/e2e_sanity_check.py`)
-8. **(Planned) Add anomaly / condition dynamic logic**
 9. **(Planned) Publish minimal payload to Algorand**
 
-## Blockchain Publishing (Compact Payload)
+## Blockchain Payload (Planned)
 
 ```json
 {
   "a": "property_0102",
   "t": "property",
-  "ts": "2025-07-18T12:04:55Z",
-  "v": 152.37,
-  "c": 0.82,
-  "r": 0.18,
+  "ts": "2025-07-21T14:32:00Z",
+  "v": 153.45,
+  "c": 0.81,
+  "r": 0.22,
   "an": 0
 }
 ```
@@ -133,14 +171,16 @@ MODEL_REGISTRY = {
 ## Planned Enhancements
 
 * **IsolationForest / One-Class SVM** anomaly detection
-* **Condition & risk score refinement** (probabilistic models)
+* **SHAP explainability integration**
 * **SHAP explainability** integration
-* **PyTEAL contract** for update cadence & anomaly flagging
+* **PyTEAL contract**  for on-chain validation
+* **Sensor-based ingestion from Raspberry Pi**
 * **Off-chain IPFS anchoring** & hash validation
 * **DAO-style governance** / dispute resolution module
 * **Asset-type plug-ins** (`plugins/<asset_type>/feature_builder.py`)
 * **Docker image + CI pipeline**
 * **Dataset & model lineage tracking** (DVC / MLflow)
+* **Dynamic retraining & dataset expansion**
 
 ## Getting Started
 
