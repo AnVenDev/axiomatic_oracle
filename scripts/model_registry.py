@@ -1,13 +1,16 @@
 """
 model_registry.py
-Centralized registry & loader for AI Oracle model pipelines (multi-RWA ready).
+Centralized registry & loader for AI Oracle model pipelines (Multi-RWA ready).
 
 Responsibilities:
-- Map (asset_type, task) -> local filesystem path
-- Lazy-load & cache pipelines (joblib)
-- Provide metadata loading helper (if available)
-- Offer utilities to list available tasks, versions, and cache state
-- Prepare for future remote / versioned storage (e.g. S3, IPFS)
+- Map (asset_type, task) → local filesystem path
+- Lazy-load & TTL-cache pipelines using joblib
+- Provide enriched metadata with hash and model_path
+- Validate model compatibility with expected features
+- Suggest similar tasks on failure (fuzzy matching)
+- Perform model health diagnostics (size, timestamp, metrics)
+- Prepare stub for remote model access (S3, IPFS, ASA)
+- Enable optional logging and async support (future API-ready)
 
 Usage:
     from scripts.model_registry import get_pipeline, get_model_metadata
@@ -16,21 +19,22 @@ Usage:
     meta = get_model_metadata("property", "value_regressor")
 
 Conventions:
-- Each asset_type gets its own subfolder inside /models
-- File naming: <task>_<version>.joblib  (e.g. value_regressor_v1.joblib)
-- Metadata file: <task>_<version>_meta.json
+- Each asset_type has a subfolder under /models
+- Model filename: <task>_<version>.joblib  (e.g. value_regressor_v1.joblib)
+- Metadata file:  <task>_<version>_meta.json
+- Side artifacts (hash, timestamp) enriched automatically
 """
-
-from __future__ import annotations
 
 import json
 import os
 import re
 import hashlib
-from pathlib import Path
-from typing import Dict, Optional, List, Iterable, Tuple
-
 import joblib
+import logging
+from pathlib import Path
+from __future__ import annotations
+from typing import Dict, Optional, List, Iterable, Tuple
+from difflib import get_close_matches
 
 # -----------------------------------------------------------------------------
 # Configuration
@@ -42,6 +46,9 @@ MODELS_BASE = Path(ENV_BASE).resolve() if ENV_BASE else DEFAULT_BASE
 MODEL_EXT = ".joblib"
 META_SUFFIX = "_meta.json"
 VERSION_PATTERN = re.compile(r"_(v\d+(?:[a-z0-9\-_\.]*)?)\.joblib$", re.IGNORECASE)
+
+logger = logging.getLogger("model_registry")
+logger.setLevel(logging.INFO)
 
 # Registry: (asset_type, task) -> relative path
 MODEL_REGISTRY: Dict[str, Dict[str, str]] = {
@@ -56,7 +63,11 @@ MODEL_REGISTRY: Dict[str, Dict[str, str]] = {
 # In-memory caches
 _PIPELINE_CACHE: Dict[Path, object] = {}
 _METADATA_CACHE: Dict[Path, dict] = {}
+_PIPELINE_TTL_CACHE = {}
+CACHE_TTL_SECONDS = 3600
 
+logger = logging.getLogger("model_registry")
+logger.setLevel(logging.INFO)
 
 # -----------------------------------------------------------------------------
 # Exceptions
@@ -68,7 +79,6 @@ class ModelNotFoundError(Exception):
 class RegistryLookupError(Exception):
     """Raised when (asset_type, task) pair is not defined in MODEL_REGISTRY."""
 
-
 # -----------------------------------------------------------------------------
 # Internal helpers
 # -----------------------------------------------------------------------------
@@ -76,23 +86,55 @@ def _normalize_key(s: str) -> str:
     return s.strip().lower()
 
 
-def _resolve_path(asset_type: str, task: str) -> Path:
+def _suggest_similar_models(asset_type: str, task: str, max_suggestions: int = 3) -> list:
+    """
+    Suggest similar tasks (by name) registered for the given asset_type.
+    Uses fuzzy string matching to help resolve typos or confusion.
+    """
+    at = _normalize_key(asset_type)
+    if at not in MODEL_REGISTRY:
+        return []
+
+    all_tasks = list(MODEL_REGISTRY[at].keys())
+    return get_close_matches(task, all_tasks, n=max_suggestions, cutoff=0.6)
+
+
+def _resolve_path(asset_type: str, task: str, fallback_latest: bool = False) -> Path:
     at = _normalize_key(asset_type)
     tk = _normalize_key(task)
+
     try:
         rel_path = MODEL_REGISTRY[at][tk]
+        full_path = MODELS_BASE / rel_path
+        if full_path.exists():
+            return full_path
     except KeyError:
         raise RegistryLookupError(
             f"Unknown asset_type/task: '{asset_type}' / '{task}'. "
             f"Defined asset_types: {list(MODEL_REGISTRY.keys())}"
         )
-    full_path = MODELS_BASE / rel_path
-    if not full_path.exists():
-        # Suggest similar versions if available
-        suggestions = suggest_task_versions(at, tk)
-        hint = f" Available versions: {suggestions}" if suggestions else ""
-        raise ModelNotFoundError(f"Model file not found at: {full_path}.{hint}")
-    return full_path
+
+    # If file not found but fallback is allowed
+    if fallback_latest:
+        latest = latest_version_filename(at, tk)
+        if latest:
+            fallback_path = MODELS_BASE / at / latest
+            if fallback_path.exists():
+                print(f"[Fallback] Using latest available model: {fallback_path.name}")
+                return fallback_path
+
+    # Optional: Try remote download fallback
+    # from scripts.remote_registry import RemoteModelRegistry
+    # try:
+    #     await RemoteModelRegistry().download_model(at, tk, version=latest or "v1")
+    #     if fallback_path.exists():
+    #         return fallback_path
+    # except Exception as e:
+    #     print(f"[Remote fallback failed] {e}")
+
+    suggestions = _suggest_similar_models(asset_type, task)
+    hint = f" Did you mean: {suggestions}?" if suggestions else ""
+    raise ModelNotFoundError(f"Model file not found at: {full_path}.{hint}")
 
 
 def _metadata_path_for(model_path: Path) -> Path:
@@ -119,26 +161,50 @@ def _file_hash_sha256(path: Path) -> Optional[str]:
 # -----------------------------------------------------------------------------
 # Public API
 # -----------------------------------------------------------------------------
-def get_pipeline(asset_type: str, task: str = "value_regressor"):
+def get_pipeline(asset_type: str, task: str = "value_regressor", fallback_latest: bool = True):
     """
-    Return a loaded (and cached) model pipeline.
+    Return a loaded (and cached) model pipeline with TTL support.
 
     :param asset_type: e.g. "property"
     :param task: e.g. "value_regressor"
+    :param fallback_latest: load latest available model if registered one is missing
     :return: scikit-learn Pipeline object
     """
-    model_path = _resolve_path(asset_type, task)
-    if model_path not in _PIPELINE_CACHE:
-        _PIPELINE_CACHE[model_path] = joblib.load(model_path)
-    return _PIPELINE_CACHE[model_path]
+    model_path = _resolve_path(asset_type, task, fallback_latest=fallback_latest)
+    now = time.time()
+
+    # Check TTL cache
+    if model_path in _PIPELINE_TTL_CACHE:
+        pipeline, ts = _PIPELINE_TTL_CACHE[model_path]
+        if now - ts < CACHE_TTL_SECONDS:
+            return pipeline  # Cache still valid
+
+    # Load and cache model
+    pipeline = joblib.load(model_path)
+    _PIPELINE_TTL_CACHE[model_path] = (pipeline, now)
+    logger.info(f"Model loaded: {model_path.name}")
+    return pipeline
+
+def validate_model_compatibility(pipeline, expected_features: list) -> bool:
+    """
+    Checks if the model's expected input features match the expected list.
+
+    Returns:
+        True if compatible, False otherwise.
+    """
+    if hasattr(pipeline, "feature_names_in_"):
+        pipeline_features = list(pipeline.feature_names_in_)
+        return set(pipeline_features) == set(expected_features)
+    return True  # assume compatible if attribute not available
 
 
-def get_model_metadata(asset_type: str, task: str = "value_regressor") -> Optional[dict]:
+def get_model_metadata(asset_type: str, task: str = "value_regressor", fallback_latest: bool = True) -> Optional[dict]:
     """
     Return metadata dict if side-car JSON exists, else None.
-    Adds `model_path` & (if absent) `model_hash` convenience fields.
+    Adds `model_path` and (if absent) `model_hash` convenience fields.
+    Optionally falls back to the latest available version if registered one is missing.
     """
-    model_path = _resolve_path(asset_type, task)
+    model_path = _resolve_path(asset_type, task, fallback_latest=fallback_latest)
     meta_path = _metadata_path_for(model_path)
 
     if not meta_path.exists():
@@ -147,7 +213,8 @@ def get_model_metadata(asset_type: str, task: str = "value_regressor") -> Option
     if meta_path not in _METADATA_CACHE:
         with meta_path.open("r", encoding="utf-8") as f:
             _METADATA_CACHE[meta_path] = json.load(f)
-        # Post-process enrich
+
+        # Post-process enrichment
         _METADATA_CACHE[meta_path].setdefault("model_path", str(model_path))
         if "model_hash" not in _METADATA_CACHE[meta_path]:
             h = _file_hash_sha256(model_path)
@@ -155,6 +222,39 @@ def get_model_metadata(asset_type: str, task: str = "value_regressor") -> Option
                 _METADATA_CACHE[meta_path]["model_hash"] = h
 
     return _METADATA_CACHE[meta_path]
+
+
+def get_model_size(model_path: Path) -> float:
+    return round(model_path.stat().st_size / 1_048_576, 2)  # MB
+
+
+def get_last_modified(model_path: Path) -> str:
+    return time.ctime(model_path.stat().st_mtime)
+
+
+def health_check_model(asset_type: str, task: str = "value_regressor") -> dict:
+    """
+    Returns a health diagnostic for the given model:
+    - Load success
+    - Metadata presence
+    - Size and last modification
+    - Training metrics (if available)
+    """
+    try:
+        pipeline = get_pipeline(asset_type, task)
+        model_path = _resolve_path(asset_type, task)
+        meta = get_model_metadata(asset_type, task)
+
+        return {
+            "status": "healthy",
+            "model_path": str(model_path),
+            "size_mb": get_model_size(model_path),
+            "last_modified": get_last_modified(model_path),
+            "metadata_valid": bool(meta),
+            "metrics": meta.get("metrics") if meta else None,
+        }
+    except Exception as e:
+        return {"status": "unhealthy", "error": str(e)}
 
 
 def list_asset_types() -> List[str]:
@@ -201,7 +301,7 @@ def cache_stats() -> dict:
 
 
 # -----------------------------------------------------------------------------
-# Version / discovery helpers (optional)
+# Version / discovery helpers
 # -----------------------------------------------------------------------------
 def discover_models_for_asset(asset_type: str) -> List[Path]:
     """
@@ -251,6 +351,26 @@ def latest_version_filename(asset_type: str, task: str) -> Optional[str]:
     # Simple lexicographic sort; adapt if version semantics become complex
     return sorted(candidates)[-1]
 
+# -----------------------------------------------------------------------------
+# Remote Registry Support
+# -----------------------------------------------------------------------------
+
+class RemoteModelRegistry:
+    def __init__(self, backend="s3"):
+        self.backend = backend
+
+    async def download_model(self, asset_type: str, task: str, version: str):
+        """
+        Download model from remote backend.
+        Implement S3/IPFS/ASA download logic here.
+        """
+        raise NotImplementedError("Remote download not yet implemented")
+
+    async def check_remote_availability(self, asset_type: str, task: str, version: str) -> bool:
+        """
+        Check if model exists remotely (stub).
+        """
+        return False
 
 # -----------------------------------------------------------------------------
 # Diagnostics when run directly
