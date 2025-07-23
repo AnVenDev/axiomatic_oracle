@@ -1,4 +1,4 @@
-# Algorand-Powered AI Oracle for Real-World Assets (Multi-RWA Ready)
+# Algorand-Powered AI Oracle for (Multi) RWA
 
 A modular AI + Blockchain oracle that evaluates and monitors Real World Assets (RWA) starting with real estate and designed from day one to extend to art, logistics, agriculture, renewable energy, and industrial assets. It produces structured AI insights and (planned) publishes verifiable summaries to the Algorand blockchain.
 
