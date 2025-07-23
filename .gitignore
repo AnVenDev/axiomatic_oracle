@@ -44,3 +44,5 @@ pytest_cache/
 *.bak
 notebooks/.ipynb_checkpoints/01_generate_dataset-checkpoint.ipynb
 notebooks/.ipynb_checkpoints/02_explore_dataset-checkpoint.ipynb
+.env
+scripts/dev/gen_wallet.py

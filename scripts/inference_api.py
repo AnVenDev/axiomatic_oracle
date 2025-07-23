@@ -34,6 +34,8 @@ from scripts.model_registry import (
     _PIPELINE_TTL_CACHE
 )
 
+from scripts.algorand_utils import publish_to_algorand, create_token_for_asset
+
 # -----------------------------------------------------------------------------
 # Configuration
 # -----------------------------------------------------------------------------
@@ -112,7 +114,13 @@ def hash_file(path: Path) -> Optional[str]:
     except Exception:
         return None
 
-def build_response(asset_type: str, valuation_k: float, model_meta: dict, publish: bool, asset_id: Optional[str] = None):
+def build_response(
+    asset_type: str,
+    valuation_k: float,
+    model_meta: dict,
+    publish: bool,
+    asset_id: Optional[str] = None
+):
     if not asset_id:
         asset_id = f"{asset_type}_{uuid.uuid4().hex[:10]}"
 
@@ -124,6 +132,7 @@ def build_response(asset_type: str, valuation_k: float, model_meta: dict, publis
         if mp.exists():
             model_hash = hash_file(mp)
 
+    # Base response
     response = {
         "schema_version": SCHEMA_VERSION,
         "asset_id": asset_id,
@@ -151,11 +160,37 @@ def build_response(asset_type: str, valuation_k: float, model_meta: dict, publis
     if model_hash:
         response["model_meta"]["model_hash"] = model_hash[:32]
 
+    # Blockchain Integration
     if publish:
-        response["publish"] = {
-            "status": "simulated",
-            "txid": f"SIM-{uuid.uuid4().hex[:16]}"
-        }
+        try:
+            note_payload = {
+                "id": asset_id,
+                "model": model_meta.get("model_version"),
+                "val_k": valuation_k,
+                "hash": model_hash or "n/a",
+                "ts": response["timestamp"]
+            }
+
+            txid = publish_to_algorand(note_payload)
+
+            asa_id = create_token_for_asset(
+                asset_name=asset_id,
+                unit_name=(asset_type[:4] + "_RWA").upper(),
+                metadata_hash=model_hash or "",
+                url=f"https://testnet.explorer.algorand.org/tx/{txid}" if txid else None
+            )
+
+            response["publish"] = {
+                "status": "onchain",
+                "txid": txid,
+                "asa_id": asa_id
+            }
+
+        except Exception as e:
+            response["publish"] = {
+                "status": "error",
+                "error": str(e)
+            }
 
     return response
 

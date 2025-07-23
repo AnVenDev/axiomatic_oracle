@@ -13,7 +13,6 @@ from scripts.inference_api import app, OUTPUT_SCHEMA  # import must succeed
 
 client = TestClient(app)
 
-
 # -------------------------------------------------------------------
 # Fixtures
 # -------------------------------------------------------------------
