@@ -1,0 +1,14 @@
+version: "3.9"
+
+services:
+  ai_oracle_api:
+    build: .
+    container_name: ai-oracle-api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+    restart: unless-stopped

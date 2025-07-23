@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+pydantic
+requests
+pandas
+scikit-learn
+joblib
+jsonschema
+python-dotenv
+algosdk
+nbformat
+nbconvert
+black
+ruff
