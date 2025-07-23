@@ -39,7 +39,7 @@ from scripts.blockchain_publisher import publish_ai_prediction, batch_publish_pr
 LOG_PATH = Path("data/api_inference_log.jsonl")
 LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-SCHEMA_PATH = Path("schemas/output_schema_def.json")
+SCHEMA_PATH = Path("schemas/output_schema_v1.json")
 EXAMPLE_PATH = Path("schemas/output_example.json")
 
 try:
