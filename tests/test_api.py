@@ -3,13 +3,16 @@ import pathlib
 import pytest
 from jsonschema import validate as jsonschema_validate, ValidationError
 from fastapi.testclient import TestClient
+from unittest.mock import patch
 
-# Ensure project root on sys.path
+# -------------------------------------------------------------------
+# Set sys.path to root for absolute imports
+# -------------------------------------------------------------------
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.inference_api import app, OUTPUT_SCHEMA  # import must succeed
+from scripts.inference_api import app, OUTPUT_SCHEMA
 
 client = TestClient(app)
 
@@ -27,7 +30,7 @@ def sample_payload():
         "floor": 2,
         "building_floors": 6,
         "has_elevator": 1,
-            "has_garden": 0,
+        "has_garden": 0,
         "has_balcony": 1,
         "garage": 1,
         "energy_class": "B",
@@ -35,20 +38,19 @@ def sample_payload():
         "temperature_avg": 20.5,
         "noise_level": 40,
         "air_quality_index": 70,
-        "age_years": 26  # explicit
+        "age_years": 26
     }
-
 
 @pytest.fixture
 def payload_no_age(sample_payload):
-    p = dict(sample_payload)
-    p.pop("age_years", None)
-    return p
-
+    payload = dict(sample_payload)
+    payload.pop("age_years", None)
+    return payload
 
 # -------------------------------------------------------------------
 # Tests
 # -------------------------------------------------------------------
+
 def test_health():
     r = client.get("/health")
     assert r.status_code == 200
@@ -64,7 +66,7 @@ def test_predict_property(sample_payload):
     assert r.status_code == 200, r.text
     data = r.json()
 
-    # Basic structural checks
+    # Structural checks
     for key in ("schema_version", "asset_id", "asset_type", "timestamp", "metrics", "flags", "model_meta"):
         assert key in data, f"Missing {key} in response"
 
@@ -72,27 +74,24 @@ def test_predict_property(sample_payload):
     assert isinstance(data["metrics"]["valuation_base_k"], (int, float))
     assert data["flags"] == {"anomaly": False, "needs_review": False}
 
-    # If dataset hash present, must be string
+    # Optional: validate dataset hash format
     if "dataset_hash" in data.get("model_meta", {}):
         assert isinstance(data["model_meta"]["dataset_hash"], str)
 
-    # Schema validation
+    # JSON schema validation
     try:
         jsonschema_validate(instance=data, schema=OUTPUT_SCHEMA)
     except ValidationError as ve:
         pytest.fail(f"Schema validation failed: {ve.message}")
 
-    # No schema validation errors expected
-    assert "schema_validation_error" not in data, data.get("schema_validation_error")
+    assert "schema_validation_error" not in data
 
 
 def test_predict_property_derive_age(payload_no_age):
-    # age_years omitted -> API should derive it
     r = client.post("/predict/property", json=payload_no_age)
     assert r.status_code == 200, r.text
     data = r.json()
     assert "valuation_base_k" in data["metrics"]
-    # ensure still valid schema
     try:
         jsonschema_validate(instance=data, schema=OUTPUT_SCHEMA)
     except ValidationError as ve:
@@ -100,27 +99,40 @@ def test_predict_property_derive_age(payload_no_age):
 
 
 def test_predict_validation_error(sample_payload):
-    bad = {**sample_payload, "floor": sample_payload["building_floors"]}  # invalid (floor >= building_floors)
+    bad = {**sample_payload, "floor": sample_payload["building_floors"]}  # floor >= building_floors → invalid
     r = client.post("/predict/property", json=bad)
     assert r.status_code == 422
     assert "Invalid payload" in r.json().get("detail", "")
 
 
 def test_predict_energy_class_error(sample_payload):
-    bad = {**sample_payload, "energy_class": "Z"}
+    bad = {**sample_payload, "energy_class": "Z"}  # Invalid class
     r = client.post("/predict/property", json=bad)
     assert r.status_code == 422
     assert "energy_class must be one of" in r.json().get("detail", "")
 
 
 def test_predict_with_publish(sample_payload):
-    r = client.post("/predict/property?publish=true", json=sample_payload)
-    assert r.status_code == 200
-    d = r.json()
-    assert "publish" in d
-    pub = d["publish"]
-    assert pub.get("status") == "simulated"
-    assert "txid" in pub and isinstance(pub["txid"], str)
-    assert "schema_version" in d
-    # Schema still valid
-    jsonschema_validate(instance=d, schema=OUTPUT_SCHEMA)
+    mocked_response = {
+        "status": "simulated",
+        "txid": "mocked_txid_12345"
+    }
+
+    with patch("scripts.blockchain_publisher.publish_asset_to_algorand", return_value=mocked_response) as mock_publish:
+        r = client.post("/predict/property?publish=true", json=sample_payload)
+        assert r.status_code == 200, r.text
+        d = r.json()
+
+        assert "publish" in d
+        pub = d["publish"]
+        assert pub.get("status") == "simulated"
+        assert isinstance(pub.get("txid"), str)
+        assert pub["txid"] == "mocked_txid_12345"
+
+        assert "schema_version" in d
+        try:
+            jsonschema_validate(instance=d, schema=OUTPUT_SCHEMA)
+        except ValidationError as ve:
+            pytest.fail(f"Schema validation failed (mocked publish): {ve.message}")
+
+        mock_publish.assert_called_once()
