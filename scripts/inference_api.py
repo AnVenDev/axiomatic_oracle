@@ -6,7 +6,6 @@ Run locally:
 """
 
 from __future__ import annotations
-
 import json
 import time
 import uuid
@@ -14,12 +13,10 @@ import hashlib
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any
-
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Path as FPath, Query, Body
 from pydantic import BaseModel, Field, model_validator
 from jsonschema import validate as jsonschema_validate, ValidationError
-
 from scripts.model_registry import (
     get_pipeline,
     get_model_metadata,
@@ -33,8 +30,8 @@ from scripts.model_registry import (
     discover_models_for_asset,
     _PIPELINE_TTL_CACHE
 )
-
 from scripts.algorand_utils import publish_to_algorand, create_token_for_asset
+from scripts.blockchain_publisher import publish_ai_prediction, batch_publish_predictions
 
 # -----------------------------------------------------------------------------
 # Configuration
@@ -163,29 +160,10 @@ def build_response(
     # Blockchain Integration
     if publish:
         try:
-            note_payload = {
-                "id": asset_id,
-                "model": model_meta.get("model_version"),
-                "val_k": valuation_k,
-                "hash": model_hash or "n/a",
-                "ts": response["timestamp"]
-            }
-
-            txid = publish_to_algorand(note_payload)
-
-            asa_id = create_token_for_asset(
-                asset_name=asset_id,
-                unit_name=(asset_type[:4] + "_RWA").upper(),
-                metadata_hash=model_hash or "",
-                url=f"https://testnet.explorer.algorand.org/tx/{txid}" if txid else None
-            )
-
-            response["publish"] = {
-                "status": "onchain",
-                "txid": txid,
-                "asa_id": asa_id
-            }
-
+            result = publish_ai_prediction(response)  # <-- chiama publisher
+            response["blockchain_txid"] = result["blockchain_txid"]
+            response["asa_id"] = result["asa_id"]
+            response["publish"] = {"status": "success"}
         except Exception as e:
             response["publish"] = {
                 "status": "error",

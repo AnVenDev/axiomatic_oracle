@@ -8,7 +8,10 @@
     "timestamp",
     "metrics",
     "flags",
-    "model_meta"
+    "model_meta",
+    "offchain_refs",
+    "model_health",
+    "cache_hit"
   ],
   "properties": {
     "schema_version": {
@@ -27,54 +30,32 @@
     "metrics": {
       "type": "object",
       "properties": {
-        "valuation_base_k": {
-          "type": "number"
-        },
-        "uncertainty": {
-          "type": "number"
-        },
-        "confidence_low_k": {
-          "type": "number"
-        },
-        "confidence_high_k": {
-          "type": "number"
-        },
-        "latency_ms": {
-          "type": "number"
-        },
-        "condition_score": {
-          "type": "number"
-        },
-        "risk_score": {
-          "type": "number"
-        }
+        "valuation_base_k": { "type": "number" },
+        "uncertainty": { "type": "number" },
+        "confidence_low_k": { "type": "number" },
+        "confidence_high_k": { "type": "number" },
+        "latency_ms": { "type": "number" },
+        "condition_score": { "type": "number" },
+        "risk_score": { "type": "number" }
       },
       "additionalProperties": true
     },
     "flags": {
       "type": "object",
       "properties": {
-        "anomaly": {
-          "type": "boolean"
-        },
-        "drift_detected": {
-          "type": "boolean"
-        },
-        "needs_review": {
-          "type": "boolean"
-        }
+        "anomaly": { "type": "boolean" },
+        "drift_detected": { "type": "boolean" },
+        "needs_review": { "type": "boolean" }
       },
       "additionalProperties": false
     },
     "model_meta": {
       "type": "object",
       "properties": {
-        "value_model_version": {
-          "type": "string"
-        },
-        "value_model_name": {
-          "type": "string"
-        }
+        "value_model_version": { "type": "string" },
+        "value_model_name": { "type": "string" },
+        "dataset_hash": { "type": "string" },
+        "model_hash": { "type": "string" }
       },
       "required": ["value_model_version", "value_model_name"],
       "additionalProperties": true
@@ -82,14 +63,45 @@
     "offchain_refs": {
       "type": "object",
       "properties": {
-        "detail_report_hash": {
-          "type": ["string", "null"]
-        },
-        "sensor_batch_hash": {
-          "type": ["string", "null"]
-        }
+        "detail_report_hash": { "type": ["string", "null"] },
+        "sensor_batch_hash": { "type": ["string", "null"] }
       },
       "additionalProperties": false
+    },
+    "model_health": {
+      "type": "object",
+      "properties": {
+        "status": { "type": "string" },
+        "model_path": { "type": "string" },
+        "size_mb": { "type": "number" },
+        "last_modified": { "type": "string" },
+        "metadata_valid": { "type": "boolean" },
+        "metrics": {
+          "type": "object",
+          "properties": {
+            "mae_k": { "type": "number" },
+            "rmse_k": { "type": "number" },
+            "r2": { "type": "number" }
+          },
+          "required": ["mae_k", "rmse_k", "r2"],
+          "additionalProperties": true
+        }
+      },
+      "required": ["status", "metadata_valid"],
+      "additionalProperties": true
+    },
+    "cache_hit": { "type": "boolean" },
+    "schema_validation_error": { "type": "string" },
+    "blockchain_txid": { "type": "string" },
+    "asa_id": { "type": ["string", "integer"] },
+    "publish": {
+      "type": "object",
+      "properties": {
+        "status": { "type": "string" },
+        "error": { "type": "string" }
+      },
+      "required": ["status"],
+      "additionalProperties": true
     },
     "_logged_at": {
       "type": "string",

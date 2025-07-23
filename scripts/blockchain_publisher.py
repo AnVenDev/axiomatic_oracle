@@ -1,5 +1,5 @@
-from algorand_utils import publish_to_algorand, create_token_for_asset
-from logger_utils import log_asset_publication, save_publications_to_json
+from scripts.algorand_utils import publish_to_algorand, create_token_for_asset
+from scripts.logger_utils import log_asset_publication, save_publications_to_json
 import json
 from typing import List, Dict
 

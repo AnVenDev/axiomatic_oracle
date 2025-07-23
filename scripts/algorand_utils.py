@@ -13,8 +13,7 @@ from algosdk.v2client import algod
 from typing import Dict, Optional
 import json
 import hashlib
-
-from secrets_manager import ALGORAND_ADDRESS, ALGORAND_MNEMONIC, ALGORAND_WALLET_ADDRESS
+from scripts.secrets_manager import ALGORAND_ADDRESS, ALGORAND_MNEMONIC, ALGORAND_WALLET_ADDRESS
 
 SENDER_ADDR = ALGORAND_WALLET_ADDRESS
 
