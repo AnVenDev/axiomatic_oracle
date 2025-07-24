@@ -39,7 +39,7 @@ def publish_ai_prediction(prediction_response: dict) -> dict:
         "asa_id": asa_id
     }
 
-    print(f"asset_id: {prediction_response["asset_id"]}")
+    print(f"asset_id: {prediction_response['asset_id']}")
     print(f"txid: {txid}")
     print(f"asa_id: {asa_id}")
 
