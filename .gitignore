@@ -50,3 +50,4 @@ tests/TODO.txt
 scripts/TODO.txt
 notebooks/TODO_ALGO.txt
 notebooks/TODO.txt
+data/predictions_log.jsonl
