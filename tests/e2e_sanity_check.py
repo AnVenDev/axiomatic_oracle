@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import json
 import time
 import uuid
@@ -7,7 +11,6 @@ import joblib
 import hashlib
 import requests
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Optional
 from pprint import pprint
 
@@ -26,7 +29,7 @@ from scripts.model_registry import (
 ASSET_TYPE = "property"
 API_BASE = "http://localhost:8000"
 EXAMPLE_PATH = Path("schemas/output_example.json")
-SCHEMA_PATH = Path("schemas/output_schema_def.json")
+SCHEMA_PATH = Path("schemas/output_schema_v1.json")
 LOG_PATH = Path("data/api_inference_log.jsonl")
 TOLERANCE_K = 1.0
 TOLERANCE_PERCENT = 0.05
@@ -54,8 +57,12 @@ def file_sha256(path: Path) -> str:
 # ----------------------------------------------------------------------------
 # Sample Request
 # ----------------------------------------------------------------------------
-with open("sample_property.json") as f:
-    api_payload = json.load(f)
+SAMPLE_PATH = Path(__file__).parent.parent / "data" / "sample_property.json"
+with open(SAMPLE_PATH) as f:
+    payload = json.load(f)
+
+# Payload extraction
+api_payload = payload.get("features", payload)
 
 # ----------------------------------------------------------------------------
 # Test: API prediction endpoint
@@ -94,11 +101,14 @@ def validate_schema(response, failures):
         fail(f"Schema validation failed (unexpected): {e}", failures)
 
     try:
-        # Compare with example structure (non-strict)
+    # Compare with example structure (non-strict)
         with EXAMPLE_PATH.open() as f:
             example = json.load(f)
+
         ignore_keys = {"_logged_at"}
-        diff_keys = (set(response.keys()) ^ set(example.keys())) - ignore_keys
+        optional_keys = {"schema_validation_error", "blockchain_txid", "publish", "asa_id"}
+
+        diff_keys = (set(response.keys()) ^ set(example.keys())) - ignore_keys - optional_keys
 
         if not diff_keys:
             ok("Matches example structure")

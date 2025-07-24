@@ -114,20 +114,21 @@ def test_predict_energy_class_error(sample_payload):
 
 def test_predict_with_publish(sample_payload):
     mocked_response = {
-        "status": "simulated",
-        "txid": "mocked_txid_12345"
+    "asset_id": "mocked_asset_123",
+    "blockchain_txid": "mocked_txid_12345",
+    "asa_id": 999999
     }
 
-    with patch("scripts.blockchain_publisher.publish_asset_to_algorand", return_value=mocked_response) as mock_publish:
+    with patch("scripts.inference_api.publish_ai_prediction", return_value=mocked_response) as mock_publish:
         r = client.post("/predict/property?publish=true", json=sample_payload)
         assert r.status_code == 200, r.text
         d = r.json()
 
         assert "publish" in d
         pub = d["publish"]
-        assert pub.get("status") == "simulated"
+        assert pub.get("status") == "success"
         assert isinstance(pub.get("txid"), str)
-        assert pub["txid"] == "mocked_txid_12345"
+        assert pub.get("txid") == mocked_response["blockchain_txid"]
 
         assert "schema_version" in d
         try:
