@@ -30,7 +30,6 @@ from scripts.model_registry import (
     discover_models_for_asset,
     _PIPELINE_TTL_CACHE
 )
-from scripts.algorand_utils import publish_to_algorand, create_token_for_asset
 from scripts.blockchain_publisher import publish_ai_prediction, batch_publish_predictions
 
 # -----------------------------------------------------------------------------
@@ -163,7 +162,11 @@ def build_response(
             result = publish_ai_prediction(response)  # <-- chiama publisher
             response["blockchain_txid"] = result["blockchain_txid"]
             response["asa_id"] = result["asa_id"]
-            response["publish"] = {"status": "success"}
+            response["publish"] = {
+            "status": "success",
+            "txid": result.get("blockchain_txid"),
+            "asa_id": result.get("asa_id")
+            }
         except Exception as e:
             response["publish"] = {
                 "status": "error",
@@ -227,7 +230,10 @@ def predict(asset_type: str = FPath(...), publish: bool = Query(False), payload:
     start = time.time()
     df_input = pd.DataFrame([req_obj.model_dump()])
     try:
-        pred = pipeline.predict(df_input)[0]
+        X = pipeline[:-1].transform(df_input)  # trasforma senza predict finale
+        X = pd.DataFrame(X, columns=pipeline[-1].feature_name_)  # fornisci nomi previsti
+        pred = pipeline[-1].predict(X)[0]  # LGBMRegressor
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Inference error: {e}")
     latency_ms = (time.time() - start) * 1000
