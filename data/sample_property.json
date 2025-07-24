@@ -15,5 +15,6 @@
   "temperature_avg": 20.5,
   "noise_level": 40,
   "air_quality_index": 70,
-  "age_years": 26
+  "age_years": 26,
+  "offchain_refs": {}
 }
