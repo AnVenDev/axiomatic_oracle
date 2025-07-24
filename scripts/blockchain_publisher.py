@@ -1,5 +1,5 @@
 from scripts.algorand_utils import publish_to_algorand, create_token_for_asset
-from scripts.logger_utils import log_asset_publication, save_publications_to_json
+from scripts.logger_utils import log_asset_publication, save_publications_to_json, save_prediction_detail
 import json
 from typing import List, Dict
 
@@ -7,6 +7,12 @@ def publish_ai_prediction(prediction_response: dict) -> dict:
     """
     Publish a single AI prediction to the Algorand blockchain, creating a notarization transaction and an ASA.
     """
+    # 1. Save detailed report and compute hash
+    detail_hash = save_prediction_detail(prediction_response)
+    prediction_response.setdefault("offchain_refs", {})
+    prediction_response["offchain_refs"]["detail_report_hash"] = detail_hash
+
+    # 2. Prepare minimal payload
     payload = {
         "id": prediction_response["asset_id"],
         "model": prediction_response["model_meta"]["value_model_name"],
@@ -16,10 +22,10 @@ def publish_ai_prediction(prediction_response: dict) -> dict:
         "schema_version": prediction_response["schema_version"]
     }
 
-    # 1: Publish notarization transaction
+    # 3: Publish notarization transaction
     txid = publish_to_algorand(payload)
 
-    # 2: Tokenize the asset with ASA creation
+    # 4: Tokenize the asset with ASA creation
     asa_id = create_token_for_asset(
         asset_name=f"AI_{prediction_response['asset_type']}_{prediction_response['asset_id'][:8]}",
         unit_name=f"V{prediction_response['asset_type'][:4].upper()}",
@@ -32,6 +38,11 @@ def publish_ai_prediction(prediction_response: dict) -> dict:
         "blockchain_txid": txid,
         "asa_id": asa_id
     }
+
+    print(f"asset_id: {prediction_response["asset_id"]}")
+    print(f"txid: {txid}")
+    print(f"asa_id: {asa_id}")
+
     log_asset_publication(result)
     return result
 

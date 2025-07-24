@@ -2,17 +2,23 @@ import json
 from pathlib import Path
 from datetime import datetime
 from typing import List, Dict
+from pathlib import Path
+from hashlib import sha256
 
 # Define log path and file
-LOG_PATH = Path(__file__).resolve().parent.parent / "logs"
+BASE_DIR = Path(__file__).resolve().parent.parent
+LOG_PATH = BASE_DIR / "logs"
 LOG_FILE = LOG_PATH / "published_assets.json"
+
+DETAIL_DIR = LOG_PATH / "detail_reports"
+DETAIL_DIR.mkdir(parents=True, exist_ok=True)
 
 def log_asset_publication(data: dict):
     """
     Append a single asset publication to the JSON log file.
     Adds a UTC timestamp.
     """
-    LOG_PATH.mkdir(exist_ok=True)
+    LOG_PATH.mkdir(parents=True, exist_ok=True)
 
     enriched_data = {
         **data,
@@ -37,8 +43,8 @@ def save_publications_to_json(results: List[Dict], filename: Path = LOG_FILE):
     Overwrite the JSON file with a list of publication results.
     Useful for saving batch results at once.
     """
-    LOG_PATH.mkdir(exist_ok=True)
-    
+    LOG_PATH.mkdir(parents=True, exist_ok=True)
+
     enriched_results = [
         {**result, "logged_at": datetime.utcnow().isoformat()}
         for result in results
@@ -48,3 +54,21 @@ def save_publications_to_json(results: List[Dict], filename: Path = LOG_FILE):
         json.dump(enriched_results, f, indent=2, ensure_ascii=False)
 
     print(f"✅ Saved publication results to {filename}")
+
+def compute_file_hash(path: Path) -> str:
+    """
+    Compute SHA256 hash of a file's content.
+    """
+    with path.open("rb") as f:
+        return sha256(f.read()).hexdigest()
+    
+def save_prediction_detail(prediction: dict) -> str:
+    """
+    Saves the full prediction response to a detail file and returns its SHA256 hash.
+    """
+    asset_id = prediction["asset_id"]
+    detail_path = DETAIL_DIR / f"{asset_id}.json"
+    with detail_path.open("w", encoding="utf-8") as f:
+        json.dump(prediction, f, indent=2)
+        
+    return compute_file_hash(detail_path)
