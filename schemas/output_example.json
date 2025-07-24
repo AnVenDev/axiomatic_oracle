@@ -25,5 +25,10 @@
     "status": "healthy"
   },
   "schema_validation_error": null,
+  "blockchain_txid": "example_txid_123",
+  "asa_id": 123456,
+  "publish": {
+    "status": "success"
+  },
   "_logged_at": "2025-07-22T18:49:58.092630Z"
 }
