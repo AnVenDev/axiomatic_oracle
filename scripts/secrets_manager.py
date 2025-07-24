@@ -18,8 +18,3 @@ ALGO_NETWORKS = {
     "mainnet": "https://mainnet-api.algonode.cloud"
 }
 ALGORAND_ADDRESS = ALGO_NETWORKS.get(ALGORAND_NETWORK)
-
-# Debug (opzionale)
-print("✅ DEBUG - WALLET_ADDRESS:", ALGORAND_WALLET_ADDRESS)
-print("✅ DEBUG - NETWORK:", ALGORAND_NETWORK)
-print("✅ DEBUG - ALGOD_ADDRESS:", ALGORAND_ADDRESS)
