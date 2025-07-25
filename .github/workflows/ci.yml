@@ -41,4 +41,4 @@ jobs:
           sleep 5
 
       - name: Run end-to-end sanity check
-        run: python scripts/e2e_sanity_check.py
+        run: python tests/e2e_sanity_check.py
