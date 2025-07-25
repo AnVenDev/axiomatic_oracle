@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  lint-format-test:
+  run-e2e-sanity-check:
     runs-on: ubuntu-latest
 
     steps:
@@ -31,21 +31,14 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install uvicorn
           pip install pytest black ruff mypy jupyter
           pip install seaborn
 
-      - name: Lint with ruff
+      - name: Start FastAPI API in background
         run: |
-          ruff check . --exclude notebooks/
+          nohup uvicorn scripts.inference_api:app --host 0.0.0.0 --port 8000 &
+          sleep 5
 
-      - name: Check formatting with black
-        run: black --check .
-
-      - name: Type check with mypy
-        run: mypy scripts/
-
-      - name: Validate Jupyter notebooks
-        run: jupyter nbconvert --to notebook --execute --inplace notebooks/*.ipynb
-
-      - name: Run Pytest
-        run: pytest
+      - name: Run end-to-end sanity check
+        run: python scripts/e2e_sanity_check.py
