@@ -16,7 +16,6 @@ seaborn
 optuna
 optuna-integration[lightgbm]
 lightgbm
-pytest
 httpx
 pytest 
 mypy 
