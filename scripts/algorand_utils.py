@@ -13,7 +13,11 @@ from algosdk.v2client import algod
 from typing import Dict, Optional
 import json
 import hashlib
-from scripts.secrets_manager import ALGORAND_ADDRESS, ALGORAND_MNEMONIC, ALGORAND_WALLET_ADDRESS
+from scripts.secrets_manager import (
+    ALGORAND_ADDRESS,
+    ALGORAND_MNEMONIC,
+    ALGORAND_WALLET_ADDRESS,
+)
 
 SENDER_ADDR = ALGORAND_WALLET_ADDRESS
 
@@ -24,10 +28,13 @@ client = algod.AlgodClient(ALGOD_TOKEN, ALGORAND_ADDRESS)
 # Derive sender private key
 SENDER_PK = mnemonic.to_private_key(ALGORAND_MNEMONIC)
 
+
 # --- Custom Exception ---
 class AlgorandError(Exception):
     """Custom exception for Algorand operations"""
+
     pass
+
 
 # --- Confirm transaction ---
 def wait_for_confirmation(txid: str, timeout: int = 10):
@@ -41,17 +48,14 @@ def wait_for_confirmation(txid: str, timeout: int = 10):
         last_round += 1
     raise AlgorandError(f"Transaction {txid} not confirmed after {timeout} rounds")
 
+
 # --- Publish notarized AI prediction ---
 def publish_to_algorand(note_dict: Dict) -> str:
     try:
         note_bytes = json.dumps(note_dict).encode("utf-8")
         params = client.suggested_params()
         txn = transaction.PaymentTxn(
-            sender=SENDER_ADDR,
-            receiver=SENDER_ADDR,
-            amt=0,
-            sp=params,
-            note=note_bytes
+            sender=SENDER_ADDR, receiver=SENDER_ADDR, amt=0, sp=params, note=note_bytes
         )
         signed_txn = txn.sign(SENDER_PK)
         txid = client.send_transaction(signed_txn)
@@ -60,12 +64,13 @@ def publish_to_algorand(note_dict: Dict) -> str:
     except Exception as e:
         raise AlgorandError(f"[❌] Algorand publish failed: {e}")
 
+
 # --- Create Token (ASA) for a given asset ---
 def create_token_for_asset(
     asset_name: str,
     unit_name: str,
     metadata_content: Optional[str] = None,
-    url: Optional[str] = None
+    url: Optional[str] = None,
 ) -> Optional[int]:
     try:
         params = client.suggested_params()
@@ -88,7 +93,7 @@ def create_token_for_asset(
             freeze=SENDER_ADDR,
             clawback=SENDER_ADDR,
             url=url or "https://example.com/aioracle/metadata.json",
-            metadata_hash=metadata_hash
+            metadata_hash=metadata_hash,
         )
 
         signed_txn = txn.sign(SENDER_PK)

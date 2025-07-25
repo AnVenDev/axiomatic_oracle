@@ -24,6 +24,7 @@ Conventions:
 - Metadata file:  <task>_<version>_meta.json
 - Side artifacts (hash, timestamp) enriched automatically
 """
+
 from __future__ import annotations
 
 import json
@@ -70,6 +71,7 @@ CACHE_TTL_SECONDS = 3600
 logger = logging.getLogger("model_registry")
 logger.setLevel(logging.INFO)
 
+
 # -----------------------------------------------------------------------------
 # Exceptions
 # -----------------------------------------------------------------------------
@@ -80,6 +82,7 @@ class ModelNotFoundError(Exception):
 class RegistryLookupError(Exception):
     """Raised when (asset_type, task) pair is not defined in MODEL_REGISTRY."""
 
+
 # -----------------------------------------------------------------------------
 # Internal helpers
 # -----------------------------------------------------------------------------
@@ -87,7 +90,9 @@ def _normalize_key(s: str) -> str:
     return s.strip().lower()
 
 
-def _suggest_similar_models(asset_type: str, task: str, max_suggestions: int = 3) -> list:
+def _suggest_similar_models(
+    asset_type: str, task: str, max_suggestions: int = 3
+) -> list:
     """
     Suggest similar tasks (by name) registered for the given asset_type.
     Uses fuzzy string matching to help resolve typos or confusion.
@@ -162,7 +167,9 @@ def _file_hash_sha256(path: Path) -> Optional[str]:
 # -----------------------------------------------------------------------------
 # Public API
 # -----------------------------------------------------------------------------
-def get_pipeline(asset_type: str, task: str = "value_regressor", fallback_latest: bool = True):
+def get_pipeline(
+    asset_type: str, task: str = "value_regressor", fallback_latest: bool = True
+):
     """
     Return a loaded (and cached) model pipeline with TTL support.
 
@@ -188,6 +195,7 @@ def get_pipeline(asset_type: str, task: str = "value_regressor", fallback_latest
     logger.info(f"Model loaded: {model_path.name}")
     return pipeline
 
+
 def validate_model_compatibility(pipeline, expected_features: list) -> bool:
     """
     Checks if the model's expected input features match the expected list.
@@ -201,7 +209,9 @@ def validate_model_compatibility(pipeline, expected_features: list) -> bool:
     return True  # assume compatible if attribute not available
 
 
-def get_model_metadata(asset_type: str, task: str = "value_regressor", fallback_latest: bool = True) -> Optional[dict]:
+def get_model_metadata(
+    asset_type: str, task: str = "value_regressor", fallback_latest: bool = True
+) -> Optional[dict]:
     """
     Return metadata dict if side-car JSON exists, else None.
     Adds `model_path` and (if absent) `model_hash` convenience fields.
@@ -303,7 +313,7 @@ def cache_stats() -> dict:
         cache_info[str(model_path)] = {
             "age_seconds": round(age, 1),
             "expires_in": round(CACHE_TTL_SECONDS - age, 1),
-            "expired": age >= CACHE_TTL_SECONDS
+            "expired": age >= CACHE_TTL_SECONDS,
         }
 
     active_models = sum(1 for v in cache_info.values() if not v["expired"])
@@ -314,8 +324,9 @@ def cache_stats() -> dict:
         "pipelines_expired": expired_models,
         "metadata_cached": len(_METADATA_CACHE),
         "cache_ttl_seconds": CACHE_TTL_SECONDS,
-        "models": cache_info
+        "models": cache_info,
     }
+
 
 # -----------------------------------------------------------------------------
 # Version / discovery helpers
@@ -368,9 +379,11 @@ def latest_version_filename(asset_type: str, task: str) -> Optional[str]:
     # Simple lexicographic sort; adapt if version semantics become complex
     return sorted(candidates)[-1]
 
+
 # -----------------------------------------------------------------------------
 # Remote Registry Support
 # -----------------------------------------------------------------------------
+
 
 class RemoteModelRegistry:
     def __init__(self, backend="s3"):
@@ -383,11 +396,14 @@ class RemoteModelRegistry:
         """
         raise NotImplementedError("Remote download not yet implemented")
 
-    async def check_remote_availability(self, asset_type: str, task: str, version: str) -> bool:
+    async def check_remote_availability(
+        self, asset_type: str, task: str, version: str
+    ) -> bool:
         """
         Check if model exists remotely (stub).
         """
         return False
+
 
 # -----------------------------------------------------------------------------
 # Diagnostics when run directly
@@ -403,9 +419,11 @@ if __name__ == "__main__":
             if exists:
                 meta = get_model_metadata(at, t)
                 if meta:
-                    print(f"    version: {meta.get('model_version')} | "
-                          f"R²: {meta.get('metrics', {}).get('r2')} | "
-                          f"hash: {meta.get('model_hash', '')[:16]}")
+                    print(
+                        f"    version: {meta.get('model_version')} | "
+                        f"R²: {meta.get('metrics', {}).get('r2')} | "
+                        f"hash: {meta.get('model_hash', '')[:16]}"
+                    )
         # Discovery (even unregistered)
         discovered = discover_models_for_asset(at)
         if discovered:

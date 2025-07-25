@@ -15,6 +15,7 @@ if str(ROOT) not in sys.path:
 
 client = TestClient(app)
 
+
 # -------------------------------------------------------------------
 # Fixtures
 # -------------------------------------------------------------------
@@ -37,8 +38,9 @@ def sample_payload():
         "temperature_avg": 20.5,
         "noise_level": 40,
         "air_quality_index": 70,
-        "age_years": 26
+        "age_years": 26,
     }
+
 
 @pytest.fixture
 def payload_no_age(sample_payload):
@@ -46,9 +48,11 @@ def payload_no_age(sample_payload):
     payload.pop("age_years", None)
     return payload
 
+
 # -------------------------------------------------------------------
 # Tests
 # -------------------------------------------------------------------
+
 
 def test_health():
     r = client.get("/health")
@@ -66,7 +70,15 @@ def test_predict_property(sample_payload):
     data = r.json()
 
     # Structural checks
-    for key in ("schema_version", "asset_id", "asset_type", "timestamp", "metrics", "flags", "model_meta"):
+    for key in (
+        "schema_version",
+        "asset_id",
+        "asset_type",
+        "timestamp",
+        "metrics",
+        "flags",
+        "model_meta",
+    ):
         assert key in data, f"Missing {key} in response"
 
     assert "valuation_base_k" in data["metrics"]
@@ -98,7 +110,10 @@ def test_predict_property_derive_age(payload_no_age):
 
 
 def test_predict_validation_error(sample_payload):
-    bad = {**sample_payload, "floor": sample_payload["building_floors"]}  # floor >= building_floors → invalid
+    bad = {
+        **sample_payload,
+        "floor": sample_payload["building_floors"],
+    }  # floor >= building_floors → invalid
     r = client.post("/predict/property", json=bad)
     assert r.status_code == 422
     assert "Invalid payload" in r.json().get("detail", "")
@@ -113,12 +128,14 @@ def test_predict_energy_class_error(sample_payload):
 
 def test_predict_with_publish(sample_payload):
     mocked_response = {
-    "asset_id": "mocked_asset_123",
-    "blockchain_txid": "mocked_txid_12345",
-    "asa_id": 999999
+        "asset_id": "mocked_asset_123",
+        "blockchain_txid": "mocked_txid_12345",
+        "asa_id": 999999,
     }
 
-    with patch("scripts.inference_api.publish_ai_prediction", return_value=mocked_response) as mock_publish:
+    with patch(
+        "scripts.inference_api.publish_ai_prediction", return_value=mocked_response
+    ) as mock_publish:
         r = client.post("/predict/property?publish=true", json=sample_payload)
         assert r.status_code == 200, r.text
         d = r.json()

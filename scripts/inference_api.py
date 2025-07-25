@@ -28,7 +28,7 @@ from scripts.model_registry import (
     cache_stats,
     list_tasks,
     discover_models_for_asset,
-    _PIPELINE_TTL_CACHE
+    _PIPELINE_TTL_CACHE,
 )
 from scripts.blockchain_publisher import publish_ai_prediction
 
@@ -53,6 +53,7 @@ except Exception as e:
 API_VERSION = "0.3.0"
 
 ALLOWED_ENERGY_CLASSES = {"A", "B", "C", "D", "E", "F", "G"}
+
 
 # -----------------------------------------------------------------------------
 # Pydantic Request Models
@@ -82,15 +83,19 @@ class PropertyPredictRequest(BaseModel):
             raise ValueError("floor must be < building_floors")
         ec = self.energy_class.upper()
         if ec not in ALLOWED_ENERGY_CLASSES:
-            raise ValueError(f"energy_class must be one of {sorted(ALLOWED_ENERGY_CLASSES)}")
+            raise ValueError(
+                f"energy_class must be one of {sorted(ALLOWED_ENERGY_CLASSES)}"
+            )
         object.__setattr__(self, "energy_class", ec)
         if self.age_years is None:
-            object.__setattr__(self, "age_years", datetime.utcnow().year - self.year_built)
+            object.__setattr__(
+                self, "age_years", datetime.utcnow().year - self.year_built
+            )
         return self
 
-REQUEST_MODELS: Dict[str, Any] = {
-    "property": PropertyPredictRequest
-}
+
+REQUEST_MODELS: Dict[str, Any] = {"property": PropertyPredictRequest}
+
 
 # -----------------------------------------------------------------------------
 # Helpers
@@ -99,6 +104,7 @@ def log_jsonl(record: dict):
     record["_logged_at"] = datetime.utcnow().isoformat() + "Z"
     with LOG_PATH.open("a", encoding="utf-8") as f:
         f.write(json.dumps(record) + "\n")
+
 
 def hash_file(path: Path) -> Optional[str]:
     try:
@@ -110,17 +116,20 @@ def hash_file(path: Path) -> Optional[str]:
     except Exception:
         return None
 
+
 def build_response(
     asset_type: str,
     valuation_k: float,
     model_meta: dict,
     publish: bool,
-    asset_id: Optional[str] = None
+    asset_id: Optional[str] = None,
 ):
     if not asset_id:
         asset_id = f"{asset_type}_{uuid.uuid4().hex[:10]}"
 
-    dataset_hash = model_meta.get("dataset_hash_sha256") or model_meta.get("dataset_hash")
+    dataset_hash = model_meta.get("dataset_hash_sha256") or model_meta.get(
+        "dataset_hash"
+    )
     model_hash = None
     model_path_hint = model_meta.get("model_path")
     if model_path_hint:
@@ -134,21 +143,13 @@ def build_response(
         "asset_id": asset_id,
         "asset_type": asset_type,
         "timestamp": datetime.utcnow().isoformat(timespec="seconds") + "Z",
-        "metrics": {
-            "valuation_base_k": round(float(valuation_k), 3)
-        },
-        "flags": {
-            "anomaly": False,
-            "needs_review": False
-        },
+        "metrics": {"valuation_base_k": round(float(valuation_k), 3)},
+        "flags": {"anomaly": False, "needs_review": False},
         "model_meta": {
             "value_model_version": model_meta.get("model_version"),
-            "value_model_name": model_meta.get("model_class")
+            "value_model_name": model_meta.get("model_class"),
         },
-        "offchain_refs": {
-            "detail_report_hash": None,
-            "sensor_batch_hash": None
-        }
+        "offchain_refs": {"detail_report_hash": None, "sensor_batch_hash": None},
     }
 
     if dataset_hash:
@@ -163,17 +164,15 @@ def build_response(
             response["blockchain_txid"] = result["blockchain_txid"]
             response["asa_id"] = result["asa_id"]
             response["publish"] = {
-            "status": "success",
-            "txid": result.get("blockchain_txid"),
-            "asa_id": result.get("asa_id")
+                "status": "success",
+                "txid": result.get("blockchain_txid"),
+                "asa_id": result.get("asa_id"),
             }
         except Exception as e:
-            response["publish"] = {
-                "status": "error",
-                "error": str(e)
-            }
+            response["publish"] = {"status": "error", "error": str(e)}
 
     return response
+
 
 # -----------------------------------------------------------------------------
 # FastAPI app
@@ -181,8 +180,9 @@ def build_response(
 app = FastAPI(
     title="AI Oracle Inference API",
     version=API_VERSION,
-    description="Inference service for multi-RWA asset valuation (initial: property)."
+    description="Inference service for multi-RWA asset valuation (initial: property).",
 )
+
 
 @app.get("/health")
 def health():
@@ -196,16 +196,23 @@ def health():
             "asset_types": list(REQUEST_MODELS.keys()),
             "schema_version": SCHEMA_VERSION,
             "api_version": API_VERSION,
-            "time": datetime.utcnow().isoformat() + "Z"
+            "time": datetime.utcnow().isoformat() + "Z",
         }
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
+
 @app.post("/predict/{asset_type}")
-def predict(asset_type: str = FPath(...), publish: bool = Query(False), payload: dict = Body(...)):
+def predict(
+    asset_type: str = FPath(...),
+    publish: bool = Query(False),
+    payload: dict = Body(...),
+):
     asset_type = asset_type.lower()
     if asset_type not in REQUEST_MODELS:
-        raise HTTPException(status_code=400, detail=f"Unsupported asset_type: {asset_type}")
+        raise HTTPException(
+            status_code=400, detail=f"Unsupported asset_type: {asset_type}"
+        )
 
     ModelCls = REQUEST_MODELS[asset_type]
     try:
@@ -231,7 +238,9 @@ def predict(asset_type: str = FPath(...), publish: bool = Query(False), payload:
     df_input = pd.DataFrame([req_obj.model_dump()])
     try:
         X = pipeline[:-1].transform(df_input)  # trasforma senza predict finale
-        X = pd.DataFrame(X, columns=pipeline[-1].feature_name_)  # fornisci nomi previsti
+        X = pd.DataFrame(
+            X, columns=pipeline[-1].feature_name_
+        )  # fornisci nomi previsti
         pred = pipeline[-1].predict(X)[0]  # LGBMRegressor
 
     except Exception as e:
@@ -250,26 +259,38 @@ def predict(asset_type: str = FPath(...), publish: bool = Query(False), payload:
     except Exception as e:
         response["schema_validation_error"] = f"Schema check failed: {e}"[:240]
 
-    log_jsonl({"event": "prediction", "asset_type": asset_type, "request": req_obj.model_dump(), "response": response})
+    log_jsonl(
+        {
+            "event": "prediction",
+            "asset_type": asset_type,
+            "request": req_obj.model_dump(),
+            "response": response,
+        }
+    )
     return response
+
 
 @app.get("/models/{asset_type}")
 def list_models(asset_type: str):
     return {
         "asset_type": asset_type,
         "tasks": list_tasks(asset_type),
-        "discovered_models": [p.name for p in discover_models_for_asset(asset_type)]
+        "discovered_models": [p.name for p in discover_models_for_asset(asset_type)],
     }
+
 
 @app.post("/models/{asset_type}/{task}/refresh")
 def refresh_model_cache(asset_type: str, task: str):
     refresh_cache(asset_type, task)
     return {"status": "cache_refreshed", "asset_type": asset_type, "task": task}
 
+
 @app.get("/models/{asset_type}/{task}/health")
 def model_health(asset_type: str, task: str):
     return health_check_model(asset_type, task)
 
+
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("scripts.inference_api:app", host="127.0.0.1", port=8000, reload=True)

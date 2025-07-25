@@ -12,6 +12,7 @@ LOG_FILE = LOG_PATH / "published_assets.json"
 DETAIL_DIR = LOG_PATH / "detail_reports"
 DETAIL_DIR.mkdir(parents=True, exist_ok=True)
 
+
 def log_asset_publication(data: dict):
     """
     Append a single asset publication to the JSON log file.
@@ -19,10 +20,7 @@ def log_asset_publication(data: dict):
     """
     LOG_PATH.mkdir(parents=True, exist_ok=True)
 
-    enriched_data = {
-        **data,
-        "logged_at": datetime.utcnow().isoformat()
-    }
+    enriched_data = {**data, "logged_at": datetime.utcnow().isoformat()}
 
     if LOG_FILE.exists():
         with open(LOG_FILE, "r+", encoding="utf-8") as f:
@@ -37,6 +35,7 @@ def log_asset_publication(data: dict):
         with open(LOG_FILE, "w", encoding="utf-8") as f:
             json.dump([enriched_data], f, indent=2, ensure_ascii=False)
 
+
 def save_publications_to_json(results: List[Dict], filename: Path = LOG_FILE):
     """
     Overwrite the JSON file with a list of publication results.
@@ -45,8 +44,7 @@ def save_publications_to_json(results: List[Dict], filename: Path = LOG_FILE):
     LOG_PATH.mkdir(parents=True, exist_ok=True)
 
     enriched_results = [
-        {**result, "logged_at": datetime.utcnow().isoformat()}
-        for result in results
+        {**result, "logged_at": datetime.utcnow().isoformat()} for result in results
     ]
 
     with open(filename, "w", encoding="utf-8") as f:
@@ -54,13 +52,15 @@ def save_publications_to_json(results: List[Dict], filename: Path = LOG_FILE):
 
     print(f"✅ Saved publication results to {filename}")
 
+
 def compute_file_hash(path: Path) -> str:
     """
     Compute SHA256 hash of a file's content.
     """
     with path.open("rb") as f:
         return sha256(f.read()).hexdigest()
-    
+
+
 def save_prediction_detail(prediction: dict) -> str:
     """
     Saves the full prediction response to a detail file and returns its SHA256 hash.
@@ -69,5 +69,5 @@ def save_prediction_detail(prediction: dict) -> str:
     detail_path = DETAIL_DIR / f"{asset_id}.json"
     with detail_path.open("w", encoding="utf-8") as f:
         json.dump(prediction, f, indent=2)
-        
+
     return compute_file_hash(detail_path)

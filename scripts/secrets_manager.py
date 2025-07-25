@@ -15,6 +15,6 @@ if not ALGORAND_WALLET_ADDRESS or not ALGORAND_MNEMONIC:
 # Network URLs
 ALGO_NETWORKS = {
     "testnet": "https://testnet-api.algonode.cloud",
-    "mainnet": "https://mainnet-api.algonode.cloud"
+    "mainnet": "https://mainnet-api.algonode.cloud",
 }
 ALGORAND_ADDRESS = ALGO_NETWORKS.get(ALGORAND_NETWORK)

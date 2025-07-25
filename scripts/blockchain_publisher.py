@@ -1,7 +1,12 @@
 from scripts.algorand_utils import publish_to_algorand, create_token_for_asset
-from scripts.logger_utils import log_asset_publication, save_publications_to_json, save_prediction_detail
+from scripts.logger_utils import (
+    log_asset_publication,
+    save_publications_to_json,
+    save_prediction_detail,
+)
 import json
 from typing import List, Dict
+
 
 def publish_ai_prediction(prediction_response: dict) -> dict:
     """
@@ -19,7 +24,7 @@ def publish_ai_prediction(prediction_response: dict) -> dict:
         "val_k": prediction_response["metrics"]["valuation_base_k"],
         "hash": prediction_response["model_meta"].get("model_hash", "")[:16],
         "ts": prediction_response["timestamp"],
-        "schema_version": prediction_response["schema_version"]
+        "schema_version": prediction_response["schema_version"],
     }
 
     # 3: Publish notarization transaction
@@ -30,13 +35,13 @@ def publish_ai_prediction(prediction_response: dict) -> dict:
         asset_name=f"AI_{prediction_response['asset_type']}_{prediction_response['asset_id'][:8]}",
         unit_name=f"V{prediction_response['asset_type'][:4].upper()}",
         metadata_content=json.dumps(payload),
-        url=f"https://testnet.explorer.perawallet.app/tx/{txid}" if txid else None
+        url=f"https://testnet.explorer.perawallet.app/tx/{txid}" if txid else None,
     )
 
     result = {
         "asset_id": prediction_response["asset_id"],
         "blockchain_txid": txid,
-        "asa_id": asa_id
+        "asa_id": asa_id,
     }
 
     print(f"asset_id: {prediction_response['asset_id']}")
@@ -45,6 +50,7 @@ def publish_ai_prediction(prediction_response: dict) -> dict:
 
     log_asset_publication(result)
     return result
+
 
 def batch_publish_predictions(predictions: List[Dict]) -> List[Dict]:
     """

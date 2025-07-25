@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import json
@@ -12,8 +13,10 @@ from datetime import datetime, timedelta
 from jsonschema import validate as jsonschema_validate, ValidationError
 
 from scripts.model_registry import (
-    get_pipeline, get_model_metadata, health_check_model,
-    cache_stats
+    get_pipeline,
+    get_model_metadata,
+    health_check_model,
+    cache_stats,
 )
 
 # ----------------------------------------------------------------------------
@@ -27,18 +30,22 @@ LOG_PATH = Path("data/api_inference_log.jsonl")
 TOLERANCE_K = 1.0
 TOLERANCE_PERCENT = 0.05
 
+
 # ----------------------------------------------------------------------------
 # Utilities
 # ----------------------------------------------------------------------------
 def ok(msg):
     print(f"[OK]  {msg}")
 
+
 def warn(msg):
     print(f"[WARN] {msg}")
+
 
 def fail(msg, failures):
     print(f"[FAIL] {msg}")
     failures.append(msg)
+
 
 def file_sha256(path: Path) -> str:
     h = hashlib.sha256()
@@ -46,6 +53,7 @@ def file_sha256(path: Path) -> str:
         for chunk in iter(lambda: f.read(8192), b""):
             h.update(chunk)
     return h.hexdigest()
+
 
 # ----------------------------------------------------------------------------
 # Sample Request
@@ -56,6 +64,7 @@ with open(SAMPLE_PATH) as f:
 
 # Payload extraction
 api_payload = payload.get("features", payload)
+
 
 # ----------------------------------------------------------------------------
 # Test: API prediction endpoint
@@ -71,6 +80,7 @@ def test_predict_endpoint(failures):
     if "valuation_base_k" not in data.get("metrics", {}):
         fail("Missing valuation_base_k in response", failures)
     return data
+
 
 # ----------------------------------------------------------------------------
 # Test: Schema compliance
@@ -94,14 +104,21 @@ def validate_schema(response, failures):
         fail(f"Schema validation failed (unexpected): {e}", failures)
 
     try:
-    # Compare with example structure (non-strict)
+        # Compare with example structure (non-strict)
         with EXAMPLE_PATH.open() as f:
             example = json.load(f)
 
         ignore_keys = {"_logged_at"}
-        optional_keys = {"schema_validation_error", "blockchain_txid", "publish", "asa_id"}
+        optional_keys = {
+            "schema_validation_error",
+            "blockchain_txid",
+            "publish",
+            "asa_id",
+        }
 
-        diff_keys = (set(response.keys()) ^ set(example.keys())) - ignore_keys - optional_keys
+        diff_keys = (
+            (set(response.keys()) ^ set(example.keys())) - ignore_keys - optional_keys
+        )
 
         if not diff_keys:
             ok("Matches example structure")
@@ -110,6 +127,7 @@ def validate_schema(response, failures):
     except Exception as e:
         warn(f"Example structure check failed: {e}")
 
+
 # ----------------------------------------------------------------------------
 # Test: Registry + Metadata
 # ----------------------------------------------------------------------------
@@ -117,7 +135,7 @@ def test_model_registry(failures):
     try:
         get_pipeline(ASSET_TYPE, "value_regressor")
         ok("Model loaded from registry")
-        
+
         meta = get_model_metadata(ASSET_TYPE, "value_regressor")
         if meta:
             ok(f"Model version: {meta.get('model_version')}")
@@ -133,6 +151,7 @@ def test_model_registry(failures):
         ok(f"Cache status: {stats['pipelines_cached']} pipelines cached")
     except Exception as e:
         fail(f"Model registry error: {e}", failures)
+
 
 # ----------------------------------------------------------------------------
 # Test: Advanced API endpoints
@@ -152,6 +171,7 @@ def test_api_advanced_features(failures):
             ok("Model cache refresh endpoint OK")
     except Exception as e:
         fail(f"Advanced API test failed: {e}", failures)
+
 
 # ----------------------------------------------------------------------------
 # Test: Prediction consistency & latency
@@ -178,6 +198,7 @@ def test_prediction_consistency_advanced(failures):
     else:
         warn(f"High latency: {mean_latency:.2f}ms")
 
+
 # ----------------------------------------------------------------------------
 # Test: Log file integrity
 # ----------------------------------------------------------------------------
@@ -194,6 +215,7 @@ def test_recent_log(failures):
             warn("Log is stale")
     except Exception as e:
         fail(f"Log test failed: {e}", failures)
+
 
 # ----------------------------------------------------------------------------
 # Main

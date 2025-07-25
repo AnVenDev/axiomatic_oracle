@@ -1,4 +1,7 @@
-from scripts.blockchain_publisher import publish_ai_prediction, batch_publish_predictions
+from scripts.blockchain_publisher import (
+    publish_ai_prediction,
+    batch_publish_predictions,
+)
 import sys
 import pathlib
 from unittest.mock import patch
@@ -18,9 +21,9 @@ sample_response = {
     "model_meta": {
         "value_model_version": "v1",
         "value_model_name": "MockModel",
-        "model_hash": "abcd1234abcd1234abcd1234abcd1234"
+        "model_hash": "abcd1234abcd1234abcd1234abcd1234",
     },
-    "schema_version": "v1"
+    "schema_version": "v1",
 }
 
 multiple_samples = [sample_response, {**sample_response, "asset_id": "property_5678"}]
