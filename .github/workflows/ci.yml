@@ -2,9 +2,9 @@ name: CI Pipeline
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   lint-format-test:
@@ -34,7 +34,7 @@ jobs:
           pip install pytest black ruff mypy jupyter
 
       - name: Lint with ruff
-        run: ruff .
+        run: ruff check .
 
       - name: Check formatting with black
         run: black --check .
