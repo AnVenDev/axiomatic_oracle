@@ -11,9 +11,7 @@ ALGO_NETWORKS = {
 
 if IS_CI:
     ALGORAND_WALLET_ADDRESS = "FAKE_WALLET"
-    ALGORAND_MNEMONIC = (
-    "legal winner thank year wave sausage worth useful legal winner thank yellow "
-    "again upgrade marriage youth yellow amazing useful ceremony answer youth bring yellow")
+    ALGORAND_MNEMONIC = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon invest"
     ALGORAND_NETWORK = "testnet"
 else:
     load_dotenv()
