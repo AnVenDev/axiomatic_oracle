@@ -20,3 +20,4 @@ httpx
 pytest 
 mypy 
 jupyter
+pytest-cov
