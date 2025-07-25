@@ -1,5 +1,6 @@
 """
-FastAPI service exposing AI Oracle inference endpoints (multi-RWA ready: initial asset_type 'property').
+FastAPI service exposing AI Oracle inference endpoints 
+(multi-RWA ready: initial asset_type 'property').
 
 Run locally:
     uvicorn scripts.inference_api:app --reload --port 8000

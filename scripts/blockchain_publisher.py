@@ -55,8 +55,10 @@ def publish_ai_prediction(prediction_response: dict) -> dict:
 
 def batch_publish_predictions(predictions: List[Dict]) -> List[Dict]:
     """
-    Publish multiple AI predictions to the Algorand blockchain in batch.
-    Returns a list of result dicts with txid and ASA ID, or error messages.
+    Publish multiple AI predictions to the 
+    Algorand blockchain in batch.
+    Returns a list of result dicts with txid and ASA ID, 
+    or error messages.
     """
     results = []
     for i, pred in enumerate(predictions):
