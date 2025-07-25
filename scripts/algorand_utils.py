@@ -36,6 +36,7 @@ SENDER_PK = mnemonic.to_private_key(ALGORAND_MNEMONIC)
 # --- Custom Exception ---
 class AlgorandError(Exception):
     """Custom exception for Algorand operations"""
+
     pass
 
 
@@ -44,14 +45,14 @@ def wait_for_confirmation(txid: str, timeout: int = 10) -> Dict[str, Any]:
     status_raw = client.status()
     if isinstance(status_raw, bytes):
         try:
-            status_info: Dict[str, Any] = json.loads(status_raw.decode('utf-8'))
+            status_info: Dict[str, Any] = json.loads(status_raw.decode("utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError):
             raise AlgorandError("Failed to decode bytes response from status")
     elif isinstance(status_raw, dict):
         status_info = status_raw
     else:
         raise AlgorandError("Unexpected response type from status")
-    
+
     last_round = status_info.get("last-round", 0)
     for _ in range(timeout):
         raw_info = client.pending_transaction_info(txid)
@@ -60,11 +61,15 @@ def wait_for_confirmation(txid: str, timeout: int = 10) -> Dict[str, Any]:
             try:
                 tx_info: Dict[str, Any] = json.loads(raw_info)
             except json.JSONDecodeError:
-                raise AlgorandError("Invalid JSON in response from pending_transaction_info")
+                raise AlgorandError(
+                    "Invalid JSON in response from pending_transaction_info"
+                )
         elif isinstance(raw_info, dict):
             tx_info = raw_info
         else:
-            raise AlgorandError("Unexpected response type from pending_transaction_info")
+            raise AlgorandError(
+                "Unexpected response type from pending_transaction_info"
+            )
 
         if tx_info.get("confirmed-round", 0) > 0:
             print(f"[✅] TX {txid} confirmed in round {tx_info['confirmed-round']}")
@@ -74,7 +79,6 @@ def wait_for_confirmation(txid: str, timeout: int = 10) -> Dict[str, Any]:
         last_round += 1
 
     raise AlgorandError(f"Transaction {txid} not confirmed after {timeout} rounds")
-
 
 
 # --- Publish notarized AI prediction ---
@@ -135,7 +139,7 @@ def create_token_for_asset(
         # Controllo esplicito su tipo
         if isinstance(ptx_raw, bytes):
             try:
-                ptx : Dict[str, Any] = json.loads(ptx_raw.decode('utf-8'))
+                ptx: Dict[str, Any] = json.loads(ptx_raw.decode("utf-8"))
             except (json.JSONDecodeError, UnicodeDecodeError):
                 raise AlgorandError("Invalid JSON in pending_transaction_info response")
         elif isinstance(ptx_raw, dict):
@@ -146,6 +150,6 @@ def create_token_for_asset(
         asset_id = ptx.get("asset-index")
         print(f"[✅] ASA created with ID {asset_id}")
         return asset_id if isinstance(asset_id, int) else None
-    
+
     except Exception as e:
         raise AlgorandError(f"[❌] ASA creation failed: {e}")
