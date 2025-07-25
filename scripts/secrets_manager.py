@@ -11,7 +11,7 @@ ALGO_NETWORKS = {
 
 if IS_CI:
     ALGORAND_WALLET_ADDRESS = "FAKE_WALLET"
-    ALGORAND_MNEMONIC = "FAKE_MNEMONIC"
+    ALGORAND_MNEMONIC = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon agent"
     ALGORAND_NETWORK = "testnet"  # valore valido per evitare errori
 else:
     load_dotenv()
