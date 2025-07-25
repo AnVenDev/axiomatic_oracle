@@ -170,7 +170,7 @@ def _file_hash_sha256(path: Path) -> Optional[str]:
 # -----------------------------------------------------------------------------
 def get_pipeline(
     asset_type: str, task: str = "value_regressor", fallback_latest: bool = True
-):
+) -> Any:
     """
     Return a loaded (and cached) model pipeline with TTL support.
 

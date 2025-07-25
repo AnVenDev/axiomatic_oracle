@@ -106,7 +106,7 @@ REQUEST_MODELS: Dict[str, Any] = {"property": PropertyPredictRequest}
 # -----------------------------------------------------------------------------
 # Helpers
 # -----------------------------------------------------------------------------
-def log_jsonl(record: dict):
+def log_jsonl(record: dict) -> None:
     record["_logged_at"] = datetime.utcnow().isoformat() + "Z"
     with LOG_PATH.open("a", encoding="utf-8") as f:
         f.write(json.dumps(record) + "\n")
@@ -129,7 +129,7 @@ def build_response(
     model_meta: dict,
     publish: bool,
     asset_id: Optional[str] = None,
-):
+) -> dict:
     if not asset_id:
         asset_id = f"{asset_type}_{uuid.uuid4().hex[:10]}"
 
@@ -191,7 +191,7 @@ app = FastAPI(
 
 
 @app.get("/health")
-def health():
+def health() -> dict:
     try:
         health_info = health_check_model("property", "value_regressor")
         cache_info = cache_stats()
@@ -213,7 +213,7 @@ def predict(
     asset_type: str = FPath(...),
     publish: bool = Query(False),
     payload: dict = Body(...),
-):
+) -> dict:
     asset_type = asset_type.lower()
     if asset_type not in REQUEST_MODELS:
         raise HTTPException(
@@ -280,7 +280,7 @@ def predict(
 
 
 @app.get("/models/{asset_type}")
-def list_models(asset_type: str):
+def list_models(asset_type: str) -> dict:
     return {
         "asset_type": asset_type,
         "tasks": list_tasks(asset_type),
@@ -289,13 +289,13 @@ def list_models(asset_type: str):
 
 
 @app.post("/models/{asset_type}/{task}/refresh")
-def refresh_model_cache(asset_type: str, task: str):
+def refresh_model_cache(asset_type: str, task: str) -> dict:
     refresh_cache(asset_type, task)
     return {"status": "cache_refreshed", "asset_type": asset_type, "task": task}
 
 
 @app.get("/models/{asset_type}/{task}/health")
-def model_health(asset_type: str, task: str):
+def model_health(asset_type: str, task: str) -> dict:
     return health_check_model(asset_type, task)
 
 

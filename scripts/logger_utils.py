@@ -13,7 +13,7 @@ DETAIL_DIR = LOG_PATH / "detail_reports"
 DETAIL_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def log_asset_publication(data: dict):
+def log_asset_publication(data: dict) -> None:
     """
     Append a single asset publication to the JSON log file.
     Adds a UTC timestamp.
@@ -36,7 +36,7 @@ def log_asset_publication(data: dict):
             json.dump([enriched_data], f, indent=2, ensure_ascii=False)
 
 
-def save_publications_to_json(results: List[Dict], filename: Path = LOG_FILE):
+def save_publications_to_json(results: List[Dict], filename: Path = LOG_FILE) -> None:
     """
     Overwrite the JSON file with a list of publication results.
     Useful for saving batch results at once.
