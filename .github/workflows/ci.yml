@@ -34,9 +34,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Set PYTHONPATH
-        run: echo "PYTHONPATH=$PWD" >> $GITHUB_ENV
-
       - name: Start FastAPI API in background
         run: |
           nohup uvicorn scripts.inference_api:app --host 0.0.0.0 --port 8000 &
@@ -49,10 +46,23 @@ jobs:
             echo "Waiting for API..." && sleep 2
           done
 
-      - name: Run all tests with coverage (unit + e2e)
-        run: |
-          pytest --cov=scripts tests/
+      - name: Run test_logger_utils.py (unit test)
+        run: python tests/test_logger_utils.py
 
-      - name: Upload coverage report (text)
-        run: |
-          coverage report
+      - name: Run test_secrets_manager.py (unit test)
+        run: python tests/test_secrets_manager.py
+
+      - name: Run test_algorand_utils.py (unit test)
+        run: python tests/test_algorand_utils.py
+
+      - name: Run test_model_registry.py (unit test)
+        run: python tests/test_model_registry.py
+
+      - name: Run test_blockchain_publish.py (unit test)
+        run: python tests/test_blockchain_publish.py
+
+      - name: Run test_api.py (unit test)
+        run: python tests/test_api.py
+
+      - name: Run test_e2e_sanity_check.py (integration test)
+        run: python tests/test_e2e_sanity_check.py
