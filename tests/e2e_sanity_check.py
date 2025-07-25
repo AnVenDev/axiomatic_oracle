@@ -6,21 +6,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import json
 import time
-import uuid
-import joblib
 import hashlib
 import requests
 from datetime import datetime, timedelta
-from typing import Optional
-from pprint import pprint
-
-import pandas as pd
 from jsonschema import validate as jsonschema_validate, ValidationError
 
 from scripts.model_registry import (
     get_pipeline, get_model_metadata, health_check_model,
-    cache_stats, validate_model_compatibility, list_tasks, discover_models_for_asset,
-    refresh_cache
+    cache_stats
 )
 
 # ----------------------------------------------------------------------------

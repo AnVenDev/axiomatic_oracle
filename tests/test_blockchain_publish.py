@@ -1,14 +1,12 @@
+from scripts.blockchain_publisher import publish_ai_prediction, batch_publish_predictions
 import sys
 import pathlib
-import pytest
 from unittest.mock import patch
 
 # Aggiunge la root del progetto a sys.path
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-
-from scripts.blockchain_publisher import publish_ai_prediction, batch_publish_predictions
 
 # Mocked sample inputs
 sample_response = {

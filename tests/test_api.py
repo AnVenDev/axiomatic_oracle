@@ -1,3 +1,4 @@
+from scripts.inference_api import app, OUTPUT_SCHEMA
 import sys
 import pathlib
 import pytest
@@ -11,8 +12,6 @@ from unittest.mock import patch
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-
-from scripts.inference_api import app, OUTPUT_SCHEMA
 
 client = TestClient(app)
 

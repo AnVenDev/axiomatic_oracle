@@ -2,7 +2,6 @@ import json
 from pathlib import Path
 from datetime import datetime
 from typing import List, Dict
-from pathlib import Path
 from hashlib import sha256
 
 # Define log path and file
