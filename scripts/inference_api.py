@@ -84,7 +84,7 @@ class PropertyPredictRequest(BaseModel):
     age_years: Optional[int] = Field(None, ge=0)
 
     @model_validator(mode="after")
-    def validate_and_normalize(self):
+    def validate_and_normalize(self) -> PropertyPredictRequest:
         if self.floor >= self.building_floors:
             raise ValueError("floor must be < building_floors")
         ec = self.energy_class.upper()

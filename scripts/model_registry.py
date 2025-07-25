@@ -388,10 +388,10 @@ def latest_version_filename(asset_type: str, task: str) -> Optional[str]:
 
 
 class RemoteModelRegistry:
-    def __init__(self, backend="s3"):
+    def __init__(self, backend="s3") -> None:
         self.backend = backend
 
-    async def download_model(self, asset_type: str, task: str, version: str):
+    async def download_model(self, asset_type: str, task: str, version: str) -> None:
         """
         Download model from remote backend.
         Implement S3/IPFS/ASA download logic here.
