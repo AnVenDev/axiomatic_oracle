@@ -33,7 +33,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest
 
       - name: Set PYTHONPATH
         run: echo "PYTHONPATH=$PWD" >> $GITHUB_ENV
@@ -50,11 +49,10 @@ jobs:
             echo "Waiting for API..." && sleep 2
           done
 
-      - name: Run test_api.py (unit test)
-        run: python tests/test_api.py
+      - name: Run all tests with coverage (unit + e2e)
+        run: |
+          pytest --cov=scripts tests/
 
-      - name: Run test_blockchain_publish.py (mocked unit test)
-        run: python tests/test_blockchain_publish.py
-
-      - name: Run e2e_sanity_check.py (integration test)
-        run: python tests/e2e_sanity_check.py
+      - name: Upload coverage report (text)
+        run: |
+          coverage report

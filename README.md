@@ -137,7 +137,7 @@ Includes:
 | ---------------------------- | --------------------------------------- |
 | `test_api.py`                | Unit test of FastAPI endpoints          |
 | `test_blockchain_publish.py` | Publisher logic with mock responses     |
-| `e2e_sanity_check.py`        | Full test: model load → API call → logs |
+| `test_e2e_sanity_check.py`   | Full test: model load → API call → logs |
 
 > ✔️ All tests passed with warnings resolved and schema strictness enforced.
 

@@ -10,10 +10,10 @@ CALL D:\Users\Utente1\miniconda3\condabin\conda.bat activate ai-oracle
 
 REM Step 2: Esecuzione test e2e
 echo.
-echo [2/3] Test end-to-end (e2e_sanity_check.py)...
-python tests/e2e_sanity_check.py
+echo [2/3] Test end-to-end (test_e2e_sanity_check.py)...
+python tests/test_e2e_sanity_check.py
 IF %ERRORLEVEL% NEQ 0 (
-    echo Errore in e2e_sanity_check.py
+    echo Errore in test_e2e_sanity_check.py
 )
 
 REM Step 3: Esecuzione Pytest su API e Publisher
