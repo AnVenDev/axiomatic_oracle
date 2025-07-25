@@ -115,7 +115,7 @@ def validate_schema(response, failures):
 # ----------------------------------------------------------------------------
 def test_model_registry(failures):
     try:
-        pipe = get_pipeline(ASSET_TYPE, "value_regressor")
+        get_pipeline(ASSET_TYPE, "value_regressor")
         ok("Model loaded from registry")
         
         meta = get_model_metadata(ASSET_TYPE, "value_regressor")

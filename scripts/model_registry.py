@@ -244,7 +244,7 @@ def health_check_model(asset_type: str, task: str = "value_regressor") -> dict:
     - Training metrics (if available)
     """
     try:
-        pipeline = get_pipeline(asset_type, task)
+        get_pipeline(asset_type, task)
         model_path = _resolve_path(asset_type, task)
         meta = get_model_metadata(asset_type, task)
 
