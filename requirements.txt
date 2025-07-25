@@ -13,3 +13,4 @@ nbconvert
 black
 ruff
 seaborn
+optuna
