@@ -10,7 +10,7 @@ This module provides core functions for interacting with the Algorand blockchain
 
 from algosdk import mnemonic, transaction
 from algosdk.v2client import algod
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, Union
 import json
 import hashlib
 from scripts.secrets_manager import (
@@ -36,26 +36,49 @@ SENDER_PK = mnemonic.to_private_key(ALGORAND_MNEMONIC)
 # --- Custom Exception ---
 class AlgorandError(Exception):
     """Custom exception for Algorand operations"""
-
     pass
 
 
 # --- Confirm transaction ---
 def wait_for_confirmation(txid: str, timeout: int = 10) -> Dict[str, Any]:
-    last_round = client.status().get("last-round", 0)
+    status_raw = client.status()
+    if isinstance(status_raw, bytes):
+        try:
+            status_info: Dict[str, Any] = json.loads(status_raw.decode('utf-8'))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            raise AlgorandError("Failed to decode bytes response from status")
+    elif isinstance(status_raw, dict):
+        status_info = status_raw
+    else:
+        raise AlgorandError("Unexpected response type from status")
+    
+    last_round = status_info.get("last-round", 0)
     for _ in range(timeout):
         raw_info = client.pending_transaction_info(txid)
-        tx_info = raw_info if isinstance(raw_info, dict) else {}
+
+        if isinstance(raw_info, bytes):
+            try:
+                tx_info: Dict[str, Any] = json.loads(raw_info)
+            except json.JSONDecodeError:
+                raise AlgorandError("Invalid JSON in response from pending_transaction_info")
+        elif isinstance(raw_info, dict):
+            tx_info = raw_info
+        else:
+            raise AlgorandError("Unexpected response type from pending_transaction_info")
+
         if tx_info.get("confirmed-round", 0) > 0:
             print(f"[✅] TX {txid} confirmed in round {tx_info['confirmed-round']}")
             return tx_info
+
         client.status_after_block(last_round + 1)
         last_round += 1
+
     raise AlgorandError(f"Transaction {txid} not confirmed after {timeout} rounds")
 
 
+
 # --- Publish notarized AI prediction ---
-def publish_to_algorand(note_dict: Dict) -> str:
+def publish_to_algorand(note_dict: Dict[str, Any]) -> str:
     try:
         note_bytes = json.dumps(note_dict).encode("utf-8")
         params = client.suggested_params()
@@ -107,11 +130,22 @@ def create_token_for_asset(
         txid = client.send_transaction(signed_txn)
         wait_for_confirmation(txid)
 
-        raw_ptx = client.pending_transaction_info(txid)
-        ptx = raw_ptx if isinstance(raw_ptx, dict) else {}
-        asset_id = ptx.get("asset-index")
+        ptx_raw: Union[Dict[str, Any], bytes] = client.pending_transaction_info(txid)
 
+        # Controllo esplicito su tipo
+        if isinstance(ptx_raw, bytes):
+            try:
+                ptx : Dict[str, Any] = json.loads(ptx_raw.decode('utf-8'))
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                raise AlgorandError("Invalid JSON in pending_transaction_info response")
+        elif isinstance(ptx_raw, dict):
+            ptx = ptx_raw
+        else:
+            raise AlgorandError("Unexpected type from pending_transaction_info")
+
+        asset_id = ptx.get("asset-index")
         print(f"[✅] ASA created with ID {asset_id}")
         return asset_id if isinstance(asset_id, int) else None
+    
     except Exception as e:
         raise AlgorandError(f"[❌] ASA creation failed: {e}")
