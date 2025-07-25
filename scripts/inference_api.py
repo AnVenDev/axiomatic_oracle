@@ -222,7 +222,8 @@ def predict(
 
     try:
         pipeline = get_pipeline(asset_type, "value_regressor", fallback_latest=True)
-        meta = get_model_metadata(asset_type, "value_regressor", fallback_latest=True)
+        raw_meta = get_model_metadata(asset_type, "value_regressor", fallback_latest=True)
+        meta = raw_meta if raw_meta else {}
         health = health_check_model(asset_type, "value_regressor")
         if health["status"] != "healthy":
             raise HTTPException(status_code=503, detail=health["error"])

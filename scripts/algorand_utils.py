@@ -10,7 +10,7 @@ This module provides core functions for interacting with the Algorand blockchain
 
 from algosdk import mnemonic, transaction
 from algosdk.v2client import algod
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 import json
 import hashlib
 from scripts.secrets_manager import (
@@ -19,10 +19,14 @@ from scripts.secrets_manager import (
     ALGORAND_WALLET_ADDRESS,
 )
 
+# --- Safety check ---
+assert ALGORAND_ADDRESS is not None, "Missing ALGORAND_ADDRESS"
+
 SENDER_ADDR = ALGORAND_WALLET_ADDRESS
 
 # Initialize Algod client
-ALGOD_TOKEN = ""
+ALGOD_TOKEN: str = ""
+
 client = algod.AlgodClient(ALGOD_TOKEN, ALGORAND_ADDRESS)
 
 # Derive sender private key
@@ -37,10 +41,11 @@ class AlgorandError(Exception):
 
 
 # --- Confirm transaction ---
-def wait_for_confirmation(txid: str, timeout: int = 10):
-    last_round = client.status().get("last-round")
+def wait_for_confirmation(txid: str, timeout: int = 10) -> Dict[str, Any]:
+    last_round = client.status().get("last-round", 0)
     for _ in range(timeout):
-        tx_info = client.pending_transaction_info(txid)
+        raw_info = client.pending_transaction_info(txid)
+        tx_info = raw_info if isinstance(raw_info, dict) else {}
         if tx_info.get("confirmed-round", 0) > 0:
             print(f"[✅] TX {txid} confirmed in round {tx_info['confirmed-round']}")
             return tx_info
@@ -76,9 +81,7 @@ def create_token_for_asset(
         params = client.suggested_params()
 
         # Metadata hash (must be exactly 32 bytes)
-        metadata_hash = None
-        if metadata_content:
-            metadata_hash = hashlib.sha256(metadata_content.encode()).digest()
+        metadata_hash = hashlib.sha256(metadata_content.encode()).digest() if metadata_content else None
 
         txn = transaction.AssetConfigTxn(
             sender=SENDER_ADDR,
@@ -100,9 +103,11 @@ def create_token_for_asset(
         txid = client.send_transaction(signed_txn)
         wait_for_confirmation(txid)
 
-        ptx = client.pending_transaction_info(txid)
+        raw_ptx = client.pending_transaction_info(txid)
+        ptx = raw_ptx if isinstance(raw_ptx, dict) else {}
         asset_id = ptx.get("asset-index")
+
         print(f"[✅] ASA created with ID {asset_id}")
-        return asset_id
+        return asset_id if isinstance(asset_id, int) else None
     except Exception as e:
         raise AlgorandError(f"[❌] ASA creation failed: {e}")

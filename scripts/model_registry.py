@@ -32,7 +32,7 @@ import time
 import os
 import re
 import hashlib
-import joblib
+import joblib # type: ignore
 import logging
 from pathlib import Path
 from typing import Dict, Optional, List, Tuple, Any
@@ -65,7 +65,7 @@ MODEL_REGISTRY: Dict[str, Dict[str, str]] = {
 # In-memory caches
 _PIPELINE_CACHE: Dict[Path, object] = {}
 _METADATA_CACHE: Dict[Path, dict] = {}
-_PIPELINE_TTL_CACHE: Dict[str, Dict[str, Any]] = {}
+_PIPELINE_TTL_CACHE: Dict[str, Tuple[Any, float]] = {}
 CACHE_TTL_SECONDS = 3600
 
 logger = logging.getLogger("model_registry")
@@ -185,12 +185,11 @@ def get_pipeline(
     cache_key = str(model_path.resolve())
     if cache_key in _PIPELINE_TTL_CACHE:
         pipeline, ts = _PIPELINE_TTL_CACHE[cache_key]
-        if now - ts < CACHE_TTL_SECONDS:
+        if now - float(ts) < CACHE_TTL_SECONDS:
             return pipeline  # Cache still valid
 
     # Load and cache model
     pipeline = joblib.load(model_path)
-    cache_key = str(model_path.resolve())
     _PIPELINE_TTL_CACHE[cache_key] = (pipeline, now)
     logger.info(f"Model loaded: {model_path.name}")
     return pipeline
@@ -309,6 +308,8 @@ def cache_stats() -> dict:
     now = time.time()
     cache_info = {}
     for model_path, (pipeline, timestamp) in _PIPELINE_TTL_CACHE.items():
+        if not isinstance(timestamp, (int, float)):
+            continue  # skip invalid cache entries
         age = now - timestamp
         cache_info[str(model_path)] = {
             "age_seconds": round(age, 1),
