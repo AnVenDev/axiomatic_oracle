@@ -10,9 +10,6 @@ from scripts.logger_utils import (
 
 
 def publish_ai_prediction(prediction_response: dict) -> dict:
-    """
-    Publish a single AI prediction to the Algorand blockchain, creating a notarization transaction and an ASA.
-    """
     # 1. Save detailed report and compute hash
     detail_hash = save_prediction_detail(prediction_response)
     prediction_response.setdefault("offchain_refs", {})
