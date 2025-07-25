@@ -81,7 +81,11 @@ def create_token_for_asset(
         params = client.suggested_params()
 
         # Metadata hash (must be exactly 32 bytes)
-        metadata_hash = hashlib.sha256(metadata_content.encode()).digest() if metadata_content else None
+        metadata_hash = (
+            hashlib.sha256(metadata_content.encode()).digest()
+            if metadata_content
+            else None
+        )
 
         txn = transaction.AssetConfigTxn(
             sender=SENDER_ADDR,
