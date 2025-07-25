@@ -12,8 +12,8 @@ ALGO_NETWORKS = {
 if IS_CI:
     ALGORAND_WALLET_ADDRESS = "FAKE_WALLET"
     ALGORAND_MNEMONIC = (
-    "height mix dove trophy belt embrace climb vast settle student symptom dawn fortune lava scare flip fun arrive merry trend brush shrimp whale aisle excess"
-    )
+    "legal winner thank year wave sausage worth useful legal winner thank yellow "
+    "again upgrade marriage youth yellow amazing useful ceremony answer youth bring yellow")
     ALGORAND_NETWORK = "testnet"
 else:
     load_dotenv()
