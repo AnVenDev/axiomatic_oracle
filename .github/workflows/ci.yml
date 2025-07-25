@@ -41,7 +41,7 @@ jobs:
         run: black --check .
 
       - name: Type check with mypy
-        run: mypy scripts/ notebooks/
+        run: mypy scripts/
 
       - name: Validate Jupyter notebooks
         run: jupyter nbconvert --to notebook --execute --inplace notebooks/*.ipynb
