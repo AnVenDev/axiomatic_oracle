@@ -5,18 +5,20 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import hashlib
 import json
 import time
-import hashlib
-import requests
 from datetime import datetime, timedelta
-from jsonschema import validate as jsonschema_validate, ValidationError
+
+import requests
+from jsonschema import ValidationError
+from jsonschema import validate as jsonschema_validate
 
 from scripts.model_registry import (
-    get_pipeline,
-    get_model_metadata,
-    health_check_model,
     cache_stats,
+    get_model_metadata,
+    get_pipeline,
+    health_check_model,
 )
 
 # ----------------------------------------------------------------------------

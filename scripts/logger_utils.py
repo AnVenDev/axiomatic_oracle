@@ -1,8 +1,8 @@
 import json
-from pathlib import Path
 from datetime import datetime
-from typing import List, Dict
 from hashlib import sha256
+from pathlib import Path
+from typing import Dict, List
 
 # Define log path and file
 BASE_DIR = Path(__file__).resolve().parent.parent

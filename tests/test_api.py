@@ -1,10 +1,13 @@
-from scripts.inference_api import app, OUTPUT_SCHEMA
-import sys
 import pathlib
-import pytest
-from jsonschema import validate as jsonschema_validate, ValidationError
-from fastapi.testclient import TestClient
+import sys
 from unittest.mock import patch
+
+import pytest
+from fastapi.testclient import TestClient
+from jsonschema import ValidationError
+from jsonschema import validate as jsonschema_validate
+
+from scripts.inference_api import OUTPUT_SCHEMA, app
 
 # -------------------------------------------------------------------
 # Set sys.path to root for absolute imports

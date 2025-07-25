@@ -6,31 +6,36 @@ Run locally:
 """
 
 from __future__ import annotations
+
+import hashlib
 import json
 import time
 import uuid
-import hashlib
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
+
 import pandas as pd
-from fastapi import FastAPI, HTTPException, Path as FPath, Query, Body
+from fastapi import Body, FastAPI, HTTPException, Query
+from fastapi import Path as FPath
+from jsonschema import ValidationError
+from jsonschema import validate as jsonschema_validate
 from pydantic import BaseModel, Field, model_validator
-from jsonschema import validate as jsonschema_validate, ValidationError
-from scripts.model_registry import (
-    get_pipeline,
-    get_model_metadata,
-    RegistryLookupError,
-    ModelNotFoundError,
-    validate_model_compatibility,
-    health_check_model,
-    refresh_cache,
-    cache_stats,
-    list_tasks,
-    discover_models_for_asset,
-    _PIPELINE_TTL_CACHE,
-)
+
 from scripts.blockchain_publisher import publish_ai_prediction
+from scripts.model_registry import (
+    _PIPELINE_TTL_CACHE,
+    ModelNotFoundError,
+    RegistryLookupError,
+    cache_stats,
+    discover_models_for_asset,
+    get_model_metadata,
+    get_pipeline,
+    health_check_model,
+    list_tasks,
+    refresh_cache,
+    validate_model_compatibility,
+)
 
 # -----------------------------------------------------------------------------
 # Configuration

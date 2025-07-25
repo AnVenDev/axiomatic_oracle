@@ -1,11 +1,12 @@
-from scripts.algorand_utils import publish_to_algorand, create_token_for_asset
+import json
+from typing import Dict, List
+
+from scripts.algorand_utils import create_token_for_asset, publish_to_algorand
 from scripts.logger_utils import (
     log_asset_publication,
-    save_publications_to_json,
     save_prediction_detail,
+    save_publications_to_json,
 )
-import json
-from typing import List, Dict
 
 
 def publish_ai_prediction(prediction_response: dict) -> dict:

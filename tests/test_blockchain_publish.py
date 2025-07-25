@@ -1,10 +1,11 @@
-from scripts.blockchain_publisher import (
-    publish_ai_prediction,
-    batch_publish_predictions,
-)
-import sys
 import pathlib
+import sys
 from unittest.mock import patch
+
+from scripts.blockchain_publisher import (
+    batch_publish_predictions,
+    publish_ai_prediction,
+)
 
 # Aggiunge la root del progetto a sys.path
 ROOT = pathlib.Path(__file__).resolve().parents[1]
