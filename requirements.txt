@@ -3,7 +3,7 @@ uvicorn
 pydantic
 requests
 pandas
-scikit-learn
+scikit-learn==1.6.1
 joblib
 jsonschema
 python-dotenv
@@ -18,3 +18,6 @@ optuna-integration[lightgbm]
 lightgbm
 pytest
 httpx
+pytest 
+mypy 
+jupyter
