@@ -11,8 +11,11 @@ ALGO_NETWORKS = {
 
 if IS_CI:
     ALGORAND_WALLET_ADDRESS = "FAKE_WALLET"
-    ALGORAND_MNEMONIC = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon agent"
-    ALGORAND_NETWORK = "testnet"  # valore valido per evitare errori
+    ALGORAND_MNEMONIC = (
+    "height mix dove trophy belt embrace climb vast settle student symptom dawn "
+    "fortune lava scare flip fun arrive merry trend brush shrimp whale aisle excess"
+    )
+    ALGORAND_NETWORK = "testnet"
 else:
     load_dotenv()
     ALGORAND_WALLET_ADDRESS = os.getenv("ALGORAND_WALLET_ADDRESS")
