@@ -36,9 +36,9 @@ import time
 from difflib import get_close_matches
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-from sklearn.pipeline import Pipeline
 
 import joblib  # type: ignore
+from sklearn.pipeline import Pipeline
 
 # -----------------------------------------------------------------------------
 # Configuration
