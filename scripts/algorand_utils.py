@@ -1,10 +1,10 @@
 """
 algorand_utils.py
 
-This module provides core functions for interacting with the Algorand blockchain, 
+This module provides core functions for interacting with the Algorand blockchain,
 specifically for:
 - Publishing notarized AI predictions via self-transfer with JSON notes.
-- Creating non-fungible Algorand Standard Assets (ASA) to tokenize 
+- Creating non-fungible Algorand Standard Assets (ASA) to tokenize
   real-world assets (RWAs).
 - Waiting for transaction confirmations with custom error handling.
 - Supports metadata hashing, dynamic URL injection, and environment-based configuration.

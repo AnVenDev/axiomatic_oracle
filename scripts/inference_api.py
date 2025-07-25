@@ -1,5 +1,5 @@
 """
-FastAPI service exposing AI Oracle inference endpoints 
+FastAPI service exposing AI Oracle inference endpoints
 (multi-RWA ready: initial asset_type 'property').
 
 Run locally:
