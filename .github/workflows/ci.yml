@@ -47,22 +47,22 @@ jobs:
           done
 
       - name: Run test_logger_utils.py (unit test)
-        run: python tests/test_logger_utils.py
+        run: pytest tests/test_logger_utils.py
 
       - name: Run test_secrets_manager.py (unit test)
-        run: python tests/test_secrets_manager.py
+        run: pytest tests/test_secrets_manager.py
 
       - name: Run test_algorand_utils.py (unit test)
-        run: python tests/test_algorand_utils.py
+        run: pytest tests/test_algorand_utils.py
 
       - name: Run test_model_registry.py (unit test)
-        run: python tests/test_model_registry.py
+        run: pytest tests/test_model_registry.py
 
       - name: Run test_blockchain_publish.py (unit test)
-        run: python tests/test_blockchain_publish.py
+        run: pytest tests/test_blockchain_publish.py
 
       - name: Run test_api.py (unit test)
-        run: python tests/test_api.py
+        run: pytest tests/test_api.py
 
       - name: Run test_e2e_sanity_check.py (integration test)
         run: python tests/test_e2e_sanity_check.py
