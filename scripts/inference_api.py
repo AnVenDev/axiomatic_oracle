@@ -30,7 +30,7 @@ from scripts.model_registry import (
     discover_models_for_asset,
     _PIPELINE_TTL_CACHE
 )
-from scripts.blockchain_publisher import publish_ai_prediction, batch_publish_predictions
+from scripts.blockchain_publisher import publish_ai_prediction
 
 # -----------------------------------------------------------------------------
 # Configuration

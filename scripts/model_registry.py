@@ -34,7 +34,7 @@ import hashlib
 import joblib
 import logging
 from pathlib import Path
-from typing import Dict, Optional, List, Iterable, Tuple
+from typing import Dict, Optional, List, Iterable, Tuple, Any
 from difflib import get_close_matches
 
 # -----------------------------------------------------------------------------

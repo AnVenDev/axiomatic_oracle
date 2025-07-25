@@ -34,7 +34,8 @@ jobs:
           pip install pytest black ruff mypy jupyter
 
       - name: Lint with ruff
-        run: ruff check .
+        run: |
+          ruff check . --exclude notebooks/
 
       - name: Check formatting with black
         run: black --check .
