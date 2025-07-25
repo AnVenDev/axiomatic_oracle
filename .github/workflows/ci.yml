@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  run-e2e-sanity-check:
+  run-tests:
     runs-on: ubuntu-latest
     env:
       CI: "true"
@@ -33,6 +33,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install pytest
 
       - name: Start FastAPI API in background
         run: |
@@ -46,5 +47,11 @@ jobs:
             echo "Waiting for API..." && sleep 2
           done
 
-      - name: Run end-to-end sanity check
+      - name: Run test_api.py (unit test)
+        run: python tests/test_api.py
+
+      - name: Run test_blockchain_publish.py (mocked unit test)
+        run: python tests/test_blockchain_publish.py
+
+      - name: Run e2e_sanity_check.py (integration test)
         run: python tests/e2e_sanity_check.py
