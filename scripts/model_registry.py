@@ -36,6 +36,7 @@ import time
 from difflib import get_close_matches
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from sklearn.pipeline import Pipeline
 
 import joblib  # type: ignore
 
@@ -196,7 +197,9 @@ def get_pipeline(
     return pipeline
 
 
-def validate_model_compatibility(pipeline, expected_features: list) -> bool:
+def validate_model_compatibility(
+    pipeline: Pipeline, expected_features: List[str]
+) -> bool:
     """
     Checks if the model's expected input features match the expected list.
 
@@ -388,7 +391,7 @@ def latest_version_filename(asset_type: str, task: str) -> Optional[str]:
 
 
 class RemoteModelRegistry:
-    def __init__(self, backend="s3") -> None:
+    def __init__(self, backend: str = "s3") -> None:
         self.backend = backend
 
     async def download_model(self, asset_type: str, task: str, version: str) -> None:
