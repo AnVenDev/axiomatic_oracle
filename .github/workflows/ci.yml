@@ -1,4 +1,4 @@
-name: CI Pipeline
+name: CI/CD Pipeline
 
 on:
   push:
@@ -6,11 +6,15 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  CI: "true"
+  AWS_REGION: us-east-1
+  ECR_REPO: 035754837020.dkr.ecr.us-east-1.amazonaws.com/ai-oracle-api
+  IMAGE_TAG: latest
+
 jobs:
   run-tests:
     runs-on: ubuntu-latest
-    env:
-      CI: "true"
 
     steps:
       - name: Checkout code
@@ -31,8 +35,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install pytest pytest-cov
 
       - name: Start FastAPI API in background
         run: |
@@ -46,52 +50,56 @@ jobs:
             echo "Waiting for API..." && sleep 2
           done
 
-      - name: Run unit tests
+      - name: Run tests with coverage
         run: |
-          pytest tests/test_logger_utils.py
-          pytest tests/test_secrets_manager.py
-          pytest tests/test_algorand_utils.py
-          pytest tests/test_model_registry.py
-          pytest tests/test_blockchain_publish.py
-          pytest tests/test_api.py
-          pytest tests/test_sample_property.py
+          pytest --cov=scripts --cov-fail-under=80 --cov-report=term-missing
 
-      - name: Run integration test
-        run: python tests/test_e2e_sanity_check.py
+      - name: Upload coverage report (optional)
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-report
+          path: htmlcov/
 
-  deploy-backend:
+  build-and-push-image:
     needs: run-tests
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-
-    env:
-      AWS_REGION: us-east-1
-      ECR_REPO: 035754837020.dkr.ecr.us-east-1.amazonaws.com/ai-oracle-api
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v3
+        uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Login to Amazon ECR
-        uses: aws-actions/amazon-ecr-login@v2
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Build, tag, and push Docker image
+      - name: Build and push Docker image to ECR
         run: |
-          docker build -t ai-oracle-api .
-          docker tag ai-oracle-api:latest $ECR_REPO:latest
-          docker push $ECR_REPO:latest
+          docker build -t $ECR_REPO:$IMAGE_TAG .
+          docker push $ECR_REPO:$IMAGE_TAG
 
-      - name: Deploy to ECS
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+  deploy-to-prod:
+    needs: build-and-push-image
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1
         with:
-          task-definition: ecs-task-definition.json
-          service: ai-oracle-service
-          cluster: ai-oracle-cluster
-          wait-for-service-stability: true
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            docker login -u AWS -p $(aws ecr get-login-password --region ${{ env.AWS_REGION }}) ${{ env.ECR_REPO }}
+            docker pull $ECR_REPO:$IMAGE_TAG
+            docker stop oracle-api || true
+            docker rm oracle-api || true
+            docker run -d --name oracle-api -p 80:8000 $ECR_REPO:$IMAGE_TAG

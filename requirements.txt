@@ -8,6 +8,8 @@ joblib
 jsonschema
 python-dotenv
 algosdk
+click
+python-multipart
 nbformat
 nbconvert
 black
