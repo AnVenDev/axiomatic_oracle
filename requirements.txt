@@ -21,4 +21,4 @@ pytest
 mypy 
 jupyter
 pytest-cov
-asyncio
+pytest-asyncio
