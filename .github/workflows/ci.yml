@@ -96,6 +96,18 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
+
+      - name: Debug SSH Key (temporary)
+        run: |
+          mkdir -p ~/.ssh
+          echo "$EC2_SSH_KEY" | tr -d '\r' | sed 's/\\n/\n/g' > ~/.ssh/ai-oracle-key.pem
+          chmod 600 ~/.ssh/ai-oracle-key.pem
+          echo "PEM preview:"
+          head -n 5 ~/.ssh/ai-oracle-key.pem
+        shell: bash
+        env:
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+
           script: |
             docker login -u AWS -p $(aws ecr get-login-password --region ${{ env.AWS_REGION }}) ${{ env.ECR_REPO }}
             docker pull $ECR_REPO:$IMAGE_TAG
