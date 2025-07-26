@@ -223,13 +223,13 @@ def test_recent_log():
 if __name__ == "__main__":
     failures = []
     print("--- E2E Sanity Check ---")
-    test_model_registry(failures)
-    test_api_advanced_features(failures)
-    data = test_predict_endpoint(failures)
+    test_model_registry()
+    test_api_advanced_features()
+    data = test_predict_endpoint()
     if data:
-        validate_schema(data, failures)
-        test_prediction_consistency_advanced(failures)
-    test_recent_log(failures)
+        validate_schema(data, )
+        test_prediction_consistency_advanced()
+    test_recent_log()
 
     print("\n--- Summary ---")
     if not failures:
