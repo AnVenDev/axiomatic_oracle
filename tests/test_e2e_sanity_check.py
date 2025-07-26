@@ -31,8 +31,6 @@ SCHEMA_PATH = Path("schemas/output_schema_v1.json")
 LOG_PATH = Path("data/api_inference_log.jsonl")
 TOLERANCE_K = 1.0
 TOLERANCE_PERCENT = 0.05
-
-
 # ----------------------------------------------------------------------------
 # Utilities
 # ----------------------------------------------------------------------------
@@ -44,7 +42,7 @@ def warn(msg):
     print(f"[WARN] {msg}")
 
 
-def fail(msg, failures):
+def fail(msg):
     print(f"[FAIL] {msg}")
     failures.append(msg)
 
@@ -71,23 +69,23 @@ api_payload = payload.get("features", payload)
 # ----------------------------------------------------------------------------
 # Test: API prediction endpoint
 # ----------------------------------------------------------------------------
-def test_predict_endpoint(failures):
+def test_predict_endpoint():
     resp = requests.post(f"{API_BASE}/predict/{ASSET_TYPE}", json=api_payload)
     if resp.status_code != 200:
-        fail(f"API call failed with status {resp.status_code}", failures)
+        fail(f"API call failed with status {resp.status_code}")
         return None
     ok("API prediction call succeeded")
 
     data = resp.json()
     if "valuation_base_k" not in data.get("metrics", {}):
-        fail("Missing valuation_base_k in response", failures)
-    return data
+        fail("Missing valuation_base_k in response")
+    assert data
 
 
 # ----------------------------------------------------------------------------
 # Test: Schema compliance
 # ----------------------------------------------------------------------------
-def validate_schema(response, failures):
+def validate_schema(response):
     try:
         # Load the strict schema
         with SCHEMA_PATH.open() as f:
@@ -101,9 +99,9 @@ def validate_schema(response, failures):
         jsonschema_validate(instance=cleaned_response, schema=schema)
         ok("Strict schema validation passed")
     except ValidationError as e:
-        fail(f"Schema validation error: {e.message}", failures)
+        fail(f"Schema validation error: {e.message}")
     except Exception as e:
-        fail(f"Schema validation failed (unexpected): {e}", failures)
+        fail(f"Schema validation failed (unexpected): {e}")
 
     try:
         # Compare with example structure (non-strict)
@@ -133,7 +131,7 @@ def validate_schema(response, failures):
 # ----------------------------------------------------------------------------
 # Test: Registry + Metadata
 # ----------------------------------------------------------------------------
-def test_model_registry(failures):
+def test_model_registry():
     try:
         get_pipeline(ASSET_TYPE, "value_regressor")
         ok("Model loaded from registry")
@@ -147,18 +145,18 @@ def test_model_registry(failures):
         if health["status"] == "healthy":
             ok("Model health check passed")
         else:
-            fail(f"Model unhealthy: {health['error']}", failures)
+            fail(f"Model unhealthy: {health['error']}")
 
         stats = cache_stats()
         ok(f"Cache status: {stats['pipelines_cached']} pipelines cached")
     except Exception as e:
-        fail(f"Model registry error: {e}", failures)
+        fail(f"Model registry error: {e}")
 
 
 # ----------------------------------------------------------------------------
 # Test: Advanced API endpoints
 # ----------------------------------------------------------------------------
-def test_api_advanced_features(failures):
+def test_api_advanced_features():
     try:
         r1 = requests.get(f"{API_BASE}/models/{ASSET_TYPE}")
         if r1.status_code == 200:
@@ -172,13 +170,13 @@ def test_api_advanced_features(failures):
         if r3.status_code == 200:
             ok("Model cache refresh endpoint OK")
     except Exception as e:
-        fail(f"Advanced API test failed: {e}", failures)
+        fail(f"Advanced API test failed: {e}")
 
 
 # ----------------------------------------------------------------------------
 # Test: Prediction consistency & latency
 # ----------------------------------------------------------------------------
-def test_prediction_consistency_advanced(failures):
+def test_prediction_consistency_advanced():
     preds = []
     latencies = []
     for _ in range(3):
@@ -204,7 +202,7 @@ def test_prediction_consistency_advanced(failures):
 # ----------------------------------------------------------------------------
 # Test: Log file integrity
 # ----------------------------------------------------------------------------
-def test_recent_log(failures):
+def test_recent_log():
     try:
         with LOG_PATH.open() as f:
             last_line = list(f)[-1]
@@ -216,7 +214,7 @@ def test_recent_log(failures):
         else:
             warn("Log is stale")
     except Exception as e:
-        fail(f"Log test failed: {e}", failures)
+        fail(f"Log test failed: {e}")
 
 
 # ----------------------------------------------------------------------------

@@ -1,0 +1,29 @@
+{
+  "family": "ai-oracle-api-task-v1",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::035754837020:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "ai-oracle-api",
+      "image": "035754837020.dkr.ecr.us-east-1.amazonaws.com/ai-oracle-api:latest",
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "protocol": "tcp"
+        }
+      ],
+      "essential": true
+    }
+  ],
+  "logConfiguration": {
+    "logDriver": "awslogs",
+    "options": {
+      "awslogs-group": "/ecs/ai-oracle-api",
+      "awslogs-region": "us-east-1",
+      "awslogs-stream-prefix": "ecs"
+    }
+  }
+}

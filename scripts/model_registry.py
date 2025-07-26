@@ -106,7 +106,6 @@ def _suggest_similar_models(
     all_tasks = list(MODEL_REGISTRY[at].keys())
     return get_close_matches(task, all_tasks, n=max_suggestions, cutoff=0.6)
 
-
 def _resolve_path(asset_type: str, task: str, fallback_latest: bool = False) -> Path:
     at = _normalize_key(asset_type)
     tk = _normalize_key(task)
