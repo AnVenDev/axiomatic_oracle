@@ -46,34 +46,23 @@ jobs:
             echo "Waiting for API..." && sleep 2
           done
 
-      - name: Run test_logger_utils.py (unit test)
-        run: pytest tests/test_logger_utils.py
+      - name: Run unit tests
+        run: |
+          pytest tests/test_logger_utils.py
+          pytest tests/test_secrets_manager.py
+          pytest tests/test_algorand_utils.py
+          pytest tests/test_model_registry.py
+          pytest tests/test_blockchain_publish.py
+          pytest tests/test_api.py
+          pytest tests/test_sample_property.py
 
-      - name: Run test_secrets_manager.py (unit test)
-        run: pytest tests/test_secrets_manager.py
-
-      - name: Run test_algorand_utils.py (unit test)
-        run: pytest tests/test_algorand_utils.py
-
-      - name: Run test_model_registry.py (unit test)
-        run: pytest tests/test_model_registry.py
-
-      - name: Run test_blockchain_publish.py (unit test)
-        run: pytest tests/test_blockchain_publish.py
-
-      - name: Run test_api.py (unit test)
-        run: pytest tests/test_api.py
-
-      - name: Run test_sample_property.py (unit test)
-        run: pytest tests/test_sample_property.py
-
-      - name: Run test_e2e_sanity_check.py (integration test)
+      - name: Run integration test
         run: python tests/test_e2e_sanity_check.py
 
-    deploy-backend:
-      needs: run-tests
-      runs-on: ubuntu-latest
-      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+  deploy-backend:
+    needs: run-tests
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     env:
       AWS_REGION: us-east-1
