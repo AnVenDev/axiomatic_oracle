@@ -1,0 +1,25 @@
+<div class="dashboard-container">
+  <h1>Dashboard AI Oracle</h1>
+
+  <section class="input-section">
+    <h2>Inserisci asset JSON</h2>
+    <textarea
+      [(ngModel)]="jsonInput"
+      rows="15"
+      placeholder="Incolla qui il tuo JSON di input..."
+    ></textarea>
+
+    <button mat-raised-button color="primary" (click)="sendRequest()">
+      Invia a Oracle
+    </button>
+  </section>
+
+  <section class="output-section" *ngIf="response">
+    <h2>Risultato</h2>
+    <pre>{{ response | json }}</pre>
+
+    <button mat-stroked-button color="accent" (click)="simulatePublish()">
+      Pubblica su Algorand
+    </button>
+  </section>
+</div>

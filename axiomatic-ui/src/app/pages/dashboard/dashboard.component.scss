@@ -1,0 +1,36 @@
+.dashboard-container {
+  padding: 2rem;
+  max-width: 900px;
+  margin: auto;
+
+  h1 {
+    margin-bottom: 2rem;
+    text-align: center;
+  }
+
+  .input-section,
+  .output-section {
+    margin-bottom: 2.5rem;
+
+    textarea {
+      width: 100%;
+      padding: 1rem;
+      font-family: monospace;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      resize: vertical;
+    }
+
+    button {
+      margin-top: 1rem;
+    }
+  }
+
+  pre {
+    background: #f8f8f8;
+    padding: 1rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    overflow: auto;
+  }
+}

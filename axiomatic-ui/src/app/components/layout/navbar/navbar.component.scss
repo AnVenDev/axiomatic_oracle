@@ -1,0 +1,43 @@
+.navbar {
+  padding: 0 1rem;
+  border-bottom: 1px solid black;
+
+  .logo {
+    font-weight: 600;
+    font-size: 1.4rem;
+    cursor: pointer;
+    text-decoration: none;
+    color: black;
+  }
+
+  .spacer {
+    flex: 1 1 auto;
+  }
+
+  .nav-links {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+
+    a {
+      color: black;
+      font-weight: 500;
+      text-decoration: none;
+
+      &.active-link {
+        text-decoration: underline;
+      }
+
+      &:hover {
+        opacity: 0.9;
+      }
+    }
+  }
+}
+
+@media (max-width: 600px) {
+  .nav-links {
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+}

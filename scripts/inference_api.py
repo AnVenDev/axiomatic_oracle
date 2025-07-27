@@ -1,3 +1,4 @@
+
 """
 FastAPI service exposing AI Oracle inference endpoints
 (multi-RWA ready: initial asset_type 'property').
@@ -133,9 +134,7 @@ def build_response(
     if not asset_id:
         asset_id = f"{asset_type}_{uuid.uuid4().hex[:10]}"
 
-    dataset_hash = model_meta.get("dataset_hash_sha256") or model_meta.get(
-        "dataset_hash"
-    )
+    dataset_hash = model_meta.get("dataset_hash_sha256") or model_meta.get("dataset_hash")
     model_hash = None
     model_path_hint = model_meta.get("model_path")
     if model_path_hint:
@@ -143,7 +142,6 @@ def build_response(
         if mp.exists():
             model_hash = hash_file(mp)
 
-    # Base response
     response = {
         "schema_version": SCHEMA_VERSION,
         "asset_id": asset_id,
@@ -163,10 +161,9 @@ def build_response(
     if model_hash:
         response["model_meta"]["model_hash"] = model_hash[:32]
 
-    # Blockchain Integration
     if publish:
         try:
-            result = publish_ai_prediction(response)  # <-- chiama publisher
+            result = publish_ai_prediction(response)
             response["blockchain_txid"] = result["blockchain_txid"]
             response["asa_id"] = result["asa_id"]
             response["publish"] = {
@@ -238,7 +235,6 @@ def predict(
     except (RegistryLookupError, ModelNotFoundError) as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    # Validate compatibility
     expected_features = list(req_obj.model_dump().keys())
     if not validate_model_compatibility(pipeline, expected_features):
         raise HTTPException(status_code=422, detail="Model-input schema mismatch")
@@ -246,12 +242,9 @@ def predict(
     start = time.time()
     df_input = pd.DataFrame([req_obj.model_dump()])
     try:
-        X = pipeline[:-1].transform(df_input)  # trasforma senza predict finale
-        X = pd.DataFrame(
-            X, columns=pipeline[-1].feature_name_
-        )  # fornisci nomi previsti
-        pred = pipeline[-1].predict(X)[0]  # LGBMRegressor
-
+        X = pipeline[:-1].transform(df_input)
+        X = pd.DataFrame(X, columns=pipeline[-1].feature_name_)
+        pred = pipeline[-1].predict(X)[0]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Inference error: {e}")
     latency_ms = (time.time() - start) * 1000
@@ -268,14 +261,12 @@ def predict(
     except Exception as e:
         response["schema_validation_error"] = f"Schema check failed: {e}"[:240]
 
-    log_jsonl(
-        {
-            "event": "prediction",
-            "asset_type": asset_type,
-            "request": req_obj.model_dump(),
-            "response": response,
-        }
-    )
+    log_jsonl({
+        "event": "prediction",
+        "asset_type": asset_type,
+        "request": req_obj.model_dump(),
+        "response": response,
+    })
     return response
 
 
@@ -301,5 +292,4 @@ def model_health(asset_type: str, task: str) -> dict:
 
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run("scripts.inference_api:app", host="127.0.0.1", port=8000, reload=True)
