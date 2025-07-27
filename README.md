@@ -26,13 +26,13 @@ A production-ready, modular AI + Blockchain oracle for **automated valuation and
 graph TB
     A[Client Request] --> B[FastAPI Gateway]
     B --> C{Model Registry}
-    C --> D[ML Model v1.x]
-    C --> E[Fallback Model]
-    D --> F[Inference Engine]
-    F --> G[Result Logger]
-    G --> H[Blockchain Publisher]
-    H --> I[Algorand Network]
-    F --> J[Model TTL Cache]
+    C --> D[Load Model v1.x]
+    C --> E[Fallback Model (if missing)]
+    D --> F[Model TTL Cache (used)]
+    F --> G[Inference Engine]
+    G --> H[Result Logger]
+    H --> I[Blockchain Publisher]
+    I --> J[Algorand Network]
 ```
 
 ## 3. Quick Start
