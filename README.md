@@ -27,10 +27,11 @@ graph TB
     A[Client Request] --> B[FastAPI Gateway]
     B --> C[Model Registry]
     C --> D[Model TTL Cache]
-    D --> E[Inference Engine]
-    E --> F[Result Logger]
-    F --> G[Blockchain Publisher]
-    G --> H[Algorand Network]
+    C --> E[Fallback Model]
+    E --> F[Inference Engine]
+    F --> G[Result Logger]
+    G --> H[Blockchain Publisher]
+    H --> I[Algorand Network]
 ```
 
 ## 3. Quick Start
