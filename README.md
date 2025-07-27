@@ -32,8 +32,7 @@ graph TB
     F --> G[Result Logger]
     G --> H[Blockchain Publisher]
     H --> I[Algorand Network]
-    F --> J[Response Cache]
-    J --> B
+    F --> J[Model TTL Cache]
 ```
 
 ## 3. Quick Start
