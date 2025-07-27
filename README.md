@@ -324,7 +324,7 @@ safety check
 
 ## 14. Contributing
 
-We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md).
+We welcome contributions!
 
 ```bash
 # Code formatting
