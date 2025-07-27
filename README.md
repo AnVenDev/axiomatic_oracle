@@ -223,7 +223,42 @@ spec:
       maxUnavailable: 0
 ```
 
-## 11. Development Roadmap
+## 11. Web Dashboard (Angular + Material UI)
+
+A client-side demo dashboard is under development to interface with the inference API and visualize predictions.
+
+### Stack
+
+- **Framework**: Angular 17+
+- **Styling**: Angular Material + SCSS
+- **API Integration**: `HttpClientModule` (REST to FastAPI)
+- **UI Components**:
+  - `home`: Intro and CTA
+  - `dashboard`: JSON input, inference output, publish button
+  - `logs`: Recent predictions, status, model health
+
+### Planned Features
+
+| Feature                   | Status     |
+|---------------------------|------------|
+| Upload JSON + validate    | ✅ Done     |
+| Display inference result  | ✅ Done     |
+| Publish to Algorand       | 🔄 Planned |
+| Log viewer (from JSONL)   | 🔄 In Progress |
+| Model selector            | 🔲 Optional |
+| Mobile-friendly layout    | ✅ Planned  |
+
+> The dashboard runs at [http://localhost:4200](http://localhost:4200) and connects to FastAPI at `http://localhost:8000`.
+
+### Development
+
+```bash
+cd axiomatic-ui
+npm install
+ng serve
+```
+
+## 12. Development Roadmap
 
 ### Phase 1: Foundation
 - [x] Core ML pipeline
@@ -261,7 +296,7 @@ spec:
 - [ ] Decentralized oracle network
 - [ ] Fractional ownership support
 
-## 12. Testing Strategy
+## 13. Testing Strategy
 
 ```bash
 # Coverage with HTML and XML report
@@ -287,7 +322,7 @@ bandit -r scripts/
 safety check
 ```
 
-## 13. Contributing
+## 14. Contributing
 
 We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md).
 
@@ -303,55 +338,19 @@ mypy scripts/
 flake8 scripts/ tests/
 ```
 
-## 14. License
+## 15. License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 15. Resources
+## 16. Resources
 
 - [Algorand Developer Portal](https://developer.algorand.org/)
 - [FastAPI Documentation](https://fastapi.tiangolo.com/)
 - [API Documentation](http://localhost:8000/docs)
 - [Project Wiki](https://github.com/yourname/ai-oracle-rwa/wiki)
 
-## 16. Support
+## 17. Support
 
 - **Issues**: [GitHub Issues](https://github.com/yourname/ai-oracle-rwa/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/yourname/ai-oracle-rwa/discussions)
 - **Email**: oracle-support@yourdomain.com
-
-
-## 17. Web Dashboard (Angular + Material UI)
-
-A client-side demo dashboard is under development to interface with the inference API and visualize predictions.
-
-### Stack
-
-- **Framework**: Angular 17+
-- **Styling**: Angular Material + SCSS
-- **API Integration**: `HttpClientModule` (REST to FastAPI)
-- **UI Components**:
-  - `home`: Intro and CTA
-  - `dashboard`: JSON input, inference output, publish button
-  - `logs`: Recent predictions, status, model health
-
-### Planned Features
-
-| Feature                   | Status     |
-|---------------------------|------------|
-| Upload JSON + validate    | ✅ Done     |
-| Display inference result  | ✅ Done     |
-| Publish to Algorand       | 🔄 Planned |
-| Log viewer (from JSONL)   | 🔄 In Progress |
-| Model selector            | 🔲 Optional |
-| Mobile-friendly layout    | ✅ Planned  |
-
-> The dashboard runs at [http://localhost:4200](http://localhost:4200) and connects to FastAPI at `http://localhost:8000`.
-
-### Development
-
-```bash
-cd axiomatic-ui
-npm install
-ng serve
-```
