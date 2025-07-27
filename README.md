@@ -27,8 +27,8 @@ graph TB
     A[Client Request] --> B[FastAPI Gateway]
     B --> C{Model Registry}
     C --> D[Load Model v1.x]
-    C --> E[Fallback Model<br/>(if not found)]
-    D & E --> F[Model TTL Cache (used if valid)]
+    C --> E[Fallback Model]
+    D & E --> F[Model TTL Cache]
     F --> G[Inference Engine]
     G --> H[Result Logger]
     H --> I[Blockchain Publisher]
