@@ -28,19 +28,24 @@ graph TB
     B --> B1[Input Validator & Schema Check]
     B1 --> C[Model Registry]
 
-    C --> C1[Model TTL Cache]
-    C1 --> D[Inference Engine]
+    C --> C1{Model Available?}
+    C1 -- Yes --> D1[Load Model v1.x]
+    C1 -- No --> D2[Fallback Model]
 
-    D --> E[Result Logger]
-    E --> F[Blockchain Publisher]
-    F --> G[Algorand Network]
+    D1 --> E[Model TTL Cache]
+    D2 --> E
 
-    %% Monitoring branch
-    D --> M1[Monitoring Service]
-    F --> M1
+    E --> F[Inference Engine]
+    F --> G[Result Logger]
+    G --> H[Blockchain Publisher]
+    H --> I[Algorand Network]
 
-    %% Secrets handling for publisher
-    F --> S[Secrets Manager]
+    %% Monitoring
+    F --> M1[Monitoring Service]
+    H --> M1
+
+    %% Secrets
+    H --> S[Secrets Manager]
 ```
 
 ## 3. Quick Start
