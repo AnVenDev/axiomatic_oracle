@@ -346,11 +346,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - [Algorand Developer Portal](https://developer.algorand.org/)
 - [FastAPI Documentation](https://fastapi.tiangolo.com/)
-- [API Documentation](http://localhost:8000/docs)
-- [Project Wiki](https://github.com/yourname/ai-oracle-rwa/wiki)
 
 ## 17. Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourname/ai-oracle-rwa/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourname/ai-oracle-rwa/discussions)
+- **Issues**: [GitHub Issues](https://github.com/AnVenDev/ai-oracle-rwa/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/AnVenDev/ai-oracle-rwa/discussions)
 - **Email**: oracle-support@yourdomain.com
