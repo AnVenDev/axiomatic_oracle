@@ -8,7 +8,7 @@ A production-ready, modular AI + Blockchain oracle for **automated valuation and
 [![Algorand](https://img.shields.io/badge/Algorand-TestNet-orange.svg)](https://developer.algorand.org/)
 [![Angular](https://img.shields.io/badge/Angular-17-red.svg)](https://angular.io/)
 [![Docker](https://img.shields.io/badge/Docker-ready-blue.svg)](https://www.docker.com/)
-[![CI/CD](https://img.shields.io/github/actions/workflow/status/yourname/ai-oracle-rwa/ci.yml?label=CI%2FCD)](https://github.com/yourname/ai-oracle-rwa/actions)
+[![CI/CD](https://img.shields.io/github/actions/workflow/status/AnVenDev/ai-oracle-rwa/ci.yml?label=CI%2FCD)](https://github.com/AnVenDev/ai-oracle-rwa/actions)
 [![Coverage](https://img.shields.io/badge/coverage-80%25-brightgreen.svg)](#)
 
 ## 1. Key Features
@@ -47,7 +47,7 @@ graph TB
 
 ```bash
 # Clone repository
-git clone https://github.com/yourname/ai-oracle-rwa.git
+git clone https://github.com/AnVenDev/ai-oracle-rwa.git
 cd ai-oracle-rwa
 
 # Set up virtual environment
@@ -355,4 +355,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - **Issues**: [GitHub Issues](https://github.com/AnVenDev/ai-oracle-rwa/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/AnVenDev/ai-oracle-rwa/discussions)
-- **Email**: oracle-support@yourdomain.com
+- **Email**: TBD
