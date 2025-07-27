@@ -37,7 +37,7 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-cov
 
-      - name: Start FastAPI API in background
+      - name: Start FastAPI in background
         run: |
           nohup uvicorn scripts.inference_api:app --host 0.0.0.0 --port 8000 &
           sleep 5
@@ -53,12 +53,12 @@ jobs:
         run: |
           pytest --cov=scripts --cov-fail-under=80 --cov-report=term-missing
 
-      - name: Upload coverage report (optional)
+      - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
-          path: htmlcov/
+          path: .coverage
 
   build-and-push-image:
     needs: run-tests
@@ -97,7 +97,7 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
 
-      - name: Debug SSH Key (temporary)
+      - name: Debug SSH Key
         run: |
           mkdir -p ~/.ssh
           echo "$EC2_SSH_KEY" | tr -d '\r' | sed 's/\\n/\n/g' > ~/.ssh/ai-oracle-key.pem
