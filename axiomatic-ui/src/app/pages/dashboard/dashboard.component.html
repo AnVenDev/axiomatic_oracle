@@ -1,17 +1,31 @@
 <div class="dashboard-container">
-  <h1>AI Oracle dashboard</h1>
+  <h1>DASHBOARD</h1>
 
   <section class="input-section">
-    <h2>Enter asset details in JSON format</h2>
+    <h2>Enter or uplaoad asset details in JSON format</h2>
+    <label for="jsonFileUpload">Upload JSON file:</label>
+    <input
+      id="jsonFileUpload"
+      type="file"
+      (change)="loadFile($event)"
+      accept=".json"
+      style="margin-bottom: 1rem"
+    />
     <textarea
       [(ngModel)]="jsonInput"
       rows="15"
       placeholder="Paste here your JSON input..."
     ></textarea>
 
-    <button mat-raised-button color="primary" (click)="sendRequest()">
+    <button
+      mat-raised-button
+      color="primary"
+      class="btn-primary btn-label"
+      (click)="sendRequest()"
+    >
       Send to Oracle
     </button>
+    <mat-spinner *ngIf="loading" diameter="32"></mat-spinner>
   </section>
 
   <section *ngIf="errorMessage && !response" class="error-section">
@@ -25,8 +39,22 @@
     <h2>Result</h2>
     <pre>{{ response | json }}</pre>
 
-    <button mat-stroked-button color="accent" (click)="simulatePublish()">
+    <button
+      mat-stroked-button
+      color="accent"
+      class="btn-primary btn-label"
+      (click)="simulatePublish()"
+    >
       Publish on Algorand
+    </button>
+    <button
+      mat-stroked-button
+      color="primary"
+      class="btn-primary btn-label"
+      (click)="downloadResponse()"
+      [disabled]="!response"
+    >
+      Download Response
     </button>
   </section>
 </div>

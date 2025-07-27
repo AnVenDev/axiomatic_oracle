@@ -1,0 +1,38 @@
+.dark-theme {
+  --color-bg: #0f1114;
+  --color-surface: #181b1f;
+  --color-primary: #00c2ff;
+  --color-secondary: #2ee5b6;
+  --color-text: #f1f1f1;
+  --color-muted: #a0a0a0;
+  --color-border: #2a2e33;
+
+  html,
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    margin: 0;
+    padding: 0;
+    height: 100%;
+  }
+
+  a {
+    color: var(--color-primary);
+  }
+
+  .mat-card {
+    background-color: var(--color-surface);
+    color: var(--color-text);
+  }
+
+  button.mat-raised-button,
+  button.mat-stroked-button {
+    font-weight: 500;
+    border-radius: 6px;
+  }
+
+  ::selection {
+    background: var(--color-secondary);
+    color: var(--color-bg);
+  }
+}

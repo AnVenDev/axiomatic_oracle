@@ -36,18 +36,21 @@ export class DashboardComponent {
   response: PredictionResponse | any = null;
   errorMessage: string | null = null;
   selectedLog: any = null;
+  loading = false;
 
   constructor(private api: ApiService) {}
 
   sendRequest(): void {
     this.errorMessage = null;
     this.response = null;
+    this.loading = true;
 
     let payload;
     try {
       payload = JSON.parse(this.jsonInput);
     } catch (e) {
-      this.errorMessage = 'Invalid JSON: check syntax.';
+      this.errorMessage = 'Invalid JSON file. Please check syntax.';
+      this.loading = false;
       return;
     }
 
@@ -55,14 +58,52 @@ export class DashboardComponent {
       next: (res) => {
         this.errorMessage = null;
         this.response = res;
+        this.loading = false;
       },
       error: (err: HttpErrorResponse) => {
         const detail = err.error?.detail || err.error || err.message;
         this.errorMessage = this.translateValidationError(detail);
         this.response = null;
+        this.loading = false;
       },
     });
   }
+
+  loadFile(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    if (!input.files?.length) return;
+
+    const file = input.files[0];
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(reader.result as string);
+        this.jsonInput = JSON.stringify(parsed, null, 2); // ✨ stampa nella textarea
+        this.errorMessage = null;
+      } catch (e) {
+        this.errorMessage = 'Invalid JSON file. Please check syntax.';
+      }
+    };
+
+    reader.readAsText(file);
+  }
+
+  downloadResponse(): void {
+    if (!this.response) return;
+    const filename = `${this.response.asset_id || 'response'}.json`;
+    const blob = new Blob([JSON.stringify(this.response, null, 2)], {
+      type: 'application/json',
+    });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  }
+
+  // ERROR TRANSLATIONS
 
   translateValidationError(detail: any): string {
     if (Array.isArray(detail)) {

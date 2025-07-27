@@ -1,20 +1,91 @@
 <div class="home-container">
-  <section class="hero">
-    <h1 class="title">Axiomatic</h1>
-    <h2 class="subtitle">Algorand-Powered AI Oracle for Real-World Assets</h2>
-    <p class="description">
-      Un sistema AI che valuta e certifica asset reali come immobili, opere
-      d'arte e componenti industriali. Affidabile, estendibile e connesso alla
-      blockchain.
+  <section class="hero-section">
+    <mat-card class="hero-card mat-elevation-z6">
+      <div class="logo-row">
+        <img src="logo.png" alt="Axiomatic Logo" class="hero-logo" />
+        <h1 class="brand-title">Axiomatic</h1>
+      </div>
+
+      <h2 class="brand-subtitle">
+        Algorand-Powered AI Oracle for Real-World Assets
+      </h2>
+
+      <p class="description">
+        Certifica e valorizza immobili, opere d’arte e asset industriali con AI.
+        Pubblica in modo trasparente su blockchain. Affidabile, estendibile,
+        scalabile.
+      </p>
+
+      <div class="badge-row">
+        <span class="badge">Multi-RWA</span>
+        <span class="badge">Blockchain Verified</span>
+        <span class="badge">AI Model Registry</span>
+      </div>
+
+      <div class="cta-row">
+        <button
+          mat-raised-button
+          color="primary"
+          (click)="goToDashboard()"
+          class="btn-primary btn-label"
+        >
+          Vai alla Dashboard
+        </button>
+        <button
+          mat-stroked-button
+          color="accent"
+          class="btn-secondary btn-label"
+        >
+          Scopri di più
+        </button>
+      </div>
+    </mat-card>
+  </section>
+
+  <section class="sections">
+    <h3>🔍 Come funziona</h3>
+    <p>
+      1. Inserisci i dati di un asset reale → 2. Il modello AI genera stime e
+      flag → 3. I risultati vengono pubblicati (opzionalmente) su Algorand.
     </p>
-    <a
+
+    <h3>Chi può usarlo?</h3>
+    <ul>
+      <li>Piattaforme di tokenizzazione immobiliare</li>
+      <li>Marketplace di opere d’arte e collezionismo</li>
+      <li>Sistemi di audit e certificazione industriale</li>
+      <li>Oracoli DeFi e infrastrutture DAO</li>
+    </ul>
+
+    <h3>Feature principali</h3>
+    <ul>
+      <li>AI explainability + confidence intervals</li>
+      <li>Monitoraggio delle anomalie e del drift</li>
+      <li>Registro dei modelli con fallback intelligente</li>
+      <li>Pubblicazione su Algorand TestNet/MainNet</li>
+    </ul>
+
+    <h3>Domande frequenti (FAQ)</h3>
+    <p>
+      <strong>Quali asset supporta?</strong> Inizia con immobili, ma è
+      estendibile a ogni tipo di RWA.
+    </p>
+    <p><strong>È open-source?</strong> Sì! Trovi tutto su GitHub.</p>
+    <p>
+      <strong>È già integrabile?</strong> Può essere integrato via REST API. In
+      futuro: smart contract + IPFS.
+    </p>
+
+    <h3>Demo live</h3>
+    <p>Testa una valutazione direttamente nella <strong>Dashboard</strong>.</p>
+    <button
       mat-raised-button
       color="primary"
-      routerLink="/dashboard"
-      class="cta-button"
+      (click)="goToDashboard()"
+      class="btn-primary btn-label"
     >
-      Accedi alla Dashboard
-    </a>
+      Apri la Demo
+    </button>
   </section>
 
   <footer class="footer">

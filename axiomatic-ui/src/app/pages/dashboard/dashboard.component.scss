@@ -1,11 +1,29 @@
 .dashboard-container {
   padding: 2rem;
-  max-width: 900px;
+  max-width: 960px;
   margin: auto;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: 0 0 8px rgba(0, 194, 255, 0.08);
 
   h1 {
     margin-bottom: 2rem;
     text-align: center;
+    color: var(--color-primary);
+    font-size: 2rem;
+    font-weight: 600;
+  }
+
+  h2 {
+    color: var(--color-text);
+    font-size: 1.2rem;
+    margin-bottom: 0.5rem;
+  }
+
+  label {
+    color: var(--color-muted);
+    font-size: 0.95rem;
   }
 
   .input-section,
@@ -14,11 +32,20 @@
 
     textarea {
       width: 100%;
-      padding: 1rem;
+      background-color: var(--color-bg);
+      color: var(--color-text);
       font-family: monospace;
-      border: 1px solid #ccc;
-      border-radius: 4px;
+      font-size: 0.95rem;
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
       resize: vertical;
+      min-height: 280px;
+    }
+
+    input[type="file"] {
+      display: block;
+      margin: 0.5rem 0 1rem;
+      color: var(--color-text);
     }
 
     button {
@@ -27,10 +54,50 @@
   }
 
   pre {
-    background: #f8f8f8;
+    background: var(--color-bg);
+    color: var(--color-text);
     padding: 1rem;
-    border: 1px solid #ddd;
-    border-radius: 4px;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
     overflow: auto;
+    font-size: 0.9rem;
+  }
+
+  .error-card {
+    background-color: #2d2d2d;
+    border-left: 4px solid red;
+    padding: 1rem;
+    border-radius: 8px;
+    color: #ffaaaa;
+  }
+
+  // Button styles (reimportati anche qui se non globali)
+  .btn-primary {
+    background-color: var(--color-primary);
+    color: var(--color-bg);
+    font-weight: 600;
+    border-radius: 999px;
+    padding: 0.6rem 1.6rem;
+    font-size: 0.95rem;
+    text-transform: none;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+
+    &:hover {
+      background-color: rgba(0, 194, 255, 0.85);
+      box-shadow: 0 0 8px rgba(0, 194, 255, 0.3);
+    }
+
+    &:disabled {
+      background-color: var(--color-border);
+      color: var(--color-muted);
+      cursor: not-allowed;
+    }
+  }
+
+  .btn-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-right: 1rem;
   }
 }
