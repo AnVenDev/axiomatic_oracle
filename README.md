@@ -7,7 +7,7 @@ A production-ready, modular AI + Blockchain oracle for **automated valuation and
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com/)
 [![Algorand](https://img.shields.io/badge/Algorand-TestNet-orange.svg)](https://developer.algorand.org/)
 
-## Key Features
+## 1. Key Features
 
 - **AI-Powered Valuation**: Machine learning models for accurate asset valuation with confidence intervals
 - **Blockchain Certification**: Cryptographically signed results published to Algorand blockchain
@@ -16,7 +16,7 @@ A production-ready, modular AI + Blockchain oracle for **automated valuation and
 - **Enterprise Security**: JWT auth, rate limiting, and encryption-at-rest (planned)
 - **Scalable Architecture**: Kubernetes-ready, horizontally scalable, with Redis caching
 
-## System Architecture
+## 2. System Architecture
 
 ```mermaid
 graph TB
@@ -32,7 +32,7 @@ graph TB
     J --> B
 ```
 
-## Quick Start
+## 3. Quick Start
 
 ### Prerequisites
 - Python 3.8+
@@ -75,7 +75,7 @@ docker build -t ai-oracle-rwa .
 docker run -p 8000:8000 --env-file .env ai-oracle-rwa
 ```
 
-## API Documentation
+## 4. API Documentation
 
 ### Endpoints
 
@@ -129,7 +129,7 @@ curl -X POST "http://localhost:8000/predict" \
 }
 ```
 
-## Performance Benchmarks
+## 5. Performance Benchmarks
 
 | Metric | Current | Target | Status |
 |--------|---------|--------|---------|
@@ -139,7 +139,7 @@ curl -X POST "http://localhost:8000/predict" \
 | API Uptime | 99.5% | 99.9% | 🟢 On Track |
 | Blockchain Success Rate | 98% | 99.5% | 🟢 Stable |
 
-## Multi-Asset Support
+## 6. Multi-Asset Support
 
 The oracle framework is designed to support multiple asset types with pluggable models and schemas:
 
@@ -150,7 +150,7 @@ The oracle framework is designed to support multiple asset types with pluggable 
 | **Agriculture** | temp, humidity, CO₂, soil quality | Yield prediction, health monitoring | Planned |
 | **Vehicle** | mileage, emissions, maintenance history | Condition assessment, pricing | Planned |
 
-## Security & Compliance
+## 7. Security & Compliance
 
 ### Implemented
 - [x] Environment-based secrets management
@@ -165,7 +165,7 @@ The oracle framework is designed to support multiple asset types with pluggable 
 - [ ] GDPR compliance tools
 - [ ] Audit logging with tamper detection
 
-## Model Lifecycle Management
+## 8. Model Lifecycle Management
 
 ### Versioning Strategy
 - **Semantic Versioning**: `major.minor.patch` (e.g., v1.2.3)
@@ -182,7 +182,7 @@ model_weights = {
 }
 ```
 
-## Monitoring & Observability
+## 9. Monitoring & Observability
 
 ### Metrics Collection
 - **Application Metrics**: Prometheus-compatible
@@ -202,7 +202,7 @@ model_weights = {
 }
 ```
 
-## Deployment Architecture
+## 10. Deployment Architecture
 
 ### Cloud Provider Support
 - **AWS**: ECS/EKS with Application Load Balancer
@@ -223,7 +223,7 @@ spec:
       maxUnavailable: 0
 ```
 
-## Development Roadmap
+## 11. Development Roadmap
 
 ### Phase 1: Foundation
 - [x] Core ML pipeline
@@ -261,7 +261,7 @@ spec:
 - [ ] Decentralized oracle network
 - [ ] Fractional ownership support
 
-## Testing Strategy
+## 12. Testing Strategy
 
 ```bash
 # Unit tests
@@ -281,7 +281,7 @@ bandit -r scripts/
 safety check
 ```
 
-## Contributing
+## 13. Contributing
 
 We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md).
 
@@ -297,18 +297,18 @@ mypy scripts/
 flake8 scripts/ tests/
 ```
 
-## License
+## 14. License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Resources
+## 15. Resources
 
 - [Algorand Developer Portal](https://developer.algorand.org/)
 - [FastAPI Documentation](https://fastapi.tiangolo.com/)
 - [API Documentation](http://localhost:8000/docs)
 - [Project Wiki](https://github.com/yourname/ai-oracle-rwa/wiki)
 
-## Support
+## 16. Support
 
 - **Issues**: [GitHub Issues](https://github.com/yourname/ai-oracle-rwa/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/yourname/ai-oracle-rwa/discussions)
