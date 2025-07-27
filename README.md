@@ -25,13 +25,22 @@ A production-ready, modular AI + Blockchain oracle for **automated valuation and
 ```mermaid
 graph TB
     A[Client Request] --> B[FastAPI Gateway]
-    B --> C[Model Registry]
-    C --> D[Fallback Model]
-    C --> E[Model TTL Cache]
-    E --> F[Inference Engine]
-    F --> G[Result Logger]
-    G --> H[Blockchain Publisher]
-    H --> I[Algorand Network]
+    B --> B1[Input Validator & Schema Check]
+    B1 --> C[Model Registry]
+
+    C --> C1[Model TTL Cache]
+    C1 --> D[Inference Engine]
+
+    D --> E[Result Logger]
+    E --> F[Blockchain Publisher]
+    F --> G[Algorand Network]
+
+    %% Monitoring branch
+    D --> M1[Monitoring Service]
+    F --> M1
+
+    %% Secrets handling for publisher
+    F --> S[Secrets Manager]
 ```
 
 ## 3. Quick Start
