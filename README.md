@@ -6,6 +6,10 @@ A production-ready, modular AI + Blockchain oracle for **automated valuation and
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com/)
 [![Algorand](https://img.shields.io/badge/Algorand-TestNet-orange.svg)](https://developer.algorand.org/)
+[![Angular](https://img.shields.io/badge/Angular-17-red.svg)](https://angular.io/)
+[![Docker](https://img.shields.io/badge/Docker-ready-blue.svg)](https://www.docker.com/)
+[![CI/CD](https://img.shields.io/github/actions/workflow/status/yourname/ai-oracle-rwa/ci.yml?label=CI%2FCD)](https://github.com/yourname/ai-oracle-rwa/actions)
+[![Coverage](https://img.shields.io/badge/coverage-80%25-brightgreen.svg)](#)
 
 ## 1. Key Features
 
