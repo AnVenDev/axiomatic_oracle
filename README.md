@@ -1,4 +1,4 @@
-# 🧠 AI Oracle for Real-World Assets (RWA) — Powered by Algorand
+# AI Oracle for Real-World Assets (RWA) — Powered by Algorand
 
 A production-ready, modular AI + Blockchain oracle for **automated valuation and certification of Real-World Assets** (RWA). Starting with real estate and designed to scale across multiple asset classes including art, logistics, agriculture, and energy.
 
@@ -7,16 +7,16 @@ A production-ready, modular AI + Blockchain oracle for **automated valuation and
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com/)
 [![Algorand](https://img.shields.io/badge/Algorand-TestNet-orange.svg)](https://developer.algorand.org/)
 
-## 🎯 Key Features
+## 1. Key Features
 
-- **🤖 AI-Powered Valuation**: Machine learning models for accurate asset valuation with confidence intervals
-- **🔗 Blockchain Certification**: Cryptographically signed results published to Algorand blockchain
-- **📊 Comprehensive Monitoring**: Full audit trail with JSONL logging and performance metrics
-- **🚀 Production-Ready API**: FastAPI with schema validation, health checks, and monitoring endpoints
-- **🔐 Enterprise Security**: JWT auth, rate limiting, and encryption-at-rest (planned)
-- **📈 Scalable Architecture**: Kubernetes-ready, horizontally scalable, with Redis caching
+- **AI-Powered Valuation**: Machine learning models for accurate asset valuation with confidence intervals
+- **Blockchain Certification**: Cryptographically signed results published to Algorand blockchain
+- **Comprehensive Monitoring**: Full audit trail with JSONL logging and performance metrics
+- **Production-Ready API**: FastAPI with schema validation, health checks, and monitoring endpoints
+- **Enterprise Security**: JWT auth, rate limiting, and encryption-at-rest (planned)
+- **Scalable Architecture**: Kubernetes-ready, horizontally scalable, with Redis caching
 
-## 🏗️ System Architecture
+## 2. System Architecture
 
 ```mermaid
 graph TB
@@ -32,7 +32,7 @@ graph TB
     J --> B
 ```
 
-## 🚀 Quick Start
+## 3. Quick Start
 
 ### Prerequisites
 - Python 3.8+
@@ -75,7 +75,7 @@ docker build -t ai-oracle-rwa .
 docker run -p 8000:8000 --env-file .env ai-oracle-rwa
 ```
 
-## 📚 API Documentation
+## 4. API Documentation
 
 ### Endpoints
 
@@ -129,7 +129,7 @@ curl -X POST "http://localhost:8000/predict" \
 }
 ```
 
-## 📊 Performance Benchmarks
+## 5. Performance Benchmarks
 
 | Metric | Current | Target | Status |
 |--------|---------|--------|---------|
@@ -139,33 +139,33 @@ curl -X POST "http://localhost:8000/predict" \
 | API Uptime | 99.5% | 99.9% | 🟢 On Track |
 | Blockchain Success Rate | 98% | 99.5% | 🟢 Stable |
 
-## 🌍 Multi-Asset Support
+## 6. Multi-Asset Support
 
 The oracle framework is designed to support multiple asset types with pluggable models and schemas:
 
 | Asset Type | Features | Use Cases | Status |
 |------------|----------|-----------|---------|
-| 🏠 **Property** | size, location, humidity, energy class | Valuation, risk assessment | ✅ Live |
-| 🎨 **Art** | medium, artist, condition, provenance | Authentication, valuation | 🔄 Phase 5 |
-| 🌱 **Agriculture** | temp, humidity, CO₂, soil quality | Yield prediction, health monitoring | 📋 Planned |
-| 🚗 **Vehicle** | mileage, emissions, maintenance history | Condition assessment, pricing | 📋 Planned |
+| **Property** | size, location, humidity, energy class | Valuation, risk assessment | Live |
+| **Art** | medium, artist, condition, provenance | Authentication, valuation | Phase 5 |
+| **Agriculture** | temp, humidity, CO₂, soil quality | Yield prediction, health monitoring | Planned |
+| **Vehicle** | mileage, emissions, maintenance history | Condition assessment, pricing | Planned |
 
-## 🔒 Security & Compliance
+## 7. Security & Compliance
 
 ### Implemented
-- ✅ Environment-based secrets management
-- ✅ Input validation and sanitization
-- ✅ HTTPS-only communication
-- ✅ Comprehensive error handling
+- [x] Environment-based secrets management
+- [x] Input validation and sanitization
+- [x] HTTPS-only communication
+- [x] Comprehensive error handling
 
 ### Planned (Phase 2)
-- 🔄 JWT-based authentication
-- 🔄 API rate limiting (via `slowapi`)
-- 🔄 Model encryption at rest
-- 🔄 GDPR compliance tools
-- 🔄 Audit logging with tamper detection
+- [ ] JWT-based authentication
+- [ ] API rate limiting (via `slowapi`)
+- [ ] Model encryption at rest
+- [ ] GDPR compliance tools
+- [ ] Audit logging with tamper detection
 
-## 🔄 Model Lifecycle Management
+## 8. Model Lifecycle Management
 
 ### Versioning Strategy
 - **Semantic Versioning**: `major.minor.patch` (e.g., v1.2.3)
@@ -182,7 +182,7 @@ model_weights = {
 }
 ```
 
-## 📈 Monitoring & Observability
+## 9. Monitoring & Observability
 
 ### Metrics Collection
 - **Application Metrics**: Prometheus-compatible
@@ -202,12 +202,10 @@ model_weights = {
 }
 ```
 
-## 🚢 Deployment Architecture
+## 10. Deployment Architecture
 
 ### Cloud Provider Support
 - **AWS**: ECS/EKS with Application Load Balancer
-- **GCP**: Cloud Run with Cloud Load Balancing
-- **Azure**: Container Instances with Application Gateway
 
 ### Infrastructure as Code
 ```yaml
@@ -225,45 +223,45 @@ spec:
       maxUnavailable: 0
 ```
 
-## 🛠️ Development Roadmap
+## 11. Development Roadmap
 
-### Phase 1: Foundation ✅
+### Phase 1: Foundation
 - [x] Core ML pipeline
 - [x] FastAPI integration
 - [x] Basic Algorand publishing
-- [ ] 80% test coverage
+- [x] 80% test coverage
 
-### Phase 2: Production Hardening 🔄
+### Phase 2: Production Hardening
+- [x] CI/CD pipeline with GitHub Actions
 - [ ] Authentication & authorization
 - [ ] Rate limiting & DDoS protection
-- [ ] CI/CD pipeline with GitHub Actions
 - [ ] Automated security scanning
 
-### Phase 3: Observability 📋
+### Phase 3: Observability
 - [ ] Prometheus metrics export
 - [ ] Grafana dashboards
 - [ ] Distributed tracing
 - [ ] SLA monitoring
 
-### Phase 4: User Interface 📋
+### Phase 4: User Interface
 - [ ] Web dashboard
 - [ ] Batch processing UI
 - [ ] Historical analysis tools
 - [ ] Admin panel
 
-### Phase 5: Multi-Asset Expansion 📋
+### Phase 5: Multi-Asset Expansion
 - [ ] Art valuation models
 - [ ] Agricultural monitoring
 - [ ] Vehicle assessment
 - [ ] Dynamic schema validation
 
-### Phase 6: Advanced Features 📋
+### Phase 6: Advanced Features
 - [ ] PyTEAL smart contracts
 - [ ] Cross-chain bridges
 - [ ] Decentralized oracle network
 - [ ] Fractional ownership support
 
-## 🧪 Testing Strategy
+## 12. Testing Strategy
 
 ```bash
 # Unit tests
@@ -283,7 +281,7 @@ bandit -r scripts/
 safety check
 ```
 
-## 🤝 Contributing
+## 13. Contributing
 
 We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md).
 
@@ -299,25 +297,19 @@ mypy scripts/
 flake8 scripts/ tests/
 ```
 
-## 📄 License
+## 14. License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🔗 Resources
+## 15. Resources
 
 - [Algorand Developer Portal](https://developer.algorand.org/)
 - [FastAPI Documentation](https://fastapi.tiangolo.com/)
 - [API Documentation](http://localhost:8000/docs)
 - [Project Wiki](https://github.com/yourname/ai-oracle-rwa/wiki)
 
-## 📞 Support
+## 16. Support
 
 - **Issues**: [GitHub Issues](https://github.com/yourname/ai-oracle-rwa/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/yourname/ai-oracle-rwa/discussions)
 - **Email**: oracle-support@yourdomain.com
-
----
-
-<p align="center">
-  Built with ❤️ for the decentralized future of Real-World Assets
-</p>
