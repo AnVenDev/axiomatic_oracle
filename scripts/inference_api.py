@@ -18,10 +18,9 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import pandas as pd
-from fastapi import Body, FastAPI, HTTPException, Query
-from fastapi import Path as FPath
-from jsonschema import ValidationError
-from jsonschema import validate as jsonschema_validate
+from fastapi import Body, FastAPI, HTTPException, Query, Path as FPath
+from fastapi.middleware.cors import CORSMiddleware
+from jsonschema import ValidationError, validate as jsonschema_validate
 from pydantic import BaseModel, Field, model_validator
 
 from scripts.blockchain_publisher import publish_ai_prediction
@@ -186,6 +185,13 @@ app = FastAPI(
     description="Inference service for multi-RWA asset valuation (initial: property).",
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], 
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/health")
 def health() -> dict:
@@ -278,7 +284,6 @@ def list_models(asset_type: str) -> dict:
         "discovered_models": [p.name for p in discover_models_for_asset(asset_type)],
     }
 
-
 @app.post("/models/{asset_type}/{task}/refresh")
 def refresh_model_cache(asset_type: str, task: str) -> dict:
     refresh_cache(asset_type, task)
@@ -289,6 +294,37 @@ def refresh_model_cache(asset_type: str, task: str) -> dict:
 def model_health(asset_type: str, task: str) -> dict:
     return health_check_model(asset_type, task)
 
+@app.get("/logs/api")
+def get_api_logs() -> list[dict]:
+    try:
+        with LOG_PATH.open("r", encoding="utf-8") as f:
+            lines = [json.loads(line) for line in f if line.strip()]
+        return lines
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Log read error: {e}")
+    
+@app.get("/logs/published")
+def get_published_assets():
+    try:
+        with open("logs/published_assets.json", "r") as f:
+            return json.load(f)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Read error: {e}")
+
+@app.get("/logs/detail_reports")
+def get_detail_reports():
+    import os
+    from glob import glob
+
+    files = glob("logs/detail_reports/*.json")
+    reports = []
+    for file in files:
+        try:
+            with open(file, "r") as f:
+                reports.append(json.load(f))
+        except:
+            continue
+    return reports
 
 if __name__ == "__main__":
     import uvicorn
