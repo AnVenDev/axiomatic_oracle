@@ -37,6 +37,8 @@ export class DashboardComponent {
   errorMessage: string | null = null;
   selectedLog: any = null;
   loading = false;
+  publishing = false;
+  txId: string | null = null;
 
   constructor(private api: ApiService) {}
 
@@ -299,4 +301,31 @@ export class DashboardComponent {
   simulatePublish(): void {
     alert('Publishing Simulated');
   }
+
+  publishToBlockchain(): void {
+    // TODO: change to real publish depending on a true/false button
+    if (!this.response) return;
+
+    this.publishing = true;
+
+    setTimeout(() => {
+      this.txId = 'SAMPLE_TXID_' + Math.floor(Math.random() * 1000000);
+      this.publishing = false;
+    }, 2000);
+  }
+
+  getExplorerUrl(txId: string): string {
+    return `https://testnet.peraexplorer.com/tx/${txId}`;
+  }
+
+  getConfidenceInterval(value: number, mae: number): [number, number] {
+    const lower = Math.max(0, (value - mae) * 1000);
+    const upper = (value + mae) * 1000;
+    return [lower, upper];
+  }
+
+  // TODO:
+  // 1. Toast/alert for publishes and oracle uploads
+  // 2. Show txId when publishes for real
+  // 3. Add interactive graphs
 }

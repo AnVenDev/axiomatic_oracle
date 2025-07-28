@@ -1,4 +1,4 @@
-@import "./styles/theme-dark.scss";
+@use "./styles/theme-dark.scss" as *;
 
 html,
 body {

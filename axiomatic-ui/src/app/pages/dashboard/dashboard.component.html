@@ -2,7 +2,7 @@
   <h1>DASHBOARD</h1>
 
   <section class="input-section">
-    <h2>Enter or uplaoad asset details in JSON format</h2>
+    <h2>Enter or upload asset details in JSON format</h2>
     <label for="jsonFileUpload">Upload JSON file:</label>
     <input
       id="jsonFileUpload"
@@ -17,15 +17,18 @@
       placeholder="Paste here your JSON input..."
     ></textarea>
 
-    <button
-      mat-raised-button
-      color="primary"
-      class="btn-primary btn-label"
-      (click)="sendRequest()"
-    >
-      Send to Oracle
-    </button>
-    <mat-spinner *ngIf="loading" diameter="32"></mat-spinner>
+    <div class="cta-row">
+      <button
+        mat-raised-button
+        color="primary"
+        class="btn-primary"
+        (click)="sendRequest()"
+      >
+        Send to Oracle
+      </button>
+
+      <mat-spinner *ngIf="loading" diameter="32"></mat-spinner>
+    </div>
   </section>
 
   <section *ngIf="errorMessage && !response" class="error-section">
@@ -36,25 +39,70 @@
   </section>
 
   <section class="output-section" *ngIf="response && !errorMessage">
-    <h2>Result</h2>
-    <pre>{{ response | json }}</pre>
+    <h2 class="output-title">Valutazione AI:</h2>
 
-    <button
-      mat-stroked-button
-      color="accent"
-      class="btn-primary btn-label"
-      (click)="simulatePublish()"
+    <p>
+      <strong>Esteemed value:</strong>
+      {{ response.metrics?.valuation_base_k * 1000 | currency : "EUR" }}
+    </p>
+
+    <p
+      *ngIf="
+        response?.metrics?.valuation_base_k &&
+        response?.model_health?.metrics?.mae_k
+      "
     >
-      Publish on Algorand
-    </button>
-    <button
-      mat-stroked-button
-      color="primary"
-      class="btn-primary btn-label"
-      (click)="downloadResponse()"
-      [disabled]="!response"
-    >
-      Download Response
-    </button>
+      <strong>Confidence (± MAE):</strong>
+      {{
+        getConfidenceInterval(
+          response.metrics.valuation_base_k,
+          response.model_health.metrics.mae_k
+        )[0] | currency : "EUR"
+      }}
+      –
+      {{
+        getConfidenceInterval(
+          response.metrics.valuation_base_k,
+          response.model_health.metrics.mae_k
+        )[1] | currency : "EUR"
+      }}
+    </p>
+
+    <p>
+      <strong>Model:</strong>
+      {{ response.model_meta?.value_model_name }} (v{{
+        response.model_meta?.value_model_version
+      }})
+    </p>
+
+    <p>
+      <strong>State:</strong>
+      {{ response.model_health?.status }}
+    </p>
+
+    <p *ngIf="txId">
+      <strong>Transaction ID:</strong>
+      <a [href]="getExplorerUrl(txId)" target="_blank">{{ txId }}</a>
+    </p>
+
+    <div class="cta-row">
+      <button
+        mat-stroked-button
+        color="accent"
+        class="btn-primary btn-label"
+        (click)="publishToBlockchain()"
+      >
+        Publish on Algorand
+      </button>
+      <button
+        mat-stroked-button
+        color="primary"
+        class="btn-primary btn-label"
+        (click)="downloadResponse()"
+        [disabled]="!response"
+      >
+        Download Response
+      </button>
+    </div>
   </section>
 </div>

@@ -19,3 +19,6 @@ import { MatIconModule } from '@angular/material/icon';
   styleUrls: ['./navbar.component.scss'],
 })
 export class NavbarComponent {}
+
+// TODO:
+// 1. Use responsive SCSS
