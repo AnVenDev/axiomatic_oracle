@@ -30,12 +30,12 @@ jobs:
           pip install -r requirements.txt
           pip install jupyter pandas pyarrow tqdm
 
-      - name: Execute 01_generate_dataset notebook
+      - name: Execute generate_dataset_01 notebook
         run: |
           jupyter nbconvert \
             --to notebook \
-            --execute notebooks/01_generate_dataset.ipynb \
-            --output executed_01_generate_dataset.ipynb \
+            --execute notebooks/generate_dataset_01.ipynb \
+            --output executed_generate_dataset_01.ipynb \
             --ExecutePreprocessor.timeout=600
 
       - name: Check data output
