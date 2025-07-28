@@ -38,6 +38,17 @@ jobs:
             --output executed_01_generate_dataset.ipynb \
             --ExecutePreprocessor.timeout=600
 
+      - name: Check data output
+        run: |
+          ls -l data/
+          test -f data/df_cleaned_no_outliers.csv
+
+      - name: Upload cleaned dataset
+        uses: actions/upload-artifact@v4
+        with:
+          name: cleaned-dataset
+          path: data/**
+
       - name: Upload data quality report
         uses: actions/upload-artifact@v4
         with:
@@ -80,28 +91,22 @@ jobs:
           )
           logging.basicConfig(level=logging.INFO)
 
-          # Assertions
           assert mae < 100, f"MAE troppo alto: {mae}"
           assert coverage >= 0.85, f"Coverage interval troppo basso: {coverage:.2%}"
 
-          # Save model
           joblib.dump(final_model, 'models/final_model.pkl')
 
-          # Prediction intervals
           q_models = train_quantile_models(X_train, y_train, preprocessor=final_model.named_steps['preprocessor'], quantiles=[0.05,0.5,0.95])
           intervals = predict_with_intervals(q_models, X_test)
           intervals.to_csv('models/prediction_intervals.csv', index=False)
 
-          # Monitoring metadata
           monitoring = generate_model_monitoring_metadata(final_model, X_train, y_train, X_test, y_test)
           with open('models/monitoring_metadata.json','w') as f:
               json.dump(monitoring, f, indent=2)
 
-          # SHAP explainability
           shap_imp = generate_shap_explanations(final_model, X_test, sample_size=100)
           shap_imp.to_csv('models/shap_importance.csv', index=False)
 
-          # Model metadata JSON
           metadata = {
             'mae': mae, 'rmse': rmse, 'r2': r2,
             'coverage': coverage, 'avg_interval_width': avg_width
@@ -114,7 +119,7 @@ jobs:
 
       - name: Run unit tests & coverage
         run: |
-          pytest --maxfail=1 --disable-warnings --cov=notebooks --cov-fail-under=80
+          pytest --maxfail=1 --disable-warnings --cov=scripts --cov-fail-under=80
 
       - name: Upload model artifacts
         uses: actions/upload-artifact@v4
