@@ -1,3 +1,4 @@
+
 """
 FastAPI service exposing AI Oracle inference endpoints
 (multi-RWA ready: initial asset_type 'property').
@@ -17,7 +18,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import pandas as pd
-from fastapi import Body, FastAPI, HTTPException, Query, APIRouter, Path as FPath
+from fastapi import Body, FastAPI, HTTPException, Query, Path as FPath
 from fastapi.middleware.cors import CORSMiddleware
 from jsonschema import ValidationError, validate as jsonschema_validate
 from pydantic import BaseModel, Field, model_validator
@@ -98,9 +99,7 @@ class PropertyPredictRequest(BaseModel):
             )
         return self
 
-
 REQUEST_MODELS: Dict[str, Any] = {"property": PropertyPredictRequest}
-
 
 # -----------------------------------------------------------------------------
 # Helpers
@@ -132,9 +131,7 @@ def build_response(
     if not asset_id:
         asset_id = f"{asset_type}_{uuid.uuid4().hex[:10]}"
 
-    dataset_hash = model_meta.get("dataset_hash_sha256") or model_meta.get(
-        "dataset_hash"
-    )
+    dataset_hash = model_meta.get("dataset_hash_sha256") or model_meta.get("dataset_hash")
     model_hash = None
     model_path_hint = model_meta.get("model_path")
     if model_path_hint:
@@ -188,12 +185,11 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 @app.get("/health")
 def health() -> dict:
@@ -212,18 +208,12 @@ def health() -> dict:
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
-router = APIRouter()
-
-# Path per il log JSON‑lines
-LOG_PATH = Path("data/api_inference_log.jsonl")
-LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 @app.post("/predict/{asset_type}")
-@router.post("/predict/{asset_type}")
 def predict(
-    asset_type: str = FPath(..., description="Type of asset to predict"),
-    publish: bool = Query(False, description="Whether to publish the result"),
-    payload: dict = Body(..., description="Payload with feature values"),
+    asset_type: str = FPath(...),
+    publish: bool = Query(False),
+    payload: dict = Body(...),
 ) -> dict:
     asset_type = asset_type.lower()
     if asset_type not in REQUEST_MODELS:
@@ -231,80 +221,56 @@ def predict(
             status_code=400, detail=f"Unsupported asset_type: {asset_type}"
         )
 
-    # 1) Validazione e parsing del payload
     ModelCls = REQUEST_MODELS[asset_type]
     try:
         req_obj = ModelCls(**payload)
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Invalid payload: {e}")
 
-    # 2) Recupero pipeline e metadata da registry
     try:
         pipeline = get_pipeline(asset_type, "value_regressor", fallback_latest=True)
         raw_meta = get_model_metadata(
             asset_type, "value_regressor", fallback_latest=True
-        ) or {}
+        )
+        meta = raw_meta if raw_meta else {}
         health = health_check_model(asset_type, "value_regressor")
         if health["status"] != "healthy":
             raise HTTPException(status_code=503, detail=health["error"])
     except (RegistryLookupError, ModelNotFoundError) as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    # 3) Controllo compatibilità schema
     expected_features = list(req_obj.model_dump().keys())
     if not validate_model_compatibility(pipeline, expected_features):
         raise HTTPException(status_code=422, detail="Model-input schema mismatch")
 
-    # 4) Costruzione DataFrame e derivazioni
-    df_input = pd.DataFrame([req_obj.model_dump()])
-    # auto-derive age_years se manca
-    if "age_years" not in df_input and "year_built" in df_input:
-        df_input["age_years"] = datetime.utcnow().year - df_input["year_built"]
-
-    # 5) Transform & predict
     start = time.time()
+    df_input = pd.DataFrame([req_obj.model_dump()])
     try:
-        preprocessor = pipeline.named_steps["preprocessor"]
-        # estrai feature names originali da preprocessor
-        cat_cols = preprocessor.transformers_[0][2]
-        num_cols = preprocessor.transformers_[1][2]
-        # trasforma
-        X_num = df_input[num_cols]
-        X_cat = df_input[cat_cols]
-        X_trans = preprocessor.transform(pd.concat([X_cat, X_num], axis=1))
-        # ricava i nomi encoded
-        ohe = preprocessor.named_transformers_["cat"]
-        encoded_cat = list(ohe.get_feature_names_out(cat_cols))
-        feature_names = num_cols + encoded_cat
-        X = pd.DataFrame(X_trans, columns=feature_names)
-        # predizione
-        pred = pipeline.named_steps["regressor"].predict(X)[0]
+        X = pipeline[:-1].transform(df_input)
+        X = pd.DataFrame(X, columns=pipeline[-1].feature_name_)
+        pred = pipeline[-1].predict(X)[0]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Inference error: {e}")
-    latency_ms = round((time.time() - start) * 1000, 2)
+    latency_ms = (time.time() - start) * 1000
 
-    # 6) Costruisci risposta
-    response = build_response(asset_type, pred, raw_meta, publish)
-    response["metrics"]["latency_ms"] = latency_ms
+    response = build_response(asset_type, pred, meta, publish)
+    response["metrics"]["latency_ms"] = round(latency_ms, 2)
     response["model_health"] = health
-    response["cache_hit"] = raw_meta.get("model_path") in _PIPELINE_TTL_CACHE
+    response["cache_hit"] = meta.get("model_path") in _PIPELINE_TTL_CACHE
 
-    # 7) Schema validation
     try:
         jsonschema_validate(instance=response, schema=OUTPUT_SCHEMA)
-    except Exception as ve:
+    except ValidationError as ve:
         response["schema_validation_error"] = str(ve).split("\n", 1)[0][:240]
+    except Exception as e:
+        response["schema_validation_error"] = f"Schema check failed: {e}"[:240]
 
-    # 8) Log JSON‑lines
-    log_entry = {
-        "_logged_at": datetime.utcnow().isoformat() + "Z",
+    log_jsonl({
         "event": "prediction",
         "asset_type": asset_type,
         "request": req_obj.model_dump(),
         "response": response,
-    }
-    LOG_PATH.open("a", encoding="utf-8").write(json.dumps(log_entry) + "\n")
-
+    })
     return response
 
 
@@ -316,7 +282,6 @@ def list_models(asset_type: str) -> dict:
         "discovered_models": [p.name for p in discover_models_for_asset(asset_type)],
     }
 
-
 @app.post("/models/{asset_type}/{task}/refresh")
 def refresh_model_cache(asset_type: str, task: str) -> dict:
     refresh_cache(asset_type, task)
@@ -327,7 +292,6 @@ def refresh_model_cache(asset_type: str, task: str) -> dict:
 def model_health(asset_type: str, task: str) -> dict:
     return health_check_model(asset_type, task)
 
-
 @app.get("/logs/api")
 def get_api_logs() -> list[dict]:
     try:
@@ -336,8 +300,7 @@ def get_api_logs() -> list[dict]:
         return lines
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Log read error: {e}")
-
-
+    
 @app.get("/logs/published")
 def get_published_assets():
     try:
@@ -345,7 +308,6 @@ def get_published_assets():
             return json.load(f)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Read error: {e}")
-
 
 @app.get("/logs/detail_reports")
 def get_detail_reports():
@@ -362,8 +324,6 @@ def get_detail_reports():
             continue
     return reports
 
-
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run("scripts.inference_api:app", host="127.0.0.1", port=8000, reload=True)

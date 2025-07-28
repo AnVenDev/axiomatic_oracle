@@ -30,24 +30,13 @@ jobs:
           pip install -r requirements.txt
           pip install jupyter pandas pyarrow tqdm
 
-      - name: Generate dataset in batch and validate
+      - name: Execute 01_generate_dataset notebook
         run: |
-          python - <<'PYCODE'
-          from notebooks.01_generate_dataset import generate_dataset_batch, validate_property_enhanced, generate_quality_report
-          import pandas as pd, json, sys
-          # generate & slice required fields
-          df = generate_dataset_batch(CONFIG, batch_size=1000)
-          df = df[REQUIRED_FIELDS]
-          df.to_csv('data/df_cleaned_no_outliers.csv', index=False)
-          # quality report
-          report = generate_quality_report(df)
-          with open('data/data_quality_report.json','w') as f:
-              json.dump(report, f, indent=2)
-          # fail on too many valuation_k outliers
-          if report['distributions']['valuation_k']['outliers_pct'] > 1:
-              print("❌ Too many outliers in valuation_k:", report['distributions']['valuation_k']['outliers_pct'])
-              sys.exit(1)
-          PYCODE
+          jupyter nbconvert \
+            --to notebook \
+            --execute notebooks/01_generate_dataset.ipynb \
+            --output executed_01_generate_dataset.ipynb \
+            --ExecutePreprocessor.timeout=600
 
       - name: Upload cleaned dataset
         uses: actions/upload-artifact@v4
