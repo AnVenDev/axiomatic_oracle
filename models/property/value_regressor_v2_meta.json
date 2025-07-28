@@ -1,0 +1,251 @@
+{
+  "asset_type": "property",
+  "model_task": "valuation_regression",
+  "model_version": "v2",
+  "model_class": "TransformedTargetRegressor(LightGBM)",
+  "random_state": 42,
+  "dataset_file": "../data/df_cleaned_no_outliers.csv",
+  "dataset_hash_sha256": "d33ff6dd9eb9c7487fa3721a29f496b24448d0e1d3bc1fcea488d0193531ff2a",
+  "n_rows_total": 4920,
+  "n_rows_train": 3936,
+  "n_rows_test": 984,
+  "features_categorical": [
+    "energy_class",
+    "garage",
+    "has_balcony",
+    "has_elevator",
+    "has_garden",
+    "location",
+    "owner_occupied",
+    "public_transport_nearby"
+  ],
+  "features_numeric": [
+    "age_years",
+    "air_quality_index",
+    "bathrooms",
+    "building_floors",
+    "distance_to_center_km",
+    "env_score",
+    "floor",
+    "humidity_level",
+    "luxury_score",
+    "noise_level",
+    "rooms",
+    "size_m2",
+    "temperature_avg",
+    "year_built"
+  ],
+  "feature_list_ordered": [
+    "energy_class",
+    "garage",
+    "has_balcony",
+    "has_elevator",
+    "has_garden",
+    "location",
+    "owner_occupied",
+    "public_transport_nearby",
+    "age_years",
+    "air_quality_index",
+    "bathrooms",
+    "building_floors",
+    "distance_to_center_km",
+    "env_score",
+    "floor",
+    "humidity_level",
+    "last_verified_ts",
+    "luxury_score",
+    "noise_level",
+    "rooms",
+    "size_m2",
+    "temperature_avg",
+    "valuation_k",
+    "year_built"
+  ],
+  "features_encoded": [
+    "age_years",
+    "air_quality_index",
+    "bathrooms",
+    "building_floors",
+    "distance_to_center_km",
+    "env_score",
+    "floor",
+    "humidity_level",
+    "luxury_score",
+    "noise_level",
+    "rooms",
+    "size_m2",
+    "temperature_avg",
+    "year_built",
+    "energy_class_A",
+    "energy_class_B",
+    "energy_class_C",
+    "energy_class_D",
+    "energy_class_E",
+    "energy_class_F",
+    "energy_class_G",
+    "garage_0",
+    "garage_1",
+    "has_balcony_0",
+    "has_balcony_1",
+    "has_elevator_0",
+    "has_elevator_1",
+    "has_garden_0",
+    "has_garden_1",
+    "location_Bari",
+    "location_Bologna",
+    "location_Cagliari",
+    "location_Catania",
+    "location_Florence",
+    "location_Genoa",
+    "location_Milan",
+    "location_Naples",
+    "location_Padua",
+    "location_Palermo",
+    "location_Rome",
+    "location_Trieste",
+    "location_Turin",
+    "location_Venice",
+    "location_Verona",
+    "owner_occupied_0",
+    "owner_occupied_1",
+    "public_transport_nearby_0",
+    "public_transport_nearby_1"
+  ],
+  "encoded_feature_count": 48,
+  "engineered_features": [
+    "price_per_sqm",
+    "luxury_score",
+    "efficiency_score",
+    "env_score",
+    "age_years"
+  ],
+  "metrics": {
+    "mae_k": 72.1104,
+    "rmse_k": 89.5534,
+    "r2": 0.612,
+    "coverage_interval": 0.8598,
+    "avg_interval_width_k": 243.856
+  },
+  "prediction_intervals": {
+    "quantiles": [
+      0.05,
+      0.5,
+      0.95
+    ],
+    "sample_intervals": [
+      {
+        "q5": 105.91347724631449,
+        "q50": 182.05143298298978,
+        "q95": 250.6780699945638
+      },
+      {
+        "q5": 262.4305834967811,
+        "q50": 450.75186713677454,
+        "q95": 644.8281430983347
+      },
+      {
+        "q5": 72.23833280750311,
+        "q50": 118.917329690546,
+        "q95": 169.48252045753713
+      },
+      {
+        "q5": 145.2918285622366,
+        "q50": 248.12292787514178,
+        "q95": 340.58173396792114
+      },
+      {
+        "q5": 208.8796960549899,
+        "q50": 377.7175713752177,
+        "q95": 533.8013863624412
+      }
+    ]
+  },
+  "feature_importance_top10": [
+    {
+      "feature": "size_m2",
+      "importance": 2955.3096400799477
+    },
+    {
+      "feature": "price_per_sqm",
+      "importance": 1238.2505368282102
+    },
+    {
+      "feature": "efficiency_score",
+      "importance": 116.35150163221508
+    },
+    {
+      "feature": "air_quality_index",
+      "importance": 0.09437225275298891
+    },
+    {
+      "feature": "humidity_level",
+      "importance": 0.08774189986091094
+    },
+    {
+      "feature": "temperature_avg",
+      "importance": 0.0876338268056877
+    },
+    {
+      "feature": "noise_level",
+      "importance": 0.08663681608534822
+    },
+    {
+      "feature": "distance_to_center_km",
+      "importance": 0.08555409626208729
+    },
+    {
+      "feature": "age_years",
+      "importance": 0.06110045025706751
+    },
+    {
+      "feature": "env_score",
+      "importance": 0.03410024366148465
+    }
+  ],
+  "best_params": {
+    "objective": "regression",
+    "metric": "mae",
+    "boosting_type": "gbdt",
+    "verbosity": -1,
+    "force_col_wise": true,
+    "seed": 42,
+    "feature_pre_filter": false,
+    "lambda_l1": 0.0,
+    "lambda_l2": 0.0,
+    "num_leaves": 2,
+    "feature_fraction": 0.8999999999999999,
+    "bagging_fraction": 0.8239978480559594,
+    "bagging_freq": 1,
+    "min_child_samples": 5,
+    "num_iterations": 1000,
+    "categorical_column": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "n_estimators": 1000
+  },
+  "generated_at": "2025-07-28T21:50:37.981165Z",
+  "engineered_feature_stats": {
+    "luxury_score": {
+      "mean": 0.4368,
+      "min": 0.0,
+      "max": 1.0
+    },
+    "env_score": {
+      "mean": 0.509,
+      "min": 0.0,
+      "max": 1.0
+    },
+    "age_years": {
+      "mean": 38.9028,
+      "min": 3.0,
+      "max": 75.0
+    }
+  }
+}

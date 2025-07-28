@@ -2,13 +2,13 @@
   "asset_type": "property",
   "model_task": "valuation_regression",
   "model_version": "v1",
-  "model_class": "LGBMRegressor",
+  "model_class": "TransformedTargetRegressor(LightGBM)",
   "random_state": 42,
-  "dataset_file": "../data/property_dataset_v1.csv",
-  "dataset_hash_sha256": "350742a3dc604b39746f4bec051edb68c1c658aa48acbdfcc8921c870f076015",
-  "n_rows_total": 150,
-  "n_rows_train": 120,
-  "n_rows_test": 30,
+  "dataset_file": "../data/property_dataset_v2.csv",
+  "dataset_hash_sha256": "9da55981487fcb9187cfbb388bd4d1bc2b7021925b40148e6ec0062d68f31997",
+  "n_rows_total": 5000,
+  "n_rows_train": 4000,
+  "n_rows_test": 1000,
   "features_categorical": [
     "location",
     "energy_class",
@@ -61,14 +61,21 @@
     "noise_level",
     "air_quality_index",
     "age_years",
+    "location_Bari",
     "location_Bologna",
+    "location_Cagliari",
+    "location_Catania",
     "location_Florence",
     "location_Genoa",
     "location_Milan",
     "location_Naples",
+    "location_Padua",
     "location_Palermo",
     "location_Rome",
+    "location_Trieste",
     "location_Turin",
+    "location_Venice",
+    "location_Verona",
     "energy_class_A",
     "energy_class_B",
     "energy_class_C",
@@ -85,69 +92,79 @@
     "garage_0",
     "garage_1"
   ],
-  "encoded_feature_count": 34,
+  "encoded_feature_count": 41,
   "metrics": {
-    "mae_k": 66.1226,
-    "rmse_k": 86.8106,
-    "r2": 0.544
+    "mae_k": 70.2054,
+    "rmse_k": 86.6626,
+    "r2": 0.6011
   },
   "feature_importance_top10": [
     {
       "feature": "size_m2",
-      "importance": 161.77360002184287
-    },
-    {
-      "feature": "air_quality_index",
-      "importance": 2.760065033380215
-    },
-    {
-      "feature": "temperature_avg",
-      "importance": 2.713822445839469
-    },
-    {
-      "feature": "bathrooms",
-      "importance": 1.9782420701885712
+      "importance": 3123.535103045404
     },
     {
       "feature": "humidity_level",
-      "importance": 1.675291165276576
+      "importance": 63.888113498687744
     },
     {
-      "feature": "floor",
-      "importance": 0.7851178013952449
-    },
-    {
-      "feature": "building_floors",
-      "importance": 0.46466757031157613
+      "feature": "temperature_avg",
+      "importance": 55.54024824127555
     },
     {
       "feature": "noise_level",
-      "importance": 0.3900453536398345
+      "importance": 53.66209099814296
     },
     {
-      "feature": "garage_0",
-      "importance": 0.14767459779977798
+      "feature": "air_quality_index",
+      "importance": 52.65864721685648
     },
     {
-      "feature": "age_years",
-      "importance": 0.13096067323931493
+      "feature": "year_built",
+      "importance": 41.25076702237129
+    },
+    {
+      "feature": "building_floors",
+      "importance": 15.850396543741226
+    },
+    {
+      "feature": "floor",
+      "importance": 13.035230323672295
+    },
+    {
+      "feature": "rooms",
+      "importance": 11.426836103200912
+    },
+    {
+      "feature": "has_garden_0",
+      "importance": 10.693798802793026
     }
   ],
   "best_params": {
-    "num_leaves": 57,
-    "max_depth": 5,
-    "learning_rate": 0.08206228004287347,
-    "min_child_samples": 31,
-    "subsample": 0.8407413590440636,
-    "colsample_bytree": 0.9980301459539828,
-    "reg_alpha": 0.8567122136068024,
-    "reg_lambda": 0.712788998286795,
     "objective": "regression",
-    "metric": "rmse",
+    "metric": "mae",
     "boosting_type": "gbdt",
     "verbosity": -1,
     "force_col_wise": true,
+    "seed": 42,
+    "feature_pre_filter": false,
+    "lambda_l1": 0.0,
+    "lambda_l2": 0.0,
+    "num_leaves": 3,
+    "feature_fraction": 0.852,
+    "bagging_fraction": 0.8372596296746804,
+    "bagging_freq": 6,
+    "min_child_samples": 20,
+    "num_iterations": 1000,
+    "categorical_column": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
     "n_estimators": 1000
   },
-  "generated_at": "2025-07-22T03:54:10.988090Z"
+  "generated_at": "2025-07-28T08:52:17.061059Z"
 }
