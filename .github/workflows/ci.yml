@@ -42,7 +42,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: data-quality-report
-          path: data/data_quality_report.json
+          path: logs/quality_report.json
 
   train-and-evaluate:
     needs: generate-dataset
