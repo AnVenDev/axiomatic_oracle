@@ -29,7 +29,6 @@ jobs:
         run: |
           pip install -r requirements.txt
           pip install jupyter pandas pyarrow tqdm
-          pip install pytest pytest-cov shap
 
       - name: Execute generate_dataset_01 notebook
         run: |
@@ -74,6 +73,11 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest pytest-cov shap
 
       - name: Convert notebook to script
         run: jupyter nbconvert --to script notebooks/train_model_03.ipynb
