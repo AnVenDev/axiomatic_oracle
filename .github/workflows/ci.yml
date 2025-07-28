@@ -30,18 +30,38 @@ jobs:
           pip install -r requirements.txt
           pip install jupyter pandas pyarrow tqdm
 
-      - name: Run notebook and export dataset
+      - name: Generate dataset in batch and validate
         run: |
-          jupyter nbconvert --to notebook --execute notebooks/01_generate_dataset.ipynb \
-            --output notebooks/01_generate_dataset_output.ipynb
+          python - <<'PYCODE'
+          from notebooks.01_generate_dataset import generate_dataset_batch, validate_property_enhanced, generate_quality_report
+          import pandas as pd, json, sys
+          # generate & slice required fields
+          df = generate_dataset_batch(CONFIG, batch_size=1000)
+          df = df[REQUIRED_FIELDS]
+          df.to_csv('data/df_cleaned_no_outliers.csv', index=False)
+          # quality report
+          report = generate_quality_report(df)
+          with open('data/data_quality_report.json','w') as f:
+              json.dump(report, f, indent=2)
+          # fail on too many valuation_k outliers
+          if report['distributions']['valuation_k']['outliers_pct'] > 1:
+              print("❌ Too many outliers in valuation_k:", report['distributions']['valuation_k']['outliers_pct'])
+              sys.exit(1)
+          PYCODE
 
-      - name: Upload generated dataset
+      - name: Upload cleaned dataset
         uses: actions/upload-artifact@v4
         with:
-          name: generated-dataset
-          path: data/
+          name: cleaned-dataset
+          path: data/df_cleaned_no_outliers.csv
 
-  run-tests:
+      - name: Upload data quality report
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-quality-report
+          path: data/data_quality_report.json
+
+  train-and-evaluate:
     needs: generate-dataset
     runs-on: ubuntu-latest
 
@@ -49,52 +69,83 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Download cleaned dataset
+        uses: actions/download-artifact@v3
+        with:
+          name: cleaned-dataset
+          path: data
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.10"
 
-      - name: Cache pip
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install pytest pytest-cov
+          pip install pytest pytest-cov shap
 
-      - name: Start FastAPI in background
+      - name: Train model, generate intervals, monitoring & SHAP
         run: |
-          nohup uvicorn scripts.inference_api:app --host 0.0.0.0 --port 8000 &
-          sleep 5
+          python - <<'PYCODE'
+          import json, joblib, logging
+          from notebooks.03_train_model import (
+              final_model, X_train, X_test, y_train, y_test,
+              mae, rmse, r2, coverage, avg_width,
+              train_quantile_models, predict_with_intervals,
+              generate_model_monitoring_metadata, generate_shap_explanations
+          )
+          logging.basicConfig(level=logging.INFO)
 
-      - name: Wait for FastAPI to be ready
+          # Assertions
+          assert mae < 100, f"MAE troppo alto: {mae}"
+          assert coverage >= 0.85, f"Coverage interval troppo basso: {coverage:.2%}"
+
+          # Save model
+          joblib.dump(final_model, 'models/final_model.pkl')
+
+          # Prediction intervals
+          q_models = train_quantile_models(X_train, y_train, preprocessor=final_model.named_steps['preprocessor'], quantiles=[0.05,0.5,0.95])
+          intervals = predict_with_intervals(q_models, X_test)
+          intervals.to_csv('models/prediction_intervals.csv', index=False)
+
+          # Monitoring metadata
+          monitoring = generate_model_monitoring_metadata(final_model, X_train, y_train, X_test, y_test)
+          with open('models/monitoring_metadata.json','w') as f:
+              json.dump(monitoring, f, indent=2)
+
+          # SHAP explainability
+          shap_imp = generate_shap_explanations(final_model, X_test, sample_size=100)
+          shap_imp.to_csv('models/shap_importance.csv', index=False)
+
+          # Model metadata JSON
+          metadata = {
+            'mae': mae, 'rmse': rmse, 'r2': r2,
+            'coverage': coverage, 'avg_interval_width': avg_width
+          }
+          with open('models/model_metadata.json','w') as f:
+              json.dump(metadata, f, indent=2)
+
+          logging.info("✅ Training & evaluation complete")
+          PYCODE
+
+      - name: Run unit tests & coverage
         run: |
-          for i in {1..10}; do
-            curl -s http://localhost:8000/health && break
-            echo "Waiting for API..." && sleep 2
-          done
+          pytest --maxfail=1 --disable-warnings --cov=notebooks --cov-fail-under=80
 
-      - name: Run tests with coverage
-        run: |
-          pytest --cov=scripts --cov-fail-under=80 \
-                 --cov-report=term-missing \
-                 --cov-report=html \
-                 --cov-report=xml
-
-      - name: Upload coverage report
-        if: always()
+      - name: Upload model artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-report
-          path: htmlcov/
+          name: model-artifacts
+          path: |
+            models/final_model.pkl
+            models/model_metadata.json
+            models/prediction_intervals.csv
+            models/monitoring_metadata.json
+            models/shap_importance.csv
 
   build-and-push-image:
-    needs: run-tests
+    needs: train-and-evaluate
     runs-on: ubuntu-latest
 
     steps:
@@ -109,18 +160,17 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Log in to Amazon ECR
-        id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Build and push Docker image to ECR
+      - name: Build and push Docker image
         run: |
           docker build -t $ECR_REPO:$IMAGE_TAG .
           docker push $ECR_REPO:$IMAGE_TAG
 
   deploy-to-prod:
     needs: build-and-push-image
-    runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
 
     steps:
       - name: Deploy to EC2 via SSH
@@ -129,17 +179,6 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-
-      - name: Debug SSH Key
-        run: |
-          mkdir -p ~/.ssh
-          echo "$EC2_SSH_KEY" | tr -d '\r' | sed 's/\\n/\n/g' > ~/.ssh/ai-oracle-key.pem
-          chmod 600 ~/.ssh/ai-oracle-key.pem
-          echo "PEM preview:"
-          head -n 5 ~/.ssh/ai-oracle-key.pem
-        shell: bash
-        env:
-          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
 
       - name: Pull and restart container
         run: |

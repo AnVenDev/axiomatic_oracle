@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import pandas as pd
-from fastapi import Body, FastAPI, HTTPException, Query, Path as FPath
+from fastapi import Body, FastAPI, HTTPException, Query, APIRouter, Path as FPath
 from fastapi.middleware.cors import CORSMiddleware
 from jsonschema import ValidationError, validate as jsonschema_validate
 from pydantic import BaseModel, Field, model_validator
@@ -212,12 +212,18 @@ def health() -> dict:
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
+router = APIRouter()
+
+# Path per il log JSON‑lines
+LOG_PATH = Path("data/api_inference_log.jsonl")
+LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 @app.post("/predict/{asset_type}")
+@router.post("/predict/{asset_type}")
 def predict(
-    asset_type: str = FPath(...),
-    publish: bool = Query(False),
-    payload: dict = Body(...),
+    asset_type: str = FPath(..., description="Type of asset to predict"),
+    publish: bool = Query(False, description="Whether to publish the result"),
+    payload: dict = Body(..., description="Payload with feature values"),
 ) -> dict:
     asset_type = asset_type.lower()
     if asset_type not in REQUEST_MODELS:
@@ -225,58 +231,80 @@ def predict(
             status_code=400, detail=f"Unsupported asset_type: {asset_type}"
         )
 
+    # 1) Validazione e parsing del payload
     ModelCls = REQUEST_MODELS[asset_type]
     try:
         req_obj = ModelCls(**payload)
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Invalid payload: {e}")
 
+    # 2) Recupero pipeline e metadata da registry
     try:
         pipeline = get_pipeline(asset_type, "value_regressor", fallback_latest=True)
         raw_meta = get_model_metadata(
             asset_type, "value_regressor", fallback_latest=True
-        )
-        meta = raw_meta if raw_meta else {}
+        ) or {}
         health = health_check_model(asset_type, "value_regressor")
         if health["status"] != "healthy":
             raise HTTPException(status_code=503, detail=health["error"])
     except (RegistryLookupError, ModelNotFoundError) as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+    # 3) Controllo compatibilità schema
     expected_features = list(req_obj.model_dump().keys())
     if not validate_model_compatibility(pipeline, expected_features):
         raise HTTPException(status_code=422, detail="Model-input schema mismatch")
 
-    start = time.time()
+    # 4) Costruzione DataFrame e derivazioni
     df_input = pd.DataFrame([req_obj.model_dump()])
+    # auto-derive age_years se manca
+    if "age_years" not in df_input and "year_built" in df_input:
+        df_input["age_years"] = datetime.utcnow().year - df_input["year_built"]
+
+    # 5) Transform & predict
+    start = time.time()
     try:
-        X = pipeline[:-1].transform(df_input)
-        X = pd.DataFrame(X, columns=pipeline[-1].feature_name_)
-        pred = pipeline[-1].predict(X)[0]
+        preprocessor = pipeline.named_steps["preprocessor"]
+        # estrai feature names originali da preprocessor
+        cat_cols = preprocessor.transformers_[0][2]
+        num_cols = preprocessor.transformers_[1][2]
+        # trasforma
+        X_num = df_input[num_cols]
+        X_cat = df_input[cat_cols]
+        X_trans = preprocessor.transform(pd.concat([X_cat, X_num], axis=1))
+        # ricava i nomi encoded
+        ohe = preprocessor.named_transformers_["cat"]
+        encoded_cat = list(ohe.get_feature_names_out(cat_cols))
+        feature_names = num_cols + encoded_cat
+        X = pd.DataFrame(X_trans, columns=feature_names)
+        # predizione
+        pred = pipeline.named_steps["regressor"].predict(X)[0]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Inference error: {e}")
-    latency_ms = (time.time() - start) * 1000
+    latency_ms = round((time.time() - start) * 1000, 2)
 
-    response = build_response(asset_type, pred, meta, publish)
-    response["metrics"]["latency_ms"] = round(latency_ms, 2)
+    # 6) Costruisci risposta
+    response = build_response(asset_type, pred, raw_meta, publish)
+    response["metrics"]["latency_ms"] = latency_ms
     response["model_health"] = health
-    response["cache_hit"] = meta.get("model_path") in _PIPELINE_TTL_CACHE
+    response["cache_hit"] = raw_meta.get("model_path") in _PIPELINE_TTL_CACHE
 
+    # 7) Schema validation
     try:
         jsonschema_validate(instance=response, schema=OUTPUT_SCHEMA)
-    except ValidationError as ve:
+    except Exception as ve:
         response["schema_validation_error"] = str(ve).split("\n", 1)[0][:240]
-    except Exception as e:
-        response["schema_validation_error"] = f"Schema check failed: {e}"[:240]
 
-    log_jsonl(
-        {
-            "event": "prediction",
-            "asset_type": asset_type,
-            "request": req_obj.model_dump(),
-            "response": response,
-        }
-    )
+    # 8) Log JSON‑lines
+    log_entry = {
+        "_logged_at": datetime.utcnow().isoformat() + "Z",
+        "event": "prediction",
+        "asset_type": asset_type,
+        "request": req_obj.model_dump(),
+        "response": response,
+    }
+    LOG_PATH.open("a", encoding="utf-8").write(json.dumps(log_entry) + "\n")
+
     return response
 
 
