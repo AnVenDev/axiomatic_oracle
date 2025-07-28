@@ -13,7 +13,6 @@ specifically for:
 import hashlib
 import json
 from typing import Any, Dict, Optional, Union
-from unittest.mock import MagicMock, patch
 
 from algosdk import mnemonic, transaction
 from algosdk.v2client import algod

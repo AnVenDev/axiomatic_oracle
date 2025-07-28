@@ -31,6 +31,8 @@ SCHEMA_PATH = Path("schemas/output_schema_v1.json")
 LOG_PATH = Path("data/api_inference_log.jsonl")
 TOLERANCE_K = 1.0
 TOLERANCE_PERCENT = 0.05
+
+
 # ----------------------------------------------------------------------------
 # Utilities
 # ----------------------------------------------------------------------------
@@ -227,7 +229,9 @@ if __name__ == "__main__":
     test_api_advanced_features()
     data = test_predict_endpoint()
     if data:
-        validate_schema(data, )
+        validate_schema(
+            data,
+        )
         test_prediction_consistency_advanced()
     test_recent_log()
 

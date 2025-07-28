@@ -8,6 +8,7 @@ from scripts.algorand_utils import (
     AlgorandError,
 )
 
+
 # --- wait_for_confirmation ---
 @patch("scripts.algorand_utils.client")
 def test_wait_for_confirmation_success(mock_client):

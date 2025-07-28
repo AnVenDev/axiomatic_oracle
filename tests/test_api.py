@@ -18,6 +18,7 @@ if str(ROOT) not in sys.path:
 
 client = TestClient(app)
 
+
 # -------------------------------------------------------------------
 # Fixtures
 # -------------------------------------------------------------------
@@ -154,6 +155,7 @@ def test_predict_with_publish(sample_payload):
 
         mock_publish.assert_called_once()
 
+
 def test_list_models():
     r = client.get("/models/property")
     assert r.status_code == 200
@@ -163,12 +165,14 @@ def test_list_models():
     assert isinstance(data["tasks"], list)
     assert "discovered_models" in data
 
+
 def test_refresh_model_cache():
     r = client.post("/models/property/value_regressor/refresh")
     assert r.status_code == 200
     data = r.json()
     assert data["status"] == "cache_refreshed"
     assert data["asset_type"] == "property"
+
 
 def test_model_health():
     r = client.get("/models/property/value_regressor/health")
@@ -178,6 +182,7 @@ def test_model_health():
     assert "model_path" in data
     assert "size_mb" in data
 
+
 def test_list_models():
     r = client.get("/models/property")
     assert r.status_code == 200
@@ -187,12 +192,14 @@ def test_list_models():
     assert isinstance(data["tasks"], list)
     assert "discovered_models" in data
 
+
 def test_refresh_model_cache():
     r = client.post("/models/property/value_regressor/refresh")
     assert r.status_code == 200
     data = r.json()
     assert data["status"] == "cache_refreshed"
     assert data["asset_type"] == "property"
+
 
 def test_model_health():
     r = client.get("/models/property/value_regressor/health")

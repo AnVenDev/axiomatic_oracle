@@ -9,6 +9,7 @@ from scripts.logger_utils import (
     save_prediction_detail,
 )
 
+
 @pytest.fixture
 def sample_data():
     return {"asset_id": "test_001", "valuation_base_k": 123.45}
@@ -17,7 +18,10 @@ def sample_data():
 def test_log_asset_publication(tmp_path, sample_data):
     log_file = tmp_path / "published_assets.json"
 
-    with patch("scripts.logger_utils.LOG_FILE", log_file), patch("scripts.logger_utils.LOG_PATH", tmp_path):
+    with (
+        patch("scripts.logger_utils.LOG_FILE", log_file),
+        patch("scripts.logger_utils.LOG_PATH", tmp_path),
+    ):
         log_asset_publication(sample_data)
 
         assert log_file.exists()
@@ -30,7 +34,10 @@ def test_save_publications_to_json(tmp_path):
     sample_data = [{"asset_id": "batch_1", "valuation_base_k": 999.0}]
     json_file = tmp_path / "published_assets.json"
 
-    with patch("scripts.logger_utils.LOG_FILE", json_file), patch("scripts.logger_utils.LOG_PATH", tmp_path):
+    with (
+        patch("scripts.logger_utils.LOG_FILE", json_file),
+        patch("scripts.logger_utils.LOG_PATH", tmp_path),
+    ):
         save_publications_to_json(sample_data, filename=json_file)
 
         content = json.loads(json_file.read_text())

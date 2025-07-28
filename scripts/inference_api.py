@@ -1,4 +1,3 @@
-
 """
 FastAPI service exposing AI Oracle inference endpoints
 (multi-RWA ready: initial asset_type 'property').
@@ -133,7 +132,9 @@ def build_response(
     if not asset_id:
         asset_id = f"{asset_type}_{uuid.uuid4().hex[:10]}"
 
-    dataset_hash = model_meta.get("dataset_hash_sha256") or model_meta.get("dataset_hash")
+    dataset_hash = model_meta.get("dataset_hash_sha256") or model_meta.get(
+        "dataset_hash"
+    )
     model_hash = None
     model_path_hint = model_meta.get("model_path")
     if model_path_hint:
@@ -187,11 +188,12 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 @app.get("/health")
 def health() -> dict:
@@ -267,12 +269,14 @@ def predict(
     except Exception as e:
         response["schema_validation_error"] = f"Schema check failed: {e}"[:240]
 
-    log_jsonl({
-        "event": "prediction",
-        "asset_type": asset_type,
-        "request": req_obj.model_dump(),
-        "response": response,
-    })
+    log_jsonl(
+        {
+            "event": "prediction",
+            "asset_type": asset_type,
+            "request": req_obj.model_dump(),
+            "response": response,
+        }
+    )
     return response
 
 
@@ -284,6 +288,7 @@ def list_models(asset_type: str) -> dict:
         "discovered_models": [p.name for p in discover_models_for_asset(asset_type)],
     }
 
+
 @app.post("/models/{asset_type}/{task}/refresh")
 def refresh_model_cache(asset_type: str, task: str) -> dict:
     refresh_cache(asset_type, task)
@@ -294,6 +299,7 @@ def refresh_model_cache(asset_type: str, task: str) -> dict:
 def model_health(asset_type: str, task: str) -> dict:
     return health_check_model(asset_type, task)
 
+
 @app.get("/logs/api")
 def get_api_logs() -> list[dict]:
     try:
@@ -302,7 +308,8 @@ def get_api_logs() -> list[dict]:
         return lines
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Log read error: {e}")
-    
+
+
 @app.get("/logs/published")
 def get_published_assets():
     try:
@@ -310,6 +317,7 @@ def get_published_assets():
             return json.load(f)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Read error: {e}")
+
 
 @app.get("/logs/detail_reports")
 def get_detail_reports():
@@ -326,6 +334,8 @@ def get_detail_reports():
             continue
     return reports
 
+
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("scripts.inference_api:app", host="127.0.0.1", port=8000, reload=True)

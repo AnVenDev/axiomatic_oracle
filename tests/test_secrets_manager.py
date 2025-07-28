@@ -3,6 +3,7 @@ import sys
 from unittest.mock import patch
 import pytest
 
+
 @pytest.fixture(autouse=True)
 def clear_secrets_module():
     """Assicura che il modulo venga ricaricato da zero a ogni test."""
@@ -13,6 +14,7 @@ def clear_secrets_module():
 @patch.dict("os.environ", {"CI": "true"})
 def test_ci_environment():
     import scripts.secrets_manager as sm
+
     importlib.reload(sm)
 
     assert sm.ALGORAND_WALLET_ADDRESS == "FAKE_WALLET"
@@ -32,6 +34,7 @@ def test_ci_environment():
 )
 def test_local_env():
     import scripts.secrets_manager as sm
+
     importlib.reload(sm)
 
     assert sm.ALGORAND_WALLET_ADDRESS == "TEST_WALLET"
