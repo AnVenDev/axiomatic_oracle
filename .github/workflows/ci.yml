@@ -1,4 +1,5 @@
 name: CI/CD Pipeline
+
 on:
   push:
     branches: [main]
@@ -12,7 +13,36 @@ env:
   IMAGE_TAG: latest
 
 jobs:
+  generate-dataset:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install jupyter pandas pyarrow tqdm
+
+      - name: Run notebook and export dataset
+        run: |
+          jupyter nbconvert --to notebook --execute notebooks/01_generate_dataset.ipynb \
+            --output notebooks/01_generate_dataset_output.ipynb
+
+      - name: Upload generated dataset
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-dataset
+          path: data/
+
   run-tests:
+    needs: generate-dataset
     runs-on: ubuntu-latest
 
     steps:
@@ -111,9 +141,10 @@ jobs:
         env:
           EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
 
-          script: |
-            docker login -u AWS -p $(aws ecr get-login-password --region ${{ env.AWS_REGION }}) ${{ env.ECR_REPO }}
-            docker pull $ECR_REPO:$IMAGE_TAG
-            docker stop oracle-api || true
-            docker rm oracle-api || true
-            docker run -d --name oracle-api -p 80:8000 $ECR_REPO:$IMAGE_TAG
+      - name: Pull and restart container
+        run: |
+          docker login -u AWS -p $(aws ecr get-login-password --region ${{ env.AWS_REGION }}) ${{ env.ECR_REPO }}
+          docker pull $ECR_REPO:$IMAGE_TAG
+          docker stop oracle-api || true
+          docker rm oracle-api || true
+          docker run -d --name oracle-api -p 80:8000 $ECR_REPO:$IMAGE_TAG
