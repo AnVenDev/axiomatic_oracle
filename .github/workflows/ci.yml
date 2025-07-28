@@ -79,6 +79,9 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-cov shap
 
+      - name: Convert notebook to script
+        run: jupyter nbconvert --to script notebooks/train_model_03.ipynb
+
       - name: Train model, generate intervals, monitoring & SHAP
         run: |
           python - <<'PYCODE'
