@@ -24,3 +24,4 @@ mypy
 jupyter
 pytest-cov
 pytest-asyncio
+xgboost
