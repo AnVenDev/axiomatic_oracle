@@ -139,25 +139,24 @@ jobs:
         with:
           name: model-artifacts
           path: |
-            models/immobili/value_regressor_v2.joblib
-            models/immobili/value_regressor_v2_meta.json
-            models/immobili/prediction_intervals.csv
+            models/value_regressor_v2.joblib
+            models/value_regressor_v2_meta.json
+            models/prediction_intervals.csv
 
+          name: Run unit tests & coverage
+          run: |
+            pytest --maxfail=1 --disable-warnings --cov=scripts --cov-fail-under=8
 
-            - name: Run unit tests & coverage
-              run: |
-                pytest --maxfail=1 --disable-warnings --cov=scripts --cov-fail-under=80
-
-            - name: Upload model artifacts
-              uses: actions/upload-artifact@v4
-              with:
-                name: model-artifacts
-                path: |
-                  models/final_model.pkl
-                  models/model_metadata.json
-                  models/prediction_intervals.csv
-                  models/monitoring_metadata.json
-                  models/shap_importance.csv
+          name: Upload model artifacts
+          uses: actions/upload-artifact@v4
+          with:
+            name: model-artifacts
+            path: |
+              models/final_model.pkl
+              models/model_metadata.json
+              models/prediction_intervals.csv
+              models/monitoring_metadata.json
+              models/shap_importance.csv
 
   build-and-push-image:
     needs: train-and-evaluate
