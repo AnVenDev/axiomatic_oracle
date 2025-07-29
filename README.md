@@ -149,9 +149,9 @@ curl -X POST "http://localhost:8000/predict" \
 
 | Metric | Current | Target | Status |
 |--------|---------|--------|---------|
-| Model Accuracy (R²) | 0.89 | >0.92 | 🟡 In Progress |
-| Inference Latency (p95) | 82ms | <50ms | 🟡 Optimizing |
-| API Throughput | 850 req/s | 1000 req/s | 🟡 Scaling |
+| Model Accuracy (R²) | 0.71 | >0.92 | 🟡 In Progress |
+| Inference Latency (p95) | X | <50ms | 🟡 Optimizing |
+| API Throughput | X | 1000 req/s | 🟡 Scaling |
 | API Uptime | 99.5% | 99.9% | 🟢 On Track |
 | Blockchain Success Rate | 98% | 99.5% | 🟢 Stable |
 
