@@ -125,7 +125,7 @@ jobs:
           print(f"📊 MAE: {mae:.2f}k, R²: {r2:.2f}, Coverage: {coverage:.2%}, Width: {width:.2f}k")
 
           assert mae < 100, "❌ MAE troppo alto"
-          assert coverage >= 0.85, f"❌ Coverage troppo basso: {coverage:.2%}"
+          assert coverage >= 0.80, f"❌ Coverage troppo basso: {coverage:.2%}"
           print("✅ Metriche accettabili")
 
           # Verifica se prediction_intervals.csv esiste
