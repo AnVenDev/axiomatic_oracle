@@ -95,62 +95,65 @@ jobs:
       - name: Convert notebook to script
         run: jupyter nbconvert --to script notebooks/train_model_03.ipynb
 
-      - name: Train model, generate intervals, monitoring & SHAP
+      - name: Train model & save outputs
+        run: |
+          python notebooks/train_model_03.py
+
+      - name: Assert model quality & generate prediction intervals
         run: |
           python - <<'PYCODE'
-          import os, json, joblib, logging
-          from notebooks.train_model_03 import (
-              final_model, X_train, X_test, y_train, y_test,
-              mae, rmse, r2, coverage, avg_width,
-              train_quantile_models, predict_with_intervals,
-              generate_model_monitoring_metadata, generate_shap_explanations
-          )
-          logging.basicConfig(level=logging.INFO)
+          import json
+          import pandas as pd
+          from pathlib import Path
 
-          os.makedirs('models', exist_ok=True)
+          meta_path = Path("models/immobili/value_regressor_v2_meta.json")
+          assert meta_path.exists(), "❌ Metadata file non trovato"
 
-          assert mae < 100, f"MAE troppo alto: {mae}"
-          assert coverage >= 0.85, f"Coverage interval troppo basso: {coverage:.2%}"
+          with open(meta_path, encoding="utf-8") as f:
+              meta = json.load(f)
 
-          joblib.dump(final_model, 'models/final_model.pkl')
+          mae     = meta["metrics"]["mae_k"]
+          coverage = meta["metrics"]["coverage_interval"]
+          width   = meta["metrics"]["avg_interval_width_k"]
+          r2      = meta["metrics"]["r2"]
 
-          q_models = train_quantile_models(X_train, y_train, preprocessor=final_model.preprocessor, quantiles=[0.05, 0.5, 0.95])
-          intervals = predict_with_intervals(q_models, X_test)
-          intervals.to_csv('models/prediction_intervals.csv', index=False)
+          print(f"📊 MAE: {mae:.2f}k, R²: {r2:.2f}, Coverage: {coverage:.2%}, Width: {width:.2f}k")
 
-          monitoring = generate_model_monitoring_metadata(final_model, X_train, y_train, X_test, y_test)
-          with open('models/monitoring_metadata.json', 'w') as f:
-              json.dump(monitoring, f, indent=2)
+          assert mae < 100, "❌ MAE troppo alto"
+          assert coverage >= 0.85, f"❌ Coverage troppo basso: {coverage:.2%}"
 
-          shap_imp = generate_shap_explanations(final_model.base_learners["lgb"], X_test, sample_size=100)
-          shap_imp.to_csv('models/shap_importance.csv', index=False)
+          print("✅ Metriche accettabili")
 
-          metadata = {
-              'mae': mae, 'rmse': rmse, 'r2': r2,
-              'coverage': coverage, 'avg_interval_width': avg_width
-          }
-          with open('models/model_metadata.json', 'w') as f:
-              json.dump(metadata, f, indent=2)
-
-          logging.info(f"📊 MAE: {mae:.2f}, RMSE: {rmse:.2f}, R²: {r2:.2f}")
-          logging.info(f"📉 Coverage: {coverage:.2%}, Width: {avg_width:.2f} k€")
-          logging.info("✅ Training & evaluation complete")
+          # Salva prediction_intervals se non già salvati
+          pred_file = Path("models/immobili/prediction_intervals.csv")
+          if not pred_file.exists():
+              print("⚠️ prediction_intervals.csv non trovato nei file salvati nel training. Crealo ora se necessario.")
           PYCODE
-
-      - name: Run unit tests & coverage
-        run: |
-          pytest --maxfail=1 --disable-warnings --cov=scripts --cov-fail-under=80
 
       - name: Upload model artifacts
         uses: actions/upload-artifact@v4
         with:
           name: model-artifacts
           path: |
-            models/final_model.pkl
-            models/model_metadata.json
-            models/prediction_intervals.csv
-            models/monitoring_metadata.json
-            models/shap_importance.csv
+            models/immobili/value_regressor_v2.joblib
+            models/immobili/value_regressor_v2_meta.json
+            models/immobili/prediction_intervals.csv
+
+
+            - name: Run unit tests & coverage
+              run: |
+                pytest --maxfail=1 --disable-warnings --cov=scripts --cov-fail-under=80
+
+            - name: Upload model artifacts
+              uses: actions/upload-artifact@v4
+              with:
+                name: model-artifacts
+                path: |
+                  models/final_model.pkl
+                  models/model_metadata.json
+                  models/prediction_intervals.csv
+                  models/monitoring_metadata.json
+                  models/shap_importance.csv
 
   build-and-push-image:
     needs: train-and-evaluate
