@@ -5,12 +5,13 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-#test
+
 env:
   CI: "true"
   AWS_REGION: us-east-1
   ECR_REPO: 035754837020.dkr.ecr.us-east-1.amazonaws.com/ai-oracle-api
   IMAGE_TAG: latest
+  DATA_PATH: data/df_cleaned_no_outliers.csv
 
 jobs:
   generate-dataset:
@@ -41,7 +42,7 @@ jobs:
       - name: Check data output
         run: |
           ls -l data/
-          test -f data/df_cleaned_no_outliers.csv
+          test -f ${{env.DATA_PATH}}
 
       - name: Upload cleaned dataset
         uses: actions/upload-artifact@v4
@@ -68,6 +69,18 @@ jobs:
         with:
           name: cleaned-dataset
           path: data
+
+      - name: Download cleaned dataset
+        uses: actions/download-artifact@v4
+        with:
+          name: cleaned-dataset
+          path: data
+
+      - name: Ensure expected CSV is present
+        run: |
+          echo "Listing dataset contents:"
+          ls -lh data/
+          test -f ${{env.DATA_PATH}}
 
       - name: Set up Python
         uses: actions/setup-python@v4
