@@ -10,29 +10,30 @@
   "n_rows_train": 3943,
   "n_rows_test": 986,
   "features_categorical": [
-    "location",
     "energy_class",
+    "garage",
+    "has_balcony",
     "has_elevator",
     "has_garden",
-    "has_balcony",
-    "garage",
+    "location",
     "owner_occupied",
     "public_transport_nearby"
   ],
   "features_numeric": [
-    "size_m2",
-    "rooms",
-    "bathrooms",
-    "year_built",
-    "floor",
-    "building_floors",
-    "humidity_level",
-    "temperature_avg",
-    "noise_level",
+    "age_years",
     "air_quality_index",
-    "luxury_score",
+    "bathrooms",
+    "building_floors",
+    "distance_to_center_km",
     "env_score",
-    "distance_to_center_km"
+    "floor",
+    "humidity_level",
+    "luxury_score",
+    "noise_level",
+    "rooms",
+    "size_m2",
+    "temperature_avg",
+    "year_built"
   ],
   "feature_list_ordered": [
     "energy_class",
@@ -59,19 +60,35 @@
     "year_built"
   ],
   "features_encoded": [
-    "size_m2",
-    "rooms",
-    "bathrooms",
-    "year_built",
-    "floor",
-    "building_floors",
-    "humidity_level",
-    "temperature_avg",
-    "noise_level",
+    "age_years",
     "air_quality_index",
-    "luxury_score",
-    "env_score",
+    "bathrooms",
+    "building_floors",
     "distance_to_center_km",
+    "env_score",
+    "floor",
+    "humidity_level",
+    "luxury_score",
+    "noise_level",
+    "rooms",
+    "size_m2",
+    "temperature_avg",
+    "year_built",
+    "energy_class_A",
+    "energy_class_B",
+    "energy_class_C",
+    "energy_class_D",
+    "energy_class_E",
+    "energy_class_F",
+    "energy_class_G",
+    "garage_0",
+    "garage_1",
+    "has_balcony_0",
+    "has_balcony_1",
+    "has_elevator_0",
+    "has_elevator_1",
+    "has_garden_0",
+    "has_garden_1",
     "location_Bari",
     "location_Bologna",
     "location_Cagliari",
@@ -87,27 +104,12 @@
     "location_Turin",
     "location_Venice",
     "location_Verona",
-    "energy_class_A",
-    "energy_class_B",
-    "energy_class_C",
-    "energy_class_D",
-    "energy_class_E",
-    "energy_class_F",
-    "energy_class_G",
-    "has_elevator_0",
-    "has_elevator_1",
-    "has_garden_0",
-    "has_garden_1",
-    "has_balcony_0",
-    "has_balcony_1",
-    "garage_0",
-    "garage_1",
     "owner_occupied_0",
     "owner_occupied_1",
     "public_transport_nearby_0",
     "public_transport_nearby_1"
   ],
-  "encoded_feature_count": 47,
+  "encoded_feature_count": 48,
   "engineered_features": [
     "price_per_sqm",
     "luxury_score",
@@ -116,11 +118,11 @@
     "age_years"
   ],
   "metrics": {
-    "mae_k": 68.5783,
-    "rmse_k": 85.2428,
-    "r2": 0.63,
-    "coverage_interval": 0.7677,
-    "avg_interval_width_k": 211.0627
+    "mae_k": 68.8699,
+    "rmse_k": 86.0339,
+    "r2": 0.6231,
+    "coverage_interval": 0.7576,
+    "avg_interval_width_k": 210.2939
   },
   "prediction_intervals": {
     "quantiles": [
@@ -130,94 +132,94 @@
     ],
     "sample_intervals": [
       {
-        "q5": 225.99777321704906,
-        "q50": 375.80354647949986,
-        "q95": 477.33936124512246
+        "q5": 237.99461094066112,
+        "q50": 396.3426468101393,
+        "q95": 483.3657912574347
       },
       {
-        "q5": 114.59653999092066,
-        "q50": 171.66262651354526,
-        "q95": 234.1872301309929
+        "q5": 129.4576680806971,
+        "q50": 161.9562070320083,
+        "q95": 225.35248271311065
       },
       {
-        "q5": 149.96691693959974,
-        "q50": 256.87644597141497,
-        "q95": 318.99290269049845
+        "q5": 151.12678069521036,
+        "q50": 261.8185885729567,
+        "q95": 311.41775598616437
       },
       {
-        "q5": 119.04837040249376,
-        "q50": 224.28069874071392,
-        "q95": 259.4202462598481
+        "q5": 120.9387351613835,
+        "q50": 237.26974977453145,
+        "q95": 268.2990865731188
       },
       {
-        "q5": 281.2459200682383,
-        "q50": 454.4910449965423,
-        "q95": 561.924596283517
+        "q5": 282.11914537298384,
+        "q50": 507.1805355827216,
+        "q95": 577.0186362876187
       }
     ]
   },
   "feature_importance_top10": [
     {
-      "feature": "location_Bari",
-      "gain_importance": 0.6002400070428848,
-      "perm_importance": 0.0001227786788676244
+      "feature": "energy_class_A",
+      "gain_importance": 2.2295784913003445,
+      "perm_importance": 0.0003871341990522803
     },
     {
-      "feature": "location_Bologna",
-      "gain_importance": 0.0,
-      "perm_importance": 0.0
+      "feature": "energy_class_B",
+      "gain_importance": 2.820260465145111,
+      "perm_importance": 0.0009240533714490462
     },
     {
-      "feature": "location_Cagliari",
-      "gain_importance": 0.6281580030918121,
-      "perm_importance": 0.00027148742440742945
+      "feature": "energy_class_C",
+      "gain_importance": 0.5476158931851387,
+      "perm_importance": 0.00023194081889802432
     },
     {
-      "feature": "location_Catania",
-      "gain_importance": 0.5707150101661682,
-      "perm_importance": 0.0001233865144991242
+      "feature": "energy_class_D",
+      "gain_importance": 2.480285994708538,
+      "perm_importance": 0.0007609978288854902
     },
     {
-      "feature": "location_Florence",
-      "gain_importance": 7.067231919616461,
-      "perm_importance": 0.0014217780915911082
+      "feature": "energy_class_E",
+      "gain_importance": 2.471829004585743,
+      "perm_importance": 0.000773599560498911
     },
     {
-      "feature": "location_Genoa",
-      "gain_importance": 0.0,
-      "perm_importance": 0.0
+      "feature": "energy_class_F",
+      "gain_importance": 0.6885370016098022,
+      "perm_importance": 0.00019222921307538444
     },
     {
-      "feature": "location_Milan",
-      "gain_importance": 0.7425699979066849,
-      "perm_importance": 0.00020730063616176687
+      "feature": "energy_class_G",
+      "gain_importance": 4.627284664660692,
+      "perm_importance": 0.002235208899921054
     },
     {
-      "feature": "location_Naples",
-      "gain_importance": 0.8101854138076305,
-      "perm_importance": 0.0004779254180411974
+      "feature": "garage_0",
+      "gain_importance": 2.8120056688785553,
+      "perm_importance": 0.00031725620308807324
     },
     {
-      "feature": "location_Padua",
-      "gain_importance": 0.8369739102199674,
-      "perm_importance": 0.000570647102289612
+      "feature": "garage_1",
+      "gain_importance": 0.11435600370168686,
+      "perm_importance": 5.886888694556225e-06
     },
     {
-      "feature": "location_Palermo",
-      "gain_importance": 1.3125210255384445,
-      "perm_importance": 0.0005736980898844446
+      "feature": "has_balcony_0",
+      "gain_importance": 3.942547684535384,
+      "perm_importance": 0.005535757434935906
     }
   ],
   "best_params": {
-    "num_leaves": 64,
-    "max_depth": 7,
-    "min_child_samples": 19,
-    "feature_fraction": 0.8198035545203568,
-    "bagging_fraction": 0.7430085723759272,
-    "reg_alpha": 0.8133603299484831,
-    "reg_lambda": 0.7002265382229789
+    "num_leaves": 60,
+    "max_depth": 11,
+    "min_child_samples": 45,
+    "feature_fraction": 0.8800100949787368,
+    "bagging_fraction": 0.7812723686785915,
+    "reg_alpha": 0.729114739812065,
+    "reg_lambda": 0.882750507925878
   },
-  "generated_at": "2025-07-29T02:32:30.077364Z",
+  "generated_at": "2025-07-29T03:03:06.500339Z",
   "engineered_feature_stats": {
     "luxury_score": {
       "mean": 0.4371,
