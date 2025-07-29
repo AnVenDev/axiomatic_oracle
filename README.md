@@ -102,7 +102,7 @@ docker run -p 8000:8000 --env-file .env ai-oracle-rwa
 | `POST` | `/monitor` | Publish monitoring data | Yes* |
 | `GET` | `/docs` | Interactive API docs | No |
 
-*Authentication planned for Phase 2
+*Authentication planned for next phase
 
 ### Example Request
 
@@ -149,9 +149,9 @@ curl -X POST "http://localhost:8000/predict" \
 
 | Metric | Current | Target | Status |
 |--------|---------|--------|---------|
-| Model Accuracy (R²) | 0.89 | >0.92 | 🟡 In Progress |
-| Inference Latency (p95) | 82ms | <50ms | 🟡 Optimizing |
-| API Throughput | 850 req/s | 1000 req/s | 🟡 Scaling |
+| Model Accuracy (R²) | 0.71 | >0.92 | 🟡 In Progress |
+| Inference Latency (p95) | - | <50ms | 🟡 Optimizing |
+| API Throughput | - | 1000 req/s | 🟡 Scaling |
 | API Uptime | 99.5% | 99.9% | 🟢 On Track |
 | Blockchain Success Rate | 98% | 99.5% | 🟢 Stable |
 
@@ -162,7 +162,7 @@ The oracle framework is designed to support multiple asset types with pluggable 
 | Asset Type | Features | Use Cases | Status |
 |------------|----------|-----------|---------|
 | **Property** | size, location, humidity, energy class | Valuation, risk assessment | Live |
-| **Art** | medium, artist, condition, provenance | Authentication, valuation | Phase 5 |
+| **Art** | medium, artist, condition, provenance | Authentication, valuation | Soon |
 | **Agriculture** | temp, humidity, CO₂, soil quality | Yield prediction, health monitoring | Planned |
 | **Vehicle** | mileage, emissions, maintenance history | Condition assessment, pricing | Planned |
 
@@ -259,8 +259,8 @@ A client-side demo dashboard is under development to interface with the inferenc
 |---------------------------|------------|
 | Upload JSON + validate    | ✅ Done     |
 | Display inference result  | ✅ Done     |
-| Publish to Algorand       | 🔄 Planned |
-| Log viewer (from JSONL)   | 🔄 In Progress |
+| Publish to Algorand       | ✅ Done     |
+| Log viewer (from JSONL)   | ✅ Done     |
 | Model selector            | 🔲 Optional |
 | Mobile-friendly layout    | ✅ Planned  |
 
@@ -295,7 +295,7 @@ ng serve
 - [ ] SLA monitoring
 
 ### Phase 4: User Interface
-- [ ] Web dashboard
+- [x] Web dashboard
 - [ ] Batch processing UI
 - [ ] Historical analysis tools
 - [ ] Admin panel
