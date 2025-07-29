@@ -5,35 +5,34 @@
   "model_class": "TransformedTargetRegressor(LightGBM)",
   "random_state": 42,
   "dataset_file": "../data/df_cleaned_no_outliers.csv",
-  "dataset_hash_sha256": "d33ff6dd9eb9c7487fa3721a29f496b24448d0e1d3bc1fcea488d0193531ff2a",
-  "n_rows_total": 4920,
-  "n_rows_train": 3936,
-  "n_rows_test": 984,
+  "dataset_hash_sha256": "a47c9120befb711baae57d6bb498eff63114d6d9558c018310e2509f8df54b05",
+  "n_rows_total": 4929,
+  "n_rows_train": 3943,
+  "n_rows_test": 986,
   "features_categorical": [
+    "location",
     "energy_class",
-    "garage",
-    "has_balcony",
     "has_elevator",
     "has_garden",
-    "location",
+    "has_balcony",
+    "garage",
     "owner_occupied",
     "public_transport_nearby"
   ],
   "features_numeric": [
-    "age_years",
-    "air_quality_index",
-    "bathrooms",
-    "building_floors",
-    "distance_to_center_km",
-    "env_score",
-    "floor",
-    "humidity_level",
-    "luxury_score",
-    "noise_level",
-    "rooms",
     "size_m2",
+    "rooms",
+    "bathrooms",
+    "year_built",
+    "floor",
+    "building_floors",
+    "humidity_level",
     "temperature_avg",
-    "year_built"
+    "noise_level",
+    "air_quality_index",
+    "luxury_score",
+    "env_score",
+    "distance_to_center_km"
   ],
   "feature_list_ordered": [
     "energy_class",
@@ -52,45 +51,27 @@
     "env_score",
     "floor",
     "humidity_level",
-    "last_verified_ts",
     "luxury_score",
     "noise_level",
     "rooms",
     "size_m2",
     "temperature_avg",
-    "valuation_k",
     "year_built"
   ],
   "features_encoded": [
-    "age_years",
-    "air_quality_index",
-    "bathrooms",
-    "building_floors",
-    "distance_to_center_km",
-    "env_score",
-    "floor",
-    "humidity_level",
-    "luxury_score",
-    "noise_level",
-    "rooms",
     "size_m2",
-    "temperature_avg",
+    "rooms",
+    "bathrooms",
     "year_built",
-    "energy_class_A",
-    "energy_class_B",
-    "energy_class_C",
-    "energy_class_D",
-    "energy_class_E",
-    "energy_class_F",
-    "energy_class_G",
-    "garage_0",
-    "garage_1",
-    "has_balcony_0",
-    "has_balcony_1",
-    "has_elevator_0",
-    "has_elevator_1",
-    "has_garden_0",
-    "has_garden_1",
+    "floor",
+    "building_floors",
+    "humidity_level",
+    "temperature_avg",
+    "noise_level",
+    "air_quality_index",
+    "luxury_score",
+    "env_score",
+    "distance_to_center_km",
     "location_Bari",
     "location_Bologna",
     "location_Cagliari",
@@ -106,12 +87,27 @@
     "location_Turin",
     "location_Venice",
     "location_Verona",
+    "energy_class_A",
+    "energy_class_B",
+    "energy_class_C",
+    "energy_class_D",
+    "energy_class_E",
+    "energy_class_F",
+    "energy_class_G",
+    "has_elevator_0",
+    "has_elevator_1",
+    "has_garden_0",
+    "has_garden_1",
+    "has_balcony_0",
+    "has_balcony_1",
+    "garage_0",
+    "garage_1",
     "owner_occupied_0",
     "owner_occupied_1",
     "public_transport_nearby_0",
     "public_transport_nearby_1"
   ],
-  "encoded_feature_count": 48,
+  "encoded_feature_count": 47,
   "engineered_features": [
     "price_per_sqm",
     "luxury_score",
@@ -120,11 +116,11 @@
     "age_years"
   ],
   "metrics": {
-    "mae_k": 72.1104,
-    "rmse_k": 89.5534,
-    "r2": 0.612,
-    "coverage_interval": 0.8598,
-    "avg_interval_width_k": 243.856
+    "mae_k": 68.5783,
+    "rmse_k": 85.2428,
+    "r2": 0.63,
+    "coverage_interval": 0.7677,
+    "avg_interval_width_k": 211.0627
   },
   "prediction_intervals": {
     "quantiles": [
@@ -134,116 +130,107 @@
     ],
     "sample_intervals": [
       {
-        "q5": 105.91347724631449,
-        "q50": 182.05143298298978,
-        "q95": 250.6780699945638
+        "q5": 225.99777321704906,
+        "q50": 375.80354647949986,
+        "q95": 477.33936124512246
       },
       {
-        "q5": 262.4305834967811,
-        "q50": 450.75186713677454,
-        "q95": 644.8281430983347
+        "q5": 114.59653999092066,
+        "q50": 171.66262651354526,
+        "q95": 234.1872301309929
       },
       {
-        "q5": 72.23833280750311,
-        "q50": 118.917329690546,
-        "q95": 169.48252045753713
+        "q5": 149.96691693959974,
+        "q50": 256.87644597141497,
+        "q95": 318.99290269049845
       },
       {
-        "q5": 145.2918285622366,
-        "q50": 248.12292787514178,
-        "q95": 340.58173396792114
+        "q5": 119.04837040249376,
+        "q50": 224.28069874071392,
+        "q95": 259.4202462598481
       },
       {
-        "q5": 208.8796960549899,
-        "q50": 377.7175713752177,
-        "q95": 533.8013863624412
+        "q5": 281.2459200682383,
+        "q50": 454.4910449965423,
+        "q95": 561.924596283517
       }
     ]
   },
   "feature_importance_top10": [
     {
-      "feature": "size_m2",
-      "importance": 2955.3096400799477
+      "feature": "location_Bari",
+      "gain_importance": 0.6002400070428848,
+      "perm_importance": 0.0001227786788676244
     },
     {
-      "feature": "price_per_sqm",
-      "importance": 1238.2505368282102
+      "feature": "location_Bologna",
+      "gain_importance": 0.0,
+      "perm_importance": 0.0
     },
     {
-      "feature": "efficiency_score",
-      "importance": 116.35150163221508
+      "feature": "location_Cagliari",
+      "gain_importance": 0.6281580030918121,
+      "perm_importance": 0.00027148742440742945
     },
     {
-      "feature": "air_quality_index",
-      "importance": 0.09437225275298891
+      "feature": "location_Catania",
+      "gain_importance": 0.5707150101661682,
+      "perm_importance": 0.0001233865144991242
     },
     {
-      "feature": "humidity_level",
-      "importance": 0.08774189986091094
+      "feature": "location_Florence",
+      "gain_importance": 7.067231919616461,
+      "perm_importance": 0.0014217780915911082
     },
     {
-      "feature": "temperature_avg",
-      "importance": 0.0876338268056877
+      "feature": "location_Genoa",
+      "gain_importance": 0.0,
+      "perm_importance": 0.0
     },
     {
-      "feature": "noise_level",
-      "importance": 0.08663681608534822
+      "feature": "location_Milan",
+      "gain_importance": 0.7425699979066849,
+      "perm_importance": 0.00020730063616176687
     },
     {
-      "feature": "distance_to_center_km",
-      "importance": 0.08555409626208729
+      "feature": "location_Naples",
+      "gain_importance": 0.8101854138076305,
+      "perm_importance": 0.0004779254180411974
     },
     {
-      "feature": "age_years",
-      "importance": 0.06110045025706751
+      "feature": "location_Padua",
+      "gain_importance": 0.8369739102199674,
+      "perm_importance": 0.000570647102289612
     },
     {
-      "feature": "env_score",
-      "importance": 0.03410024366148465
+      "feature": "location_Palermo",
+      "gain_importance": 1.3125210255384445,
+      "perm_importance": 0.0005736980898844446
     }
   ],
   "best_params": {
-    "objective": "regression",
-    "metric": "mae",
-    "boosting_type": "gbdt",
-    "verbosity": -1,
-    "force_col_wise": true,
-    "seed": 42,
-    "feature_pre_filter": false,
-    "lambda_l1": 0.0,
-    "lambda_l2": 0.0,
-    "num_leaves": 2,
-    "feature_fraction": 0.8999999999999999,
-    "bagging_fraction": 0.8239978480559594,
-    "bagging_freq": 1,
-    "min_child_samples": 5,
-    "num_iterations": 1000,
-    "categorical_column": [
-      0,
-      1,
-      2,
-      3,
-      4,
-      5,
-      6,
-      7
-    ],
-    "n_estimators": 1000
+    "num_leaves": 64,
+    "max_depth": 7,
+    "min_child_samples": 19,
+    "feature_fraction": 0.8198035545203568,
+    "bagging_fraction": 0.7430085723759272,
+    "reg_alpha": 0.8133603299484831,
+    "reg_lambda": 0.7002265382229789
   },
-  "generated_at": "2025-07-28T21:50:37.981165Z",
+  "generated_at": "2025-07-29T02:32:30.077364Z",
   "engineered_feature_stats": {
     "luxury_score": {
-      "mean": 0.4368,
+      "mean": 0.4371,
       "min": 0.0,
       "max": 1.0
     },
     "env_score": {
-      "mean": 0.509,
+      "mean": 0.5056,
       "min": 0.0,
       "max": 1.0
     },
     "age_years": {
-      "mean": 38.9028,
+      "mean": 39.1842,
       "min": 3.0,
       "max": 75.0
     }
