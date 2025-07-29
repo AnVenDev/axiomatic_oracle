@@ -102,7 +102,7 @@ docker run -p 8000:8000 --env-file .env ai-oracle-rwa
 | `POST` | `/monitor` | Publish monitoring data | Yes* |
 | `GET` | `/docs` | Interactive API docs | No |
 
-*Authentication planned for Phase 2
+*Authentication planned for next phase
 
 ### Example Request
 
@@ -162,7 +162,7 @@ The oracle framework is designed to support multiple asset types with pluggable 
 | Asset Type | Features | Use Cases | Status |
 |------------|----------|-----------|---------|
 | **Property** | size, location, humidity, energy class | Valuation, risk assessment | Live |
-| **Art** | medium, artist, condition, provenance | Authentication, valuation | Phase 5 |
+| **Art** | medium, artist, condition, provenance | Authentication, valuation | Soon |
 | **Agriculture** | temp, humidity, CO₂, soil quality | Yield prediction, health monitoring | Planned |
 | **Vehicle** | mileage, emissions, maintenance history | Condition assessment, pricing | Planned |
 
@@ -295,7 +295,7 @@ ng serve
 - [ ] SLA monitoring
 
 ### Phase 4: User Interface
-- [ ] Web dashboard
+- [x] Web dashboard
 - [ ] Batch processing UI
 - [ ] Historical analysis tools
 - [ ] Admin panel
