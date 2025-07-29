@@ -197,6 +197,6 @@ jobs:
           script: |
             aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.ECR_REPO }}
             docker pull $ECR_REPO:$IMAGE_TAG
-            docker stop oracle-api || true
-            docker rm oracle-api || true
-            docker run -d --name oracle-api -p 80:8000 $ECR_REPO:$IMAGE_TAG
+            docker stop ai-oracle-api || true
+            docker rm ai-oracle-api || true
+            docker run -d --name ai-oracle-api -p 80:8000 $ECR_REPO:$IMAGE_TAG
