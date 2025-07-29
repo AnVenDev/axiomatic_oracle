@@ -98,7 +98,7 @@ jobs:
       - name: Train model, generate intervals, monitoring & SHAP
         run: |
           python - <<'PYCODE'
-          import json, joblib, logging
+          import os, json, joblib, logging
           from notebooks.train_model_03 import (
               final_model, X_train, X_test, y_train, y_test,
               mae, rmse, r2, coverage, avg_width,
@@ -107,29 +107,33 @@ jobs:
           )
           logging.basicConfig(level=logging.INFO)
 
+          os.makedirs('models', exist_ok=True)
+
           assert mae < 100, f"MAE troppo alto: {mae}"
           assert coverage >= 0.85, f"Coverage interval troppo basso: {coverage:.2%}"
 
           joblib.dump(final_model, 'models/final_model.pkl')
 
-          q_models = train_quantile_models(X_train, y_train, preprocessor=final_model.named_steps['preprocessor'], quantiles=[0.05,0.5,0.95])
+          q_models = train_quantile_models(X_train, y_train, preprocessor=final_model.preprocessor, quantiles=[0.05, 0.5, 0.95])
           intervals = predict_with_intervals(q_models, X_test)
           intervals.to_csv('models/prediction_intervals.csv', index=False)
 
           monitoring = generate_model_monitoring_metadata(final_model, X_train, y_train, X_test, y_test)
-          with open('models/monitoring_metadata.json','w') as f:
+          with open('models/monitoring_metadata.json', 'w') as f:
               json.dump(monitoring, f, indent=2)
 
-          shap_imp = generate_shap_explanations(final_model, X_test, sample_size=100)
+          shap_imp = generate_shap_explanations(final_model.base_learners["lgb"], X_test, sample_size=100)
           shap_imp.to_csv('models/shap_importance.csv', index=False)
 
           metadata = {
-            'mae': mae, 'rmse': rmse, 'r2': r2,
-            'coverage': coverage, 'avg_interval_width': avg_width
+              'mae': mae, 'rmse': rmse, 'r2': r2,
+              'coverage': coverage, 'avg_interval_width': avg_width
           }
-          with open('models/model_metadata.json','w') as f:
+          with open('models/model_metadata.json', 'w') as f:
               json.dump(metadata, f, indent=2)
 
+          logging.info(f"📊 MAE: {mae:.2f}, RMSE: {rmse:.2f}, R²: {r2:.2f}")
+          logging.info(f"📉 Coverage: {coverage:.2%}, Width: {avg_width:.2f} k€")
           logging.info("✅ Training & evaluation complete")
           PYCODE
 

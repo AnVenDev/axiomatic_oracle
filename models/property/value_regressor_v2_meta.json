@@ -118,11 +118,11 @@
     "age_years"
   ],
   "metrics": {
-    "mae_k": 68.8699,
-    "rmse_k": 86.0339,
-    "r2": 0.6231,
-    "coverage_interval": 0.7576,
-    "avg_interval_width_k": 210.2939
+    "mae_k": 68.7949,
+    "rmse_k": 85.9379,
+    "r2": 0.624,
+    "coverage_interval": 0.8387,
+    "avg_interval_width_k": 228.531
   },
   "prediction_intervals": {
     "quantiles": [
@@ -132,94 +132,94 @@
     ],
     "sample_intervals": [
       {
-        "q5": 237.99461094066112,
-        "q50": 396.3426468101393,
-        "q95": 483.3657912574347
+        "q5": 213.07425410687034,
+        "q50": 413.1603224582146,
+        "q95": 491.6710050499305
       },
       {
-        "q5": 129.4576680806971,
-        "q50": 161.9562070320083,
-        "q95": 225.35248271311065
+        "q5": 115.2044442028308,
+        "q50": 171.6281518022437,
+        "q95": 232.19873487411857
       },
       {
-        "q5": 151.12678069521036,
-        "q50": 261.8185885729567,
-        "q95": 311.41775598616437
+        "q5": 136.62913232707982,
+        "q50": 261.4556909174077,
+        "q95": 330.0792031915949
       },
       {
-        "q5": 120.9387351613835,
-        "q50": 237.26974977453145,
-        "q95": 268.2990865731188
+        "q5": 113.02434870381599,
+        "q50": 229.2579854790075,
+        "q95": 278.1342770810642
       },
       {
-        "q5": 282.11914537298384,
-        "q50": 507.1805355827216,
-        "q95": 577.0186362876187
+        "q5": 256.7810672890403,
+        "q50": 442.91433562024287,
+        "q95": 606.4202153027629
       }
     ]
   },
   "feature_importance_top10": [
     {
       "feature": "energy_class_A",
-      "gain_importance": 2.2295784913003445,
-      "perm_importance": 0.0003871341990522803
+      "gain_importance": 2.242639482021332,
+      "perm_importance": 0.0002482256259304039
     },
     {
       "feature": "energy_class_B",
-      "gain_importance": 2.820260465145111,
-      "perm_importance": 0.0009240533714490462
+      "gain_importance": 2.275201976299286,
+      "perm_importance": 0.0006140925943889542
     },
     {
       "feature": "energy_class_C",
-      "gain_importance": 0.5476158931851387,
-      "perm_importance": 0.00023194081889802432
+      "gain_importance": 1.6126109957695007,
+      "perm_importance": 0.00028665512042199136
     },
     {
       "feature": "energy_class_D",
-      "gain_importance": 2.480285994708538,
-      "perm_importance": 0.0007609978288854902
+      "gain_importance": 3.6508269906044006,
+      "perm_importance": 0.0007430202726646518
     },
     {
       "feature": "energy_class_E",
-      "gain_importance": 2.471829004585743,
-      "perm_importance": 0.000773599560498911
+      "gain_importance": 1.355391025543213,
+      "perm_importance": 0.00032395050921401605
     },
     {
       "feature": "energy_class_F",
-      "gain_importance": 0.6885370016098022,
-      "perm_importance": 0.00019222921307538444
+      "gain_importance": 0.3177420049905777,
+      "perm_importance": -1.6833728172027663e-05
     },
     {
       "feature": "energy_class_G",
-      "gain_importance": 4.627284664660692,
-      "perm_importance": 0.002235208899921054
+      "gain_importance": 3.351035203784704,
+      "perm_importance": 0.0009368391322096715
     },
     {
       "feature": "garage_0",
-      "gain_importance": 2.8120056688785553,
-      "perm_importance": 0.00031725620308807324
+      "gain_importance": 2.8253489919006824,
+      "perm_importance": 0.00028243700970724815
     },
     {
       "feature": "garage_1",
-      "gain_importance": 0.11435600370168686,
-      "perm_importance": 5.886888694556225e-06
+      "gain_importance": 0.0,
+      "perm_importance": 0.0
     },
     {
       "feature": "has_balcony_0",
-      "gain_importance": 3.942547684535384,
-      "perm_importance": 0.005535757434935906
+      "gain_importance": 4.412368969991803,
+      "perm_importance": 0.0014589943210230327
     }
   ],
   "best_params": {
-    "num_leaves": 60,
-    "max_depth": 11,
-    "min_child_samples": 45,
-    "feature_fraction": 0.8800100949787368,
-    "bagging_fraction": 0.7812723686785915,
-    "reg_alpha": 0.729114739812065,
-    "reg_lambda": 0.882750507925878
+    "num_leaves": 62,
+    "max_depth": 5,
+    "min_child_samples": 44,
+    "feature_fraction": 0.9554558426056945,
+    "bagging_fraction": 0.8288225982670865,
+    "reg_alpha": 0.5758387991853879,
+    "reg_lambda": 0.7244641931385258
   },
-  "generated_at": "2025-07-29T03:03:06.500339Z",
+  "generated_at": "2025-07-29T03:26:32.537548Z",
   "engineered_feature_stats": {
     "luxury_score": {
       "mean": 0.4371,
