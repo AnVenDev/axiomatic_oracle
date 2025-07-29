@@ -187,6 +187,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: DEBUG Lista container su EC2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            echo "🧩 Lista container in esecuzione:"
+            docker ps --format "table {{.Names}}\t{{.Status}}"
+
       - name: Deploy to EC2 via SSH
         uses: appleboy/ssh-action@v1
         with:
@@ -194,8 +204,21 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.ECR_REPO }}
+            set -e
+            echo "🚀 Inizio deploy su EC2"
+            echo "🧩 Pull da: $ECR_REPO:$IMAGE_TAG"
+
+            # Pull latest image
             docker pull $ECR_REPO:$IMAGE_TAG
+
+            # Stop and remove old container
             docker stop ai-oracle-api || true
             docker rm ai-oracle-api || true
-            docker run -d --name ai-oracle-api -p 80:8000 $ECR_REPO:$IMAGE_TAG
+
+            # Run new container
+            docker run -d \
+              --name ai-oracle-api \
+              -p 80:8000 \
+              $ECR_REPO:$IMAGE_TAG
+
+            echo "✅ Container avviato: ai-oracle-api"
