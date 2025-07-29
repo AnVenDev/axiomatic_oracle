@@ -182,21 +182,21 @@ jobs:
           docker build -t $ECR_REPO:$IMAGE_TAG .
           docker push $ECR_REPO:$IMAGE_TAG
 
-    deploy-to-prod:
-      needs: build-and-push-image
-      if: github.ref == 'refs/heads/main'
-      runs-on: ubuntu-latest
+  deploy-to-prod:
+    needs: build-and-push-image
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
 
-      steps:
-        - name: Deploy to EC2 via SSH
-          uses: appleboy/ssh-action@v1
-          with:
-            host: ${{ secrets.EC2_HOST }}
-            username: ${{ secrets.EC2_USER }}
-            key: ${{ secrets.EC2_SSH_KEY }}
-            script: |
-              aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.ECR_REPO }}
-              docker pull $ECR_REPO:$IMAGE_TAG
-              docker stop oracle-api || true
-              docker rm oracle-api || true
-              docker run -d --name oracle-api -p 80:8000 $ECR_REPO:$IMAGE_TAG
+    steps:
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.ECR_REPO }}
+            docker pull $ECR_REPO:$IMAGE_TAG
+            docker stop oracle-api || true
+            docker rm oracle-api || true
+            docker run -d --name oracle-api -p 80:8000 $ECR_REPO:$IMAGE_TAG
