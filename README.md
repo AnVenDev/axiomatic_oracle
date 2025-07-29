@@ -259,8 +259,8 @@ A client-side demo dashboard is under development to interface with the inferenc
 |---------------------------|------------|
 | Upload JSON + validate    | ✅ Done     |
 | Display inference result  | ✅ Done     |
-| Publish to Algorand       | 🔄 Planned |
-| Log viewer (from JSONL)   | 🔄 In Progress |
+| Publish to Algorand       | ✅ Done     |
+| Log viewer (from JSONL)   | ✅ Done     |
 | Model selector            | 🔲 Optional |
 | Mobile-friendly layout    | ✅ Planned  |
 
