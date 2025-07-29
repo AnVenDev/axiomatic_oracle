@@ -105,29 +105,33 @@ jobs:
           import json
           import pandas as pd
           from pathlib import Path
+          from glob import glob
 
-          meta_path = Path("models/immobili/value_regressor_v2_meta.json")
-          assert meta_path.exists(), "❌ Metadata file non trovato"
+          # Cerca il metadata file partendo dalla root (models/)
+          meta_files = glob("models/**/value_regressor_v2_meta.json", recursive=True)
+          assert meta_files, "❌ Metadata file non trovato"
+
+          meta_path = Path(meta_files[0])  # Usa il primo trovato (oppure scorri se ne hai più)
+          print(f"📄 Metadata file trovato: {meta_path}")
 
           with open(meta_path, encoding="utf-8") as f:
               meta = json.load(f)
 
-          mae     = meta["metrics"]["mae_k"]
+          mae      = meta["metrics"]["mae_k"]
           coverage = meta["metrics"]["coverage_interval"]
-          width   = meta["metrics"]["avg_interval_width_k"]
-          r2      = meta["metrics"]["r2"]
+          width    = meta["metrics"]["avg_interval_width_k"]
+          r2       = meta["metrics"]["r2"]
 
           print(f"📊 MAE: {mae:.2f}k, R²: {r2:.2f}, Coverage: {coverage:.2%}, Width: {width:.2f}k")
 
           assert mae < 100, "❌ MAE troppo alto"
           assert coverage >= 0.85, f"❌ Coverage troppo basso: {coverage:.2%}"
-
           print("✅ Metriche accettabili")
 
-          # Salva prediction_intervals se non già salvati
-          pred_file = Path("models/immobili/prediction_intervals.csv")
+          # Verifica se prediction_intervals.csv esiste
+          pred_file = meta_path.parent / "prediction_intervals.csv"
           if not pred_file.exists():
-              print("⚠️ prediction_intervals.csv non trovato nei file salvati nel training. Crealo ora se necessario.")
+              print("⚠️ prediction_intervals.csv non trovato nella cartella:", pred_file.parent)
           PYCODE
 
       - name: Upload model artifacts
