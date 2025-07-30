@@ -29,7 +29,7 @@ assert ALGORAND_ADDRESS is not None, "Missing ALGORAND_ADDRESS"
 SENDER_ADDR = ALGORAND_WALLET_ADDRESS
 
 # Initialize Algod client
-ALGOD_TOKEN: str = ""
+ALGOD_TOKEN: str = "a" * 64
 
 client = algod.AlgodClient(ALGOD_TOKEN, ALGORAND_ADDRESS)
 
