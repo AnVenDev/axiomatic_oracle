@@ -53,3 +53,7 @@ notebooks/TODO.txt
 data/predictions_log.jsonl
 coverage.xml
 *.zip
+/node_modules
+notebooks/tree.txt
+scripts/tree.txt
+/node_modules
