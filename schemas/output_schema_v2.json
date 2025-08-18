@@ -1,0 +1,242 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "v2",
+  "title": "AI Oracle Output Schema v2",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "asset_id",
+    "asset_type",
+    "timestamp",
+    "metrics",
+    "flags",
+    "model_meta",
+    "model_health",
+    "cache_hit",
+    "publish"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "v2" },
+
+    "trace_id": { "type": "string" },
+    "input_hash": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
+    "model_hash": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
+
+    "asset_id": { "type": "string" },
+    "asset_type": { "type": "string" },
+
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$",
+      "description": "UTC RFC3339 con suffisso 'Z'"
+    },
+
+    "metrics": {
+      "type": "object",
+      "required": [
+        "valuation_k",
+        "uncertainty_k",
+        "confidence_low_k",
+        "confidence_high_k",
+        "latency_ms"
+      ],
+      "properties": {
+        "valuation_k": { "type": "number" },
+        "point_pred_k": { "type": "number" },
+        "uncertainty_k": { "type": "number" },
+        "confidence": { "type": "number" },
+        "confidence_low_k": { "type": "number" },
+        "confidence_high_k": { "type": "number" },
+        "ci_margin_k": { "type": "number" },
+        "latency_ms": { "type": "number" },
+        "ci_method": { "type": ["string", "null"] },
+        "n_estimators": { "type": ["integer", "null"] }
+      },
+      "additionalProperties": true
+    },
+
+    "flags": {
+      "type": "object",
+      "required": ["anomaly", "drift_detected", "needs_review"],
+      "properties": {
+        "anomaly": { "type": "boolean" },
+        "drift_detected": { "type": "boolean" },
+        "needs_review": { "type": "boolean" },
+        "price_out_of_band": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+
+    "model_meta": {
+      "type": "object",
+      "required": [
+        "value_model_version",
+        "value_model_name",
+        "n_features_total"
+      ],
+      "properties": {
+        "value_model_version": { "type": ["string", "null"] },
+        "value_model_name": { "type": ["string", "null"] },
+        "n_features_total": { "type": "integer" },
+        "n_features_categorical": { "type": "integer" },
+        "n_features_numeric": { "type": "integer" }
+      },
+      "additionalProperties": true
+    },
+
+    "model_health": {
+      "type": "object",
+      "required": ["status", "metadata_valid"],
+      "properties": {
+        "status": { "type": "string" },
+        "model_path": { "type": "string" },
+        "size_mb": { "type": ["number", "null"] },
+        "last_modified": { "type": ["string", "null"] },
+        "metadata_valid": { "type": "boolean" },
+        "metrics": {
+          "type": "object",
+          "properties": {
+            "mae": { "type": "number" },
+            "rmse": { "type": "number" },
+            "r2": { "type": "number" },
+            "mae_k": { "type": "number" },
+            "rmse_k": { "type": "number" }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+
+    "validation": {
+      "type": "object",
+      "properties": {
+        "ok": { "type": "boolean" },
+        "warnings": { "type": ["array", "null"] },
+        "errors": { "type": ["array", "null"] }
+      },
+      "additionalProperties": true
+    },
+
+    "drift": {
+      "type": "object",
+      "properties": {
+        "message": { "type": ["string", "null"] }
+      },
+      "additionalProperties": true
+    },
+
+    "explanations": { "type": "object", "additionalProperties": true },
+    "sanity": { "type": "object", "additionalProperties": true },
+
+    "offchain_refs": {
+      "type": "object",
+      "properties": {
+        "detail_report_hash": { "type": ["string", "null"] },
+        "sensor_batch_hash": { "type": ["string", "null"] },
+        "artifact_hash": {
+          "type": ["string", "null"],
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        }
+      },
+      "additionalProperties": true
+    },
+
+    "cache_hit": { "type": "boolean" },
+    "schema_validation_error": { "type": ["string", "null"] },
+
+    "publish": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": { "type": "string", "enum": ["ok", "error", "skipped"] },
+        "error": { "type": ["string", "null"] },
+        "network": {
+          "type": ["string", "null"],
+          "enum": [
+            "algorand-mainnet",
+            "algorand-testnet",
+            "algorand-betanet",
+            "algorand-sandbox",
+            null
+          ]
+        },
+        "txid": { "type": ["string", "null"] },
+        "asa_id": { "type": ["string", "integer", "null"] },
+        "note_size": { "type": ["integer", "null"], "minimum": 0 },
+        "note_sha256": {
+          "type": ["string", "null"],
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        },
+        "is_compacted": { "type": ["boolean", "null"] },
+        "fallback_url_used": { "type": ["boolean", "null"] },
+        "fallback_uri": { "type": ["string", "null"], "format": "uri" }
+      },
+      "additionalProperties": true
+    },
+
+    "registry": {
+      "type": "object",
+      "properties": {
+        "app_id": { "type": ["integer", "null"] },
+        "confirmed_round": { "type": ["integer", "null"] },
+        "status": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+
+    "iot": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "type": ["string", "null"],
+          "enum": ["helium", "xyo", "other", null]
+        },
+        "device_id": { "type": ["string", "null"] },
+        "frame_counter": { "type": ["integer", "null"], "minimum": 0 },
+        "sensor_payload_sha256": {
+          "type": ["string", "null"],
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        },
+        "verified": { "type": ["boolean", "null"] }
+      },
+      "additionalProperties": true
+    },
+
+    "xchain": {
+      "type": "object",
+      "properties": {
+        "bridge": {
+          "type": ["string", "null"],
+          "enum": ["wormhole", "axelar", "ccip", "layerzero", "other", null]
+        },
+        "vaa_id": { "type": ["string", "null"] },
+        "targets": { "type": ["array", "null"], "items": { "type": "string" } },
+        "status": { "type": ["string", "null"] }
+      },
+      "additionalProperties": true
+    },
+
+    "extensions": { "type": "object", "additionalProperties": true },
+
+    "blockchain_txid": {
+      "type": "string",
+      "deprecated": true,
+      "description": "DEPRECATO: usare publish.txid"
+    },
+    "asa_id": {
+      "type": ["string", "integer"],
+      "deprecated": true,
+      "description": "DEPRECATO: usare publish.asa_id"
+    },
+
+    "_logged_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$",
+      "description": "UTC RFC3339 con suffisso 'Z'"
+    }
+  },
+  "additionalProperties": false
+}
