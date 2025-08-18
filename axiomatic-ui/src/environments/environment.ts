@@ -1,3 +1,8 @@
 export const environment = {
-  apiUrl: 'http://localhost:8000',
+  '/api': {
+    target: 'http://localhost:8000',
+    secure: false,
+    changeOrigin: true,
+    pathRewrite: { '^/api': '' },
+  },
 };

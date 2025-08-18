@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatInputModule } from '@angular/material/input';
 import { ApiService } from '../../services/api.service';
-import { PredictionResponse } from '../../models/property';
+import { PredictionResponseV2, PropertyRequest } from '../../models/property';
 import { MatTableModule } from '@angular/material/table';
 import { MatPaginatorModule } from '@angular/material/paginator';
 import { MatTabsModule } from '@angular/material/tabs';
@@ -32,65 +32,111 @@ import { HttpErrorResponse } from '@angular/common/http';
   styleUrls: ['./dashboard.component.scss'],
 })
 export class DashboardComponent {
-  jsonInput: string = '';
-  response: PredictionResponse | any = null;
+  jsonInput = '';
+  response: PredictionResponseV2 | null = null;
   errorMessage: string | null = null;
   selectedLog: any = null;
   loading = false;
   publishing = false;
   txId: string | null = null;
 
+  // ultimo payload valido inviato (utile per republish)
+  private lastPayload: PropertyRequest | null = null;
+
   constructor(private api: ApiService) {}
 
-  sendRequest(): void {
+  /** Parse JSON dalla textarea con messaggio d’errore chiaro. */
+  private parseInput(): PropertyRequest | null {
+    try {
+      const parsed = JSON.parse(this.jsonInput);
+      return parsed as PropertyRequest;
+    } catch {
+      this.errorMessage = 'Invalid JSON. Please check the syntax.';
+      return null;
+    }
+  }
+
+  /** Invia la richiesta di predizione (senza publish). */
+  async sendRequest(): Promise<void> {
     this.errorMessage = null;
     this.response = null;
     this.loading = true;
+    this.txId = null;
 
-    let payload;
-    try {
-      payload = JSON.parse(this.jsonInput);
-    } catch (e) {
-      this.errorMessage = 'Invalid JSON file. Please check syntax.';
+    const payload = this.parseInput();
+    if (!payload) {
       this.loading = false;
       return;
     }
 
-    this.api.predictProperty(payload).subscribe({
-      next: (res) => {
-        this.errorMessage = null;
-        this.response = res;
-        this.loading = false;
-      },
-      error: (err: HttpErrorResponse) => {
-        const detail = err.error?.detail || err.error || err.message;
-        this.errorMessage = this.translateValidationError(detail);
-        this.response = null;
-        this.loading = false;
-      },
-    });
+    try {
+      const res: PredictionResponseV2 = await this.api.predictProperty(
+        payload,
+        false
+      );
+      this.response = res;
+      this.lastPayload = payload;
+    } catch (err) {
+      const e = err as HttpErrorResponse;
+      const detail =
+        (e.error && (e.error.detail || e.error)) ||
+        e.message ||
+        'Unknown error';
+      this.errorMessage = this.translateValidationError(detail);
+      this.response = null;
+    } finally {
+      this.loading = false;
+    }
   }
 
+  /** Publish on-chain: rilancia la predict con publish=true riusando l’ultimo payload. */
+  async publishToBlockchain(): Promise<void> {
+    if (!this.lastPayload) {
+      this.errorMessage = 'No payload to publish. Send a prediction first.';
+      return;
+    }
+    this.publishing = true;
+    this.errorMessage = null;
+
+    try {
+      const res: PredictionResponseV2 = await this.api.predictProperty(
+        this.lastPayload,
+        true
+      );
+      this.response = res;
+      this.txId = res.blockchain_txid || res.publish?.txid || null;
+    } catch (err) {
+      const e = err as HttpErrorResponse;
+      const detail =
+        (e.error && (e.error.detail || e.error)) ||
+        e.message ||
+        'Unknown error';
+      this.errorMessage = this.translateValidationError(detail);
+    } finally {
+      this.publishing = false;
+    }
+  }
+
+  /** Carica un file JSON e lo posiziona nella textarea (pretty-printed). */
   loadFile(event: Event): void {
     const input = event.target as HTMLInputElement;
     if (!input.files?.length) return;
 
     const file = input.files[0];
     const reader = new FileReader();
-
     reader.onload = () => {
       try {
         const parsed = JSON.parse(reader.result as string);
-        this.jsonInput = JSON.stringify(parsed, null, 2); // ✨ stampa nella textarea
+        this.jsonInput = JSON.stringify(parsed, null, 2);
         this.errorMessage = null;
-      } catch (e) {
+      } catch {
         this.errorMessage = 'Invalid JSON file. Please check syntax.';
       }
     };
-
     reader.readAsText(file);
   }
 
+  /** Scarica l’ultima risposta come JSON prettificato. */
   downloadResponse(): void {
     if (!this.response) return;
     const filename = `${this.response.asset_id || 'response'}.json`;
@@ -105,19 +151,20 @@ export class DashboardComponent {
     window.URL.revokeObjectURL(url);
   }
 
-  // ERROR TRANSLATIONS
+  // ----------------------------------------------------------------------------
+  // ERROR TRANSLATIONS (immutati, solo tipizzati)
+  // ----------------------------------------------------------------------------
 
-  translateValidationError(detail: any): string {
+  translateValidationError(detail: unknown): string {
     if (Array.isArray(detail)) {
-      // Standard FastAPI/Pydantic case (array of objects)
+      // FastAPI/Pydantic array of objects
       return this.formatErrorList(
-        detail.map((e: any) => ({
-          field: e.loc?.[1] || 'unknown field',
-          message: e.msg,
+        (detail as any[]).map((e) => ({
+          field: e?.loc?.[1] || 'unknown field',
+          message: e?.msg || 'invalid value',
         }))
       );
     } else if (typeof detail === 'string') {
-      // Check if it's a Pydantic error (both "validation errors for" and "validation error for")
       if (
         detail.includes('validation error') &&
         detail.includes('PropertyPredictRequest')
@@ -133,10 +180,9 @@ export class DashboardComponent {
   private parsePydanticError(errorString: string): string {
     const errors: Array<{ field: string; message: string }> = [];
 
-    // FIRST: Handle model_validator errors (format: "Value error, message")
+    // model_validator errors
     const valueErrorRegex = /Value error,\s*(.+?)\s*\[type=value_error/g;
-    let valueMatch;
-
+    let valueMatch: RegExpExecArray | null;
     while ((valueMatch = valueErrorRegex.exec(errorString)) !== null) {
       const errorMessage = valueMatch[1].trim();
 
@@ -158,34 +204,23 @@ export class DashboardComponent {
           message: 'must be one of: A, B, C, D, E, F, G',
         });
       } else {
-        // For other model_validator errors not specifically handled
-        errors.push({
-          field: 'Validation',
-          message: errorMessage,
-        });
+        errors.push({ field: 'Validation', message: errorMessage });
       }
     }
 
-    // AFTER: Regex for standard Pydantic validation errors (format: "field\n  Input should be...")
+    // standard field errors
     const fieldErrorRegex =
       /^(\w+)\s*\n\s*Input should be (.+?)(?=\s*\[type=)/gm;
-    let fieldMatch;
-
+    let fieldMatch: RegExpExecArray | null;
     while ((fieldMatch = fieldErrorRegex.exec(errorString)) !== null) {
       const field = fieldMatch[1];
       const rawMessage = fieldMatch[2].trim();
-
-      // Avoid duplicates: if we've already added this field, skip
       const alreadyAdded = errors.some(
-        (error) => error.field === this.translateFieldName(field)
+        (e) => e.field === this.translateFieldName(field)
       );
-
       if (!alreadyAdded) {
         const message = this.translateMessage(rawMessage);
-        errors.push({
-          field: this.translateFieldName(field),
-          message,
-        });
+        errors.push({ field: this.translateFieldName(field), message });
       }
     }
 
@@ -196,21 +231,17 @@ export class DashboardComponent {
     errors: Array<{ field: string; message: string }>
   ): string {
     if (errors.length === 0) return 'Validation error.';
-
     const header = `Found ${errors.length} validation error${
       errors.length > 1 ? 's' : ''
     }:\n`;
-
     return (
       header +
-      errors
-        .map((error, index) => `${index + 1}. ${error.field}: ${error.message}`)
-        .join('\n')
+      errors.map((e, i) => `${i + 1}. ${e.field}: ${e.message}`).join('\n')
     );
   }
 
   private translateFieldName(field: string): string {
-    const translations: { [key: string]: string } = {
+    const translations: Record<string, string> = {
       location: 'Location',
       size_m2: 'Size (m²)',
       rooms: 'Rooms',
@@ -233,99 +264,75 @@ export class DashboardComponent {
   }
 
   private translateMessage(message: string): string {
-    const translations: { [key: string]: string } = {
-      // Messages for data types and parsing
+    const translations: Record<string, string> = {
       'a valid string': 'must be a valid string',
       'a valid integer': 'must be a valid integer',
       'a valid number': 'must be a valid number',
       'unable to parse string as an integer': 'must be a valid integer',
       'unable to parse string as a number': 'must be a valid number',
-
-      // Messages for required fields
       'field required': 'is required',
-
-      // For numeric fields with gt (greater than)
       'greater than 0': 'must be greater than 0',
-
-      // For fields with ge (greater than or equal) - correct for your constraints
       'greater than or equal to 0': 'must be at least 0',
       'greater than or equal to 1': 'must be at least 1',
       'greater than or equal to 1800': 'must be at least 1800',
-
-      // For fields with le (less than or equal) - correct for your actual constraints
       'less than or equal to 1': 'must be 0 or 1 (0=No, 1=Yes)',
       'less than or equal to 100': 'cannot exceed 100%',
       'less than or equal to 150': 'cannot exceed 150 dB',
       'less than or equal to 500': 'cannot exceed 500',
     };
 
-    // Check exact translations first
     for (const [eng, translated] of Object.entries(translations)) {
-      if (message === eng) {
-        return translated;
-      }
+      if (message === eng || message.includes(eng)) return translated;
     }
 
-    // Then check if the message contains any of the keys
-    for (const [eng, translated] of Object.entries(translations)) {
-      if (message.includes(eng)) {
-        return translated;
-      }
-    }
-
-    // Handle dynamic patterns for current year
     const yearMatch = message.match(/less than or equal to (\d{4})/);
-    if (yearMatch) {
-      return `cannot be later than ${yearMatch[1]}`;
-    }
+    if (yearMatch) return `cannot be later than ${yearMatch[1]}`;
 
-    // Pattern for combined messages like "a valid integer, unable to parse string as an integer"
     if (
       message.includes('a valid integer') &&
       message.includes('unable to parse')
-    ) {
+    )
       return 'must be a valid integer';
-    }
-
     if (
       message.includes('a valid number') &&
       message.includes('unable to parse')
-    ) {
+    )
       return 'must be a valid number';
-    }
 
-    // If no translation found, return the original message
     return message;
+  }
+
+  // ----------------------------------------------------------------------------
+  // Helpers UI
+  // ----------------------------------------------------------------------------
+
+  getExplorerUrl(txId: string): string {
+    // TestNet explorer (puoi sostituire con mainnet/dappflow)
+    return `https://testnet.peraexplorer.com/tx/${txId}`;
+  }
+
+  /**
+   * Compat con il template: interpreta `mae` come `ci_margin_k` (margine del CI).
+   * Restituisce l'intervallo in EURO (non k€).
+   */
+  getConfidenceInterval(
+    valueK: number,
+    maeOrMarginK: number
+  ): [number, number] {
+    const lower = Math.max(0, (valueK - maeOrMarginK) * 1000);
+    const upper = (valueK + maeOrMarginK) * 1000;
+    return [lower, upper];
+  }
+
+  /** Intervallo diretto dalla response (se vuoi usarlo nel template). */
+  getConfidenceIntervalFromResponse(): [number, number] | null {
+    if (!this.response) return null;
+    const low = this.response.metrics.confidence_low_k * 1000;
+    const high = this.response.metrics.confidence_high_k * 1000;
+    return [low, high];
   }
 
   simulatePublish(): void {
     alert('Publishing Simulated');
   }
-
-  publishToBlockchain(): void {
-    // TODO: change to real publish depending on a true/false button
-    if (!this.response) return;
-
-    this.publishing = true;
-
-    setTimeout(() => {
-      this.txId = 'SAMPLE_TXID_' + Math.floor(Math.random() * 1000000);
-      this.publishing = false;
-    }, 2000);
-  }
-
-  getExplorerUrl(txId: string): string {
-    return `https://testnet.peraexplorer.com/tx/${txId}`;
-  }
-
-  getConfidenceInterval(value: number, mae: number): [number, number] {
-    const lower = Math.max(0, (value - mae) * 1000);
-    const upper = (value + mae) * 1000;
-    return [lower, upper];
-  }
-
-  // TODO:
-  // 1. Toast/alert for publishes and oracle uploads
-  // 2. Show txId when publishes for real
-  // 3. Add interactive graphs
 }

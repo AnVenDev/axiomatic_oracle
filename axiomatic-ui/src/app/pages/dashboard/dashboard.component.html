@@ -3,6 +3,7 @@
 
   <section class="input-section">
     <h2>Enter or upload asset details in JSON format</h2>
+
     <label for="jsonFileUpload">Upload JSON file:</label>
     <input
       id="jsonFileUpload"
@@ -11,6 +12,7 @@
       accept=".json"
       style="margin-bottom: 1rem"
     />
+
     <textarea
       [(ngModel)]="jsonInput"
       rows="15"
@@ -23,10 +25,10 @@
         color="primary"
         class="btn-primary"
         (click)="sendRequest()"
+        [disabled]="loading"
       >
         Send to Oracle
       </button>
-
       <mat-spinner *ngIf="loading" diameter="32"></mat-spinner>
     </div>
   </section>
@@ -38,71 +40,58 @@
     </mat-card>
   </section>
 
-  <section class="output-section" *ngIf="response && !errorMessage">
-    <h2 class="output-title">Valutazione AI:</h2>
+  <!-- Type narrowing: r è sicuramente PredictionResponseV2 dentro al blocco -->
+  <section class="output-section" *ngIf="response as r">
+    <h2 class="output-title">Valutazione AI</h2>
 
     <p>
-      <strong>Esteemed value:</strong>
-      {{ response.metrics?.valuation_base_k * 1000 | currency : "EUR" }}
-    </p>
-
-    <p
-      *ngIf="
-        response?.metrics?.valuation_base_k &&
-        response?.model_health?.metrics?.mae_k
-      "
-    >
-      <strong>Confidence (± MAE):</strong>
-      {{
-        getConfidenceInterval(
-          response.metrics.valuation_base_k,
-          response.model_health.metrics.mae_k
-        )[0] | currency : "EUR"
-      }}
-      –
-      {{
-        getConfidenceInterval(
-          response.metrics.valuation_base_k,
-          response.model_health.metrics.mae_k
-        )[1] | currency : "EUR"
-      }}
+      <strong>Valore stimato:</strong>
+      {{ r.metrics.valuation_k * 1000 | currency : "EUR" }}
+      <span class="muted">
+        (punto: {{ r.metrics.point_pred_k * 1000 | currency : "EUR" }})
+      </span>
     </p>
 
     <p>
-      <strong>Model:</strong>
-      {{ response.model_meta?.value_model_name }} (v{{
-        response.model_meta?.value_model_version
+      <strong
+        >Intervallo
+        {{ r.metrics.confidence * 100 | number : "1.0-0" }}%:</strong
+      >
+      {{ r.metrics.confidence_low_k * 1000 | currency : "EUR" }} –
+      {{ r.metrics.confidence_high_k * 1000 | currency : "EUR" }}
+      <span class="muted">
+        (± {{ r.metrics.ci_margin_k * 1000 | currency : "EUR" }})
+      </span>
+    </p>
+
+    <p>
+      <strong>Incertezza (σ):</strong>
+      {{ r.metrics.uncertainty_k * 1000 | currency : "EUR" }}
+    </p>
+
+    <p>
+      <strong>Modello:</strong>
+      {{ r.model_meta.value_model_name }} ({{
+        r.model_meta.value_model_version
       }})
     </p>
 
     <p>
-      <strong>State:</strong>
-      {{ response.model_health?.status }}
+      <strong>Stato publish:</strong>
+      {{ r.publish.status }}
+      <ng-container *ngIf="r.publish.status === 'success'">
+        · TX:
+        <a
+          [href]="getExplorerUrl(r.blockchain_txid || r.publish.txid!)"
+          target="_blank"
+        >
+          {{ r.blockchain_txid || r.publish.txid }}
+        </a>
+        · ASA: {{ r.asa_id || r.publish.asa_id }}
+      </ng-container>
+      <ng-container *ngIf="r.publish.status === 'error'">
+        · Error: {{ r.publish.error }}
+      </ng-container>
     </p>
-
-    <p *ngIf="txId">
-      <strong>Transaction ID:</strong>
-      <a [href]="getExplorerUrl(txId)" target="_blank">{{ txId }}</a>
-    </p>
-
-    <div class="cta-row">
-      <button
-        mat-stroked-button
-        color="accent"
-        class="btn-primary btn-label"
-        (click)="publishToBlockchain()"
-      >
-        Publish on Algorand
-      </button>
-      <button
-        mat-stroked-button
-        color="primary"
-        class="btn-primary btn-label"
-        (click)="downloadResponse()"
-        [disabled]="!response"
-      >
-        Download Response
-      </button>
-    </div>
   </section>
 </div>
