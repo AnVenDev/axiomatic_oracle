@@ -1,24 +1,33 @@
 @echo off
+setlocal
 cd /d "%~dp0"
 
 echo ================================
-echo  Avvio AI Oracle API (Windows)
+echo   Avvio AI Oracle API (Windows)
 echo ================================
 
-REM [1/3] Activate virtual environment
-echo [1/3] Activating virtual environment 'ai-oracle'...
+REM [1/4] Activate virtual environment
+echo [1/4] Activating conda env 'ai-oracle'...
 CALL "D:\Users\Utente1\miniconda3\Scripts\activate.bat" ai-oracle
-
-REM [2/3] Check for .env file
-echo [2/3] Checking .env file in project's root...
-IF NOT EXIST .env (
-    echo ERROR: .env not found in project's root!
-    pause
-    exit /b 1
+IF ERRORLEVEL 1 (
+  echo ERRORE: impossibile attivare l'ambiente conda 'ai-oracle'.
+  pause
+  exit /b 1
 )
 
-REM [3/3] Start API
-echo [3/3] Start API with Uvicorn...
-uvicorn scripts.inference_api:app --host 0.0.0.0 --port 8000 --reload
+REM [2/4] Project root as PYTHONPATH
+set PYTHONPATH=%CD%
 
+REM [3/4] Modelli: usa gli artifacts prodotti dai notebooks
+REM       (shared\outputs\models\property\value_regressor_v*.joblib)
+set AI_ORACLE_MODELS_BASE=%CD%\notebooks\outputs\modeling\artifacts
+
+echo MODELS_BASE = %AI_ORACLE_MODELS_BASE%
+
+REM [4/4] Start API
+echo [4/4] Starting Uvicorn on http://127.0.0.1:8000 ...
+uvicorn scripts.inference_api:app --host 127.0.0.1 --port 8000 --reload
+REM Nota: uvicorn resta in foreground in questa finestra
+
+endlocal
 pause
