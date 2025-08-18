@@ -1,0 +1,1495 @@
+{
+  "basic_stats": {
+    "rows": 15000,
+    "cols": 45,
+    "dtypes": {
+      "asset_id": "object",
+      "asset_type": "category",
+      "location": "category",
+      "valuation_k": "float32",
+      "price_per_sqm": "float32",
+      "last_verified_ts": "datetime64[ns, UTC]",
+      "listing_month": "uint8",
+      "region": "category",
+      "urban_type": "category",
+      "zone": "category",
+      "size_m2": "uint8",
+      "rooms": "uint8",
+      "bathrooms": "uint8",
+      "year_built": "uint16",
+      "age_years": "uint8",
+      "floor": "uint8",
+      "building_floors": "uint8",
+      "is_top_floor": "uint8",
+      "is_ground_floor": "uint8",
+      "has_elevator": "uint8",
+      "has_garden": "uint8",
+      "has_balcony": "uint8",
+      "garage": "uint8",
+      "owner_occupied": "uint8",
+      "public_transport_nearby": "uint8",
+      "distance_to_center_km": "float32",
+      "parking_spot": "uint8",
+      "cellar": "uint8",
+      "attic": "uint8",
+      "concierge": "uint8",
+      "energy_class": "category",
+      "humidity_level": "float32",
+      "temperature_avg": "float32",
+      "noise_level": "uint8",
+      "air_quality_index": "uint8",
+      "condition_score": "float32",
+      "risk_score": "float32",
+      "luxury_score": "float32",
+      "env_score": "float32",
+      "orientation": "category",
+      "view": "category",
+      "condition": "category",
+      "heating": "category",
+      "confidence_score": "float32",
+      "strongly_incoherent": "bool"
+    },
+    "missing_pct": {
+      "asset_id": 0.0,
+      "asset_type": 0.0,
+      "location": 0.0,
+      "valuation_k": 0.0,
+      "price_per_sqm": 0.0,
+      "last_verified_ts": 0.0,
+      "listing_month": 0.0,
+      "region": 0.0,
+      "urban_type": 0.0,
+      "zone": 0.0,
+      "size_m2": 0.0,
+      "rooms": 0.0,
+      "bathrooms": 0.0,
+      "year_built": 0.0,
+      "age_years": 0.0,
+      "floor": 0.0,
+      "building_floors": 0.0,
+      "is_top_floor": 0.0,
+      "is_ground_floor": 0.0,
+      "has_elevator": 0.0,
+      "has_garden": 0.0,
+      "has_balcony": 0.0,
+      "garage": 0.0,
+      "owner_occupied": 0.0,
+      "public_transport_nearby": 0.0,
+      "distance_to_center_km": 0.0,
+      "parking_spot": 0.0,
+      "cellar": 0.0,
+      "attic": 0.0,
+      "concierge": 0.0,
+      "energy_class": 0.0,
+      "humidity_level": 0.0,
+      "temperature_avg": 0.0,
+      "noise_level": 0.0,
+      "air_quality_index": 0.0,
+      "condition_score": 0.0,
+      "risk_score": 0.0,
+      "luxury_score": 0.0,
+      "env_score": 0.0,
+      "orientation": 0.0,
+      "view": 0.0,
+      "condition": 0.0,
+      "heating": 0.0,
+      "confidence_score": 0.0,
+      "strongly_incoherent": 0.0
+    },
+    "describe_numeric": {
+      "valuation_k": {
+        "count": 15000.0,
+        "mean": 482.09320068359375,
+        "std": 292.6419677734375,
+        "min": 53.959999084472656,
+        "25%": 265.8949966430664,
+        "50%": 414.5050048828125,
+        "75%": 630.6124877929688,
+        "max": 2155.2099609375
+      },
+      "price_per_sqm": {
+        "count": 15000.0,
+        "mean": 4058.768310546875,
+        "std": 1778.878662109375,
+        "min": 981.77001953125,
+        "25%": 2780.4375,
+        "50%": 3697.6400146484375,
+        "75%": 4963.382568359375,
+        "max": 14995.5400390625
+      },
+      "listing_month": {
+        "count": 15000.0,
+        "mean": 6.9024,
+        "std": 0.6968308820786776,
+        "min": 6.0,
+        "25%": 6.0,
+        "50%": 7.0,
+        "75%": 7.0,
+        "max": 8.0
+      },
+      "size_m2": {
+        "count": 15000.0,
+        "mean": 118.97413333333333,
+        "std": 46.37498794482518,
+        "min": 40.0,
+        "25%": 78.0,
+        "50%": 118.0,
+        "75%": 159.0,
+        "max": 199.0
+      },
+      "rooms": {
+        "count": 15000.0,
+        "mean": 3.994466666666667,
+        "std": 1.413188778044314,
+        "min": 2.0,
+        "25%": 3.0,
+        "50%": 4.0,
+        "75%": 5.0,
+        "max": 6.0
+      },
+      "bathrooms": {
+        "count": 15000.0,
+        "mean": 2.0048,
+        "std": 0.8165096891881745,
+        "min": 1.0,
+        "25%": 1.0,
+        "50%": 2.0,
+        "75%": 3.0,
+        "max": 3.0
+      },
+      "year_built": {
+        "count": 15000.0,
+        "mean": 1986.6815333333334,
+        "std": 21.325059504248664,
+        "min": 1950.0,
+        "25%": 1968.0,
+        "50%": 1987.0,
+        "75%": 2005.0,
+        "max": 2023.0
+      },
+      "age_years": {
+        "count": 15000.0,
+        "mean": 38.318466666666666,
+        "std": 21.32505950424866,
+        "min": 2.0,
+        "25%": 20.0,
+        "50%": 38.0,
+        "75%": 57.0,
+        "max": 75.0
+      },
+      "floor": {
+        "count": 15000.0,
+        "mean": 2.001,
+        "std": 1.4179091523875198,
+        "min": 0.0,
+        "25%": 1.0,
+        "50%": 2.0,
+        "75%": 3.0,
+        "max": 4.0
+      },
+      "building_floors": {
+        "count": 15000.0,
+        "mean": 5.972333333333333,
+        "std": 2.1765761464136664,
+        "min": 1.0,
+        "25%": 4.0,
+        "50%": 6.0,
+        "75%": 8.0,
+        "max": 9.0
+      },
+      "is_top_floor": {
+        "count": 15000.0,
+        "mean": 0.15106666666666665,
+        "std": 0.35812578678563894,
+        "min": 0.0,
+        "25%": 0.0,
+        "50%": 0.0,
+        "75%": 0.0,
+        "max": 1.0
+      },
+      "is_ground_floor": {
+        "count": 15000.0,
+        "mean": 0.203,
+        "std": 0.4022459282401572,
+        "min": 0.0,
+        "25%": 0.0,
+        "50%": 0.0,
+        "75%": 0.0,
+        "max": 1.0
+      },
+      "has_elevator": {
+        "count": 15000.0,
+        "mean": 0.85,
+        "std": 0.35708332440300883,
+        "min": 0.0,
+        "25%": 1.0,
+        "50%": 1.0,
+        "75%": 1.0,
+        "max": 1.0
+      },
+      "has_garden": {
+        "count": 15000.0,
+        "mean": 0.29833333333333334,
+        "std": 0.4575418143255828,
+        "min": 0.0,
+        "25%": 0.0,
+        "50%": 0.0,
+        "75%": 1.0,
+        "max": 1.0
+      },
+      "has_balcony": {
+        "count": 15000.0,
+        "mean": 0.5977333333333333,
+        "std": 0.4903715188548262,
+        "min": 0.0,
+        "25%": 0.0,
+        "50%": 1.0,
+        "75%": 1.0,
+        "max": 1.0
+      },
+      "garage": {
+        "count": 15000.0,
+        "mean": 0.5051333333333333,
+        "std": 0.49999031481608014,
+        "min": 0.0,
+        "25%": 0.0,
+        "50%": 1.0,
+        "75%": 1.0,
+        "max": 1.0
+      },
+      "owner_occupied": {
+        "count": 15000.0,
+        "mean": 0.6538666666666667,
+        "std": 0.47575218153092863,
+        "min": 0.0,
+        "25%": 0.0,
+        "50%": 1.0,
+        "75%": 1.0,
+        "max": 1.0
+      },
+      "public_transport_nearby": {
+        "count": 15000.0,
+        "mean": 0.7023333333333334,
+        "std": 0.4572473734930142,
+        "min": 0.0,
+        "25%": 0.0,
+        "50%": 1.0,
+        "75%": 1.0,
+        "max": 1.0
+      },
+      "distance_to_center_km": {
+        "count": 15000.0,
+        "mean": 3.485006093978882,
+        "std": 3.4999186992645264,
+        "min": 0.0,
+        "25%": 1.0199999809265137,
+        "50%": 2.450000047683716,
+        "75%": 4.829999923706055,
+        "max": 42.90999984741211
+      },
+      "parking_spot": {
+        "count": 15000.0,
+        "mean": 0.1512,
+        "std": 0.35825565797964953,
+        "min": 0.0,
+        "25%": 0.0,
+        "50%": 0.0,
+        "75%": 0.0,
+        "max": 1.0
+      },
+      "cellar": {
+        "count": 15000.0,
+        "mean": 0.3983333333333333,
+        "std": 0.4895711057106264,
+        "min": 0.0,
+        "25%": 0.0,
+        "50%": 0.0,
+        "75%": 1.0,
+        "max": 1.0
+      },
+      "attic": {
+        "count": 15000.0,
+        "mean": 0.0422,
+        "std": 0.2010518708948498,
+        "min": 0.0,
+        "25%": 0.0,
+        "50%": 0.0,
+        "75%": 0.0,
+        "max": 1.0
+      },
+      "concierge": {
+        "count": 15000.0,
+        "mean": 0.16806666666666667,
+        "std": 0.37393794163537597,
+        "min": 0.0,
+        "25%": 0.0,
+        "50%": 0.0,
+        "75%": 0.0,
+        "max": 1.0
+      },
+      "humidity_level": {
+        "count": 15000.0,
+        "mean": 50.0544548034668,
+        "std": 11.595841407775879,
+        "min": 30.0,
+        "25%": 39.900001525878906,
+        "50%": 50.099998474121094,
+        "75%": 60.099998474121094,
+        "max": 70.0
+      },
+      "temperature_avg": {
+        "count": 15000.0,
+        "mean": 18.46257209777832,
+        "std": 3.755898952484131,
+        "min": 12.0,
+        "25%": 15.199999809265137,
+        "50%": 18.399999618530273,
+        "75%": 21.700000762939453,
+        "max": 25.0
+      },
+      "noise_level": {
+        "count": 15000.0,
+        "mean": 49.526266666666665,
+        "std": 17.29828292350705,
+        "min": 20.0,
+        "25%": 34.0,
+        "50%": 50.0,
+        "75%": 65.0,
+        "max": 79.0
+      },
+      "air_quality_index": {
+        "count": 15000.0,
+        "mean": 89.11386666666667,
+        "std": 34.721164607008795,
+        "min": 30.0,
+        "25%": 59.0,
+        "50%": 89.0,
+        "75%": 119.0,
+        "max": 149.0
+      },
+      "condition_score": {
+        "count": 15000.0,
+        "mean": 0.7781674265861511,
+        "std": 0.073982834815979,
+        "min": 0.4690000116825104,
+        "25%": 0.734000027179718,
+        "50%": 0.7879999876022339,
+        "75%": 0.8330000042915344,
+        "max": 0.9539999961853027
+      },
+      "risk_score": {
+        "count": 15000.0,
+        "mean": 0.22188912332057953,
+        "std": 0.07680189609527588,
+        "min": 0.007000000216066837,
+        "25%": 0.16599999368190765,
+        "50%": 0.21299999952316284,
+        "75%": 0.26899999380111694,
+        "max": 0.5450000166893005
+      },
+      "luxury_score": {
+        "count": 15000.0,
+        "mean": 0.43461334705352783,
+        "std": 0.21676766872406006,
+        "min": 0.0,
+        "25%": 0.20000000298023224,
+        "50%": 0.4000000059604645,
+        "75%": 0.6000000238418579,
+        "max": 1.0
+      },
+      "env_score": {
+        "count": 15000.0,
+        "mean": 0.507266640663147,
+        "std": 0.28632885217666626,
+        "min": 0.0,
+        "25%": 0.30000001192092896,
+        "50%": 0.6000000238418579,
+        "75%": 0.699999988079071,
+        "max": 1.0
+      },
+      "confidence_score": {
+        "count": 15000.0,
+        "mean": 0.6209210157394409,
+        "std": 0.10311081260442734,
+        "min": 0.24449999630451202,
+        "25%": 0.5504999756813049,
+        "50%": 0.6215000152587891,
+        "75%": 0.690500020980835,
+        "max": 0.953000009059906
+      }
+    },
+    "describe_categorical": {
+      "asset_id": {
+        "count": 15000,
+        "unique": 15000,
+        "top": "asset_000000",
+        "freq": 1,
+        "mean": NaN,
+        "min": NaN,
+        "25%": NaN,
+        "50%": NaN,
+        "75%": NaN,
+        "max": NaN
+      },
+      "asset_type": {
+        "count": 15000,
+        "unique": 1,
+        "top": "property",
+        "freq": 15000,
+        "mean": NaN,
+        "min": NaN,
+        "25%": NaN,
+        "50%": NaN,
+        "75%": NaN,
+        "max": NaN
+      },
+      "location": {
+        "count": 15000,
+        "unique": 15,
+        "top": "Milan",
+        "freq": 3017,
+        "mean": NaN,
+        "min": NaN,
+        "25%": NaN,
+        "50%": NaN,
+        "75%": NaN,
+        "max": NaN
+      },
+      "last_verified_ts": {
+        "count": 15000,
+        "unique": NaN,
+        "top": NaN,
+        "freq": NaN,
+        "mean": "2025-07-13T15:34:35.344000+00:00",
+        "min": "2025-06-13T04:57:28+00:00",
+        "25%": "2025-06-28T07:03:58+00:00",
+        "50%": "2025-07-13T19:21:28+00:00",
+        "75%": "2025-07-28T22:49:58+00:00",
+        "max": "2025-08-13T04:48:28+00:00"
+      },
+      "region": {
+        "count": 15000,
+        "unique": 3,
+        "top": "north",
+        "freq": 8094,
+        "mean": NaN,
+        "min": NaN,
+        "25%": NaN,
+        "50%": NaN,
+        "75%": NaN,
+        "max": NaN
+      },
+      "urban_type": {
+        "count": 15000,
+        "unique": 2,
+        "top": "urban",
+        "freq": 13392,
+        "mean": NaN,
+        "min": NaN,
+        "25%": NaN,
+        "50%": NaN,
+        "75%": NaN,
+        "max": NaN
+      },
+      "zone": {
+        "count": 15000,
+        "unique": 3,
+        "top": "semi_center",
+        "freq": 6232,
+        "mean": NaN,
+        "min": NaN,
+        "25%": NaN,
+        "50%": NaN,
+        "75%": NaN,
+        "max": NaN
+      },
+      "energy_class": {
+        "count": 15000,
+        "unique": 7,
+        "top": "E",
+        "freq": 2215,
+        "mean": NaN,
+        "min": NaN,
+        "25%": NaN,
+        "50%": NaN,
+        "75%": NaN,
+        "max": NaN
+      },
+      "orientation": {
+        "count": 15000,
+        "unique": 8,
+        "top": "South",
+        "freq": 3762,
+        "mean": NaN,
+        "min": NaN,
+        "25%": NaN,
+        "50%": NaN,
+        "75%": NaN,
+        "max": NaN
+      },
+      "view": {
+        "count": 15000,
+        "unique": 7,
+        "top": "street",
+        "freq": 5984,
+        "mean": NaN,
+        "min": NaN,
+        "25%": NaN,
+        "50%": NaN,
+        "75%": NaN,
+        "max": NaN
+      },
+      "condition": {
+        "count": 15000,
+        "unique": 4,
+        "top": "good",
+        "freq": 6162,
+        "mean": NaN,
+        "min": NaN,
+        "25%": NaN,
+        "50%": NaN,
+        "75%": NaN,
+        "max": NaN
+      },
+      "heating": {
+        "count": 15000,
+        "unique": 4,
+        "top": "autonomous",
+        "freq": 8877,
+        "mean": NaN,
+        "min": NaN,
+        "25%": NaN,
+        "50%": NaN,
+        "75%": NaN,
+        "max": NaN
+      },
+      "strongly_incoherent": {
+        "count": 15000,
+        "unique": 2,
+        "top": false,
+        "freq": 14836,
+        "mean": NaN,
+        "min": NaN,
+        "25%": NaN,
+        "50%": NaN,
+        "75%": NaN,
+        "max": NaN
+      }
+    },
+    "target_summary": {
+      "min": 53.959999084472656,
+      "max": 2155.2099609375,
+      "mean": 482.09320068359375
+    }
+  },
+  "valuation_summary": {
+    "n_rows": 15000,
+    "mean": 482.09320068359375,
+    "median": 414.5050048828125,
+    "std": 292.6419677734375,
+    "quantiles": {
+      "0.01": 94.63829940795898,
+      "0.05": 142.1199951171875,
+      "0.25": 265.8949966430664,
+      "0.5": 414.5050048828125,
+      "0.75": 630.6124877929688,
+      "0.95": 1052.331555175781,
+      "0.99": 1431.2663806152352
+    },
+    "skew": 1.3337562084197998,
+    "kurtosis": 2.3223695755004883,
+    "strongly_incoherent": {
+      "count": 164,
+      "fraction": 0.010933333333333333,
+      "confidence_thresh": 0.6,
+      "val_threshold_quantile": 0.95,
+      "weights": {
+        "condition": 0.5,
+        "luxury": 0.3,
+        "env": 0.2
+      }
+    }
+  },
+  "duplicates": {
+    "total_duplicates": 0,
+    "examples": []
+  },
+  "incoherence": {
+    "strongly_incoherent": {
+      "count": 164,
+      "fraction": 0.010933333333333333,
+      "thresholds": {
+        "val_threshold_quantile": 0.95,
+        "confidence_thresh": 0.6
+      },
+      "weights": {
+        "condition": 0.5,
+        "luxury": 0.3,
+        "env": 0.2
+      }
+    }
+  },
+  "top_outliers": [
+    {
+      "location": "Milan",
+      "zone": "center",
+      "size_m2": 178,
+      "price_per_sqm": 12107.9296875,
+      "valuation_k": 2155.2099609375,
+      "luxury_score": 0.800000011920929,
+      "env_score": 1.0,
+      "condition_score": 0.7929999828338623,
+      "risk_score": 0.21199999749660492,
+      "view": "garden",
+      "orientation": "West",
+      "year_built": 2018,
+      "heating": "centralized",
+      "condition": "new"
+    },
+    {
+      "location": "Milan",
+      "zone": "center",
+      "size_m2": 197,
+      "price_per_sqm": 10797.080078125,
+      "valuation_k": 2127.030029296875,
+      "luxury_score": 0.800000011920929,
+      "env_score": 0.6000000238418579,
+      "condition_score": 0.8560000061988831,
+      "risk_score": 0.14399999380111694,
+      "view": "inner courtyard",
+      "orientation": "South",
+      "year_built": 1982,
+      "heating": "autonomous",
+      "condition": "good"
+    },
+    {
+      "location": "Milan",
+      "zone": "center",
+      "size_m2": 194,
+      "price_per_sqm": 10931.330078125,
+      "valuation_k": 2120.679931640625,
+      "luxury_score": 0.800000011920929,
+      "env_score": 0.0,
+      "condition_score": 0.7960000038146973,
+      "risk_score": 0.1850000023841858,
+      "view": "inner courtyard",
+      "orientation": "South-East",
+      "year_built": 2022,
+      "heating": "autonomous",
+      "condition": "new"
+    },
+    {
+      "location": "Milan",
+      "zone": "center",
+      "size_m2": 189,
+      "price_per_sqm": 11041.83984375,
+      "valuation_k": 2086.909912109375,
+      "luxury_score": 1.0,
+      "env_score": 1.0,
+      "condition_score": 0.8389999866485596,
+      "risk_score": 0.18799999356269836,
+      "view": "street",
+      "orientation": "East",
+      "year_built": 2017,
+      "heating": "centralized",
+      "condition": "renovated"
+    },
+    {
+      "location": "Milan",
+      "zone": "center",
+      "size_m2": 193,
+      "price_per_sqm": 10516.6103515625,
+      "valuation_k": 2029.7099609375,
+      "luxury_score": 0.6000000238418579,
+      "env_score": 0.30000001192092896,
+      "condition_score": 0.7400000095367432,
+      "risk_score": 0.26100000739097595,
+      "view": "inner courtyard",
+      "orientation": "South-West",
+      "year_built": 2021,
+      "heating": "autonomous",
+      "condition": "new"
+    },
+    {
+      "location": "Milan",
+      "zone": "center",
+      "size_m2": 158,
+      "price_per_sqm": 12825.91015625,
+      "valuation_k": 2026.489990234375,
+      "luxury_score": 0.800000011920929,
+      "env_score": 0.6000000238418579,
+      "condition_score": 0.8610000014305115,
+      "risk_score": 0.11299999803304672,
+      "view": "sea",
+      "orientation": "East",
+      "year_built": 2002,
+      "heating": "autonomous",
+      "condition": "good"
+    },
+    {
+      "location": "Milan",
+      "zone": "center",
+      "size_m2": 165,
+      "price_per_sqm": 12195.7001953125,
+      "valuation_k": 2012.2900390625,
+      "luxury_score": 0.800000011920929,
+      "env_score": 0.30000001192092896,
+      "condition_score": 0.8090000152587891,
+      "risk_score": 0.16899999976158142,
+      "view": "garden",
+      "orientation": "North-West",
+      "year_built": 2017,
+      "heating": "centralized",
+      "condition": "new"
+    },
+    {
+      "location": "Milan",
+      "zone": "center",
+      "size_m2": 184,
+      "price_per_sqm": 10906.400390625,
+      "valuation_k": 2006.780029296875,
+      "luxury_score": 1.0,
+      "env_score": 0.699999988079071,
+      "condition_score": 0.7480000257492065,
+      "risk_score": 0.23199999332427979,
+      "view": "garden",
+      "orientation": "South",
+      "year_built": 2002,
+      "heating": "autonomous",
+      "condition": "good"
+    },
+    {
+      "location": "Milan",
+      "zone": "center",
+      "size_m2": 173,
+      "price_per_sqm": 11579.8896484375,
+      "valuation_k": 2003.3199462890625,
+      "luxury_score": 0.800000011920929,
+      "env_score": 0.30000001192092896,
+      "condition_score": 0.8690000176429749,
+      "risk_score": 0.164000004529953,
+      "view": "garden",
+      "orientation": "West",
+      "year_built": 2020,
+      "heating": "heat pump",
+      "condition": "renovated"
+    },
+    {
+      "location": "Milan",
+      "zone": "center",
+      "size_m2": 194,
+      "price_per_sqm": 10099.599609375,
+      "valuation_k": 1959.3199462890625,
+      "luxury_score": 0.800000011920929,
+      "env_score": 0.30000001192092896,
+      "condition_score": 0.7319999933242798,
+      "risk_score": 0.2540000081062317,
+      "view": "street",
+      "orientation": "South",
+      "year_built": 2017,
+      "heating": "autonomous",
+      "condition": "new"
+    }
+  ],
+  "price_caps": {
+    "violations_count": 0,
+    "example_violations": []
+  },
+  "sanity_benchmarks": {
+    "location_distribution": [
+      {
+        "location": "Venice",
+        "target_weight": 0.039999999999999994,
+        "empirical_weight": 0.039733333333333336,
+        "difference": -0.0002666666666666581,
+        "drifted": false,
+        "ratio": 0.9933333333333335
+      },
+      {
+        "location": "Turin",
+        "target_weight": 0.07999999999999999,
+        "empirical_weight": 0.08093333333333333,
+        "difference": 0.0009333333333333416,
+        "drifted": false,
+        "ratio": 1.0116666666666667
+      },
+      {
+        "location": "Bari",
+        "target_weight": 0.039999999999999994,
+        "empirical_weight": 0.03953333333333333,
+        "difference": -0.00046666666666666384,
+        "drifted": false,
+        "ratio": 0.9883333333333334
+      },
+      {
+        "location": "Genoa",
+        "target_weight": 0.04999999999999999,
+        "empirical_weight": 0.051533333333333334,
+        "difference": 0.0015333333333333449,
+        "drifted": false,
+        "ratio": 1.0306666666666668
+      },
+      {
+        "location": "Milan",
+        "target_weight": 0.19999999999999996,
+        "empirical_weight": 0.20113333333333333,
+        "difference": 0.001133333333333375,
+        "drifted": false,
+        "ratio": 1.005666666666667
+      },
+      {
+        "location": "Cagliari",
+        "target_weight": 0.029999999999999992,
+        "empirical_weight": 0.029466666666666665,
+        "difference": -0.0005333333333333266,
+        "drifted": false,
+        "ratio": 0.9822222222222224
+      },
+      {
+        "location": "Rome",
+        "target_weight": 0.17999999999999997,
+        "empirical_weight": 0.18,
+        "difference": 2.7755575615628914e-17,
+        "drifted": false,
+        "ratio": 1.0000000000000002
+      },
+      {
+        "location": "Catania",
+        "target_weight": 0.029999999999999992,
+        "empirical_weight": 0.0296,
+        "difference": -0.00039999999999999064,
+        "drifted": false,
+        "ratio": 0.986666666666667
+      },
+      {
+        "location": "Florence",
+        "target_weight": 0.04999999999999999,
+        "empirical_weight": 0.051333333333333335,
+        "difference": 0.001333333333333346,
+        "drifted": false,
+        "ratio": 1.0266666666666668
+      },
+      {
+        "location": "Verona",
+        "target_weight": 0.039999999999999994,
+        "empirical_weight": 0.0394,
+        "difference": -0.0005999999999999964,
+        "drifted": false,
+        "ratio": 0.9850000000000001
+      },
+      {
+        "location": "Bologna",
+        "target_weight": 0.059999999999999984,
+        "empirical_weight": 0.05906666666666667,
+        "difference": -0.0009333333333333138,
+        "drifted": false,
+        "ratio": 0.9844444444444448
+      },
+      {
+        "location": "Padua",
+        "target_weight": 0.039999999999999994,
+        "empirical_weight": 0.038733333333333335,
+        "difference": -0.001266666666666659,
+        "drifted": false,
+        "ratio": 0.9683333333333335
+      },
+      {
+        "location": "Naples",
+        "target_weight": 0.07999999999999999,
+        "empirical_weight": 0.07933333333333334,
+        "difference": -0.0006666666666666488,
+        "drifted": false,
+        "ratio": 0.9916666666666669
+      },
+      {
+        "location": "Palermo",
+        "target_weight": 0.04999999999999999,
+        "empirical_weight": 0.051133333333333336,
+        "difference": 0.0011333333333333473,
+        "drifted": false,
+        "ratio": 1.022666666666667
+      },
+      {
+        "location": "Trieste",
+        "target_weight": 0.029999999999999992,
+        "empirical_weight": 0.029066666666666668,
+        "difference": -0.0009333333333333242,
+        "drifted": false,
+        "ratio": 0.9688888888888891
+      }
+    ],
+    "location_drift": {
+      "Venice": {
+        "target_weight": 0.039999999999999994,
+        "empirical_weight": 0.039733333333333336,
+        "difference": -0.0002666666666666581,
+        "drifted": false,
+        "ratio": 0.9933333333333335
+      },
+      "Turin": {
+        "target_weight": 0.07999999999999999,
+        "empirical_weight": 0.08093333333333333,
+        "difference": 0.0009333333333333416,
+        "drifted": false,
+        "ratio": 1.0116666666666667
+      },
+      "Bari": {
+        "target_weight": 0.039999999999999994,
+        "empirical_weight": 0.03953333333333333,
+        "difference": -0.00046666666666666384,
+        "drifted": false,
+        "ratio": 0.9883333333333334
+      },
+      "Genoa": {
+        "target_weight": 0.04999999999999999,
+        "empirical_weight": 0.051533333333333334,
+        "difference": 0.0015333333333333449,
+        "drifted": false,
+        "ratio": 1.0306666666666668
+      },
+      "Milan": {
+        "target_weight": 0.19999999999999996,
+        "empirical_weight": 0.20113333333333333,
+        "difference": 0.001133333333333375,
+        "drifted": false,
+        "ratio": 1.005666666666667
+      },
+      "Cagliari": {
+        "target_weight": 0.029999999999999992,
+        "empirical_weight": 0.029466666666666665,
+        "difference": -0.0005333333333333266,
+        "drifted": false,
+        "ratio": 0.9822222222222224
+      },
+      "Rome": {
+        "target_weight": 0.17999999999999997,
+        "empirical_weight": 0.18,
+        "difference": 2.7755575615628914e-17,
+        "drifted": false,
+        "ratio": 1.0000000000000002
+      },
+      "Catania": {
+        "target_weight": 0.029999999999999992,
+        "empirical_weight": 0.0296,
+        "difference": -0.00039999999999999064,
+        "drifted": false,
+        "ratio": 0.986666666666667
+      },
+      "Florence": {
+        "target_weight": 0.04999999999999999,
+        "empirical_weight": 0.051333333333333335,
+        "difference": 0.001333333333333346,
+        "drifted": false,
+        "ratio": 1.0266666666666668
+      },
+      "Verona": {
+        "target_weight": 0.039999999999999994,
+        "empirical_weight": 0.0394,
+        "difference": -0.0005999999999999964,
+        "drifted": false,
+        "ratio": 0.9850000000000001
+      },
+      "Bologna": {
+        "target_weight": 0.059999999999999984,
+        "empirical_weight": 0.05906666666666667,
+        "difference": -0.0009333333333333138,
+        "drifted": false,
+        "ratio": 0.9844444444444448
+      },
+      "Padua": {
+        "target_weight": 0.039999999999999994,
+        "empirical_weight": 0.038733333333333335,
+        "difference": -0.001266666666666659,
+        "drifted": false,
+        "ratio": 0.9683333333333335
+      },
+      "Naples": {
+        "target_weight": 0.07999999999999999,
+        "empirical_weight": 0.07933333333333334,
+        "difference": -0.0006666666666666488,
+        "drifted": false,
+        "ratio": 0.9916666666666669
+      },
+      "Palermo": {
+        "target_weight": 0.04999999999999999,
+        "empirical_weight": 0.051133333333333336,
+        "difference": 0.0011333333333333473,
+        "drifted": false,
+        "ratio": 1.022666666666667
+      },
+      "Trieste": {
+        "target_weight": 0.029999999999999992,
+        "empirical_weight": 0.029066666666666668,
+        "difference": -0.0009333333333333242,
+        "drifted": false,
+        "ratio": 0.9688888888888891
+      }
+    },
+    "decomposition_example": {
+      "base": 7500.0,
+      "multipliers": [
+        [
+          "build_age_recent",
+          1.05
+        ],
+        [
+          "state_new",
+          1.15
+        ]
+      ],
+      "composed_multiplier": 1.2075,
+      "final_no_noise": 9056.25
+    },
+    "city_price_medians": {
+      "Milan": 5308.68017578125,
+      "Venice": 4563.23486328125,
+      "Rome": 4189.115234375,
+      "Florence": 4019.5,
+      "Bologna": 3476.929931640625,
+      "Turin": 3393.919921875,
+      "Verona": 3369.5400390625,
+      "Padua": 3233.89990234375,
+      "Genoa": 3096.68994140625,
+      "Trieste": 3067.875,
+      "Naples": 3034.6201171875,
+      "Bari": 2907.090087890625,
+      "Cagliari": 2681.885009765625,
+      "Palermo": 2529.81005859375,
+      "Catania": 2510.93505859375
+    },
+    "zone_price_medians": {
+      "center": {
+        "Venice": 6249.1298828125,
+        "Turin": 4591.35986328125,
+        "Bari": 3867.679931640625,
+        "Genoa": 4310.2001953125,
+        "Milan": 7659.6103515625,
+        "Cagliari": 3723.094970703125,
+        "Rome": 6010.64013671875,
+        "Catania": 3285.35986328125,
+        "Florence": 5483.4404296875,
+        "Verona": 4579.3095703125,
+        "Bologna": 4684.02001953125,
+        "Padua": 4374.740234375,
+        "Naples": 4099.93017578125,
+        "Palermo": 3472.969970703125,
+        "Trieste": 4128.06982421875
+      },
+      "semi_center": {
+        "Venice": 4243.9697265625,
+        "Turin": 3214.8798828125,
+        "Bari": 2706.18994140625,
+        "Genoa": 2953.43994140625,
+        "Milan": 5050.31005859375,
+        "Cagliari": 2613.030029296875,
+        "Rome": 3990.02490234375,
+        "Catania": 2452.7099609375,
+        "Florence": 3884.33984375,
+        "Verona": 3222.949951171875,
+        "Bologna": 3398.929931640625,
+        "Padua": 3041.68994140625,
+        "Naples": 2846.31005859375,
+        "Palermo": 2505.260009765625,
+        "Trieste": 2929.75
+      },
+      "periphery": {
+        "Venice": 3038.889892578125,
+        "Turin": 2116.3251953125,
+        "Bari": 1800.5699462890625,
+        "Genoa": 2013.56005859375,
+        "Milan": 3501.55517578125,
+        "Cagliari": 1665.455078125,
+        "Rome": 2924.7099609375,
+        "Catania": 1594.6800537109375,
+        "Florence": 2783.2099609375,
+        "Verona": 2213.60009765625,
+        "Bologna": 2332.929931640625,
+        "Padua": 2108.1298828125,
+        "Naples": 1924.9000244140625,
+        "Palermo": 1707.760009765625,
+        "Trieste": 1917.324951171875
+      }
+    },
+    "top_city_alerts": [
+      {
+        "city": "Milan",
+        "ratio": 1.163358962410271,
+        "abs_diff": 745.4453125,
+        "passes": false,
+        "detail": "Milan vs Venice"
+      },
+      {
+        "city": "Venice",
+        "ratio": 1.089307552543865,
+        "abs_diff": 374.11962890625,
+        "passes": false,
+        "detail": "Venice vs Rome"
+      },
+      {
+        "city": "Rome",
+        "ratio": 1.042198092890907,
+        "abs_diff": 169.615234375,
+        "passes": false,
+        "detail": "Rome vs Florence"
+      },
+      {
+        "city": "Florence",
+        "ratio": 1.1560486058179946,
+        "abs_diff": 542.570068359375,
+        "passes": false,
+        "detail": "Florence vs Bologna"
+      },
+      {
+        "city": "Bologna",
+        "ratio": 1.0244584467743616,
+        "abs_diff": 83.010009765625,
+        "passes": false,
+        "detail": "Bologna vs Turin"
+      },
+      {
+        "city": "Turin",
+        "ratio": 1.0072353741252125,
+        "abs_diff": 24.3798828125,
+        "passes": true,
+        "detail": "Turin vs Verona"
+      },
+      {
+        "city": "Verona",
+        "ratio": 1.041943208143346,
+        "abs_diff": 135.64013671875,
+        "passes": false,
+        "detail": "Verona vs Padua"
+      },
+      {
+        "city": "Padua",
+        "ratio": 1.0443085886975145,
+        "abs_diff": 137.2099609375,
+        "passes": false,
+        "detail": "Padua vs Genoa"
+      },
+      {
+        "city": "Genoa",
+        "ratio": 1.0093924757059038,
+        "abs_diff": 28.81494140625,
+        "passes": true,
+        "detail": "Genoa vs Trieste"
+      },
+      {
+        "city": "Trieste",
+        "ratio": 1.010958499426057,
+        "abs_diff": 33.2548828125,
+        "passes": true,
+        "detail": "Trieste vs Naples"
+      },
+      {
+        "city": "Naples",
+        "ratio": 1.043868619630364,
+        "abs_diff": 127.530029296875,
+        "passes": false,
+        "detail": "Naples vs Bari"
+      },
+      {
+        "city": "Bari",
+        "ratio": 1.0839726823875573,
+        "abs_diff": 225.205078125,
+        "passes": false,
+        "detail": "Bari vs Cagliari"
+      },
+      {
+        "city": "Cagliari",
+        "ratio": 1.060113189389566,
+        "abs_diff": 152.074951171875,
+        "passes": false,
+        "detail": "Cagliari vs Palermo"
+      },
+      {
+        "city": "Palermo",
+        "ratio": 1.0075171199411947,
+        "abs_diff": 18.875,
+        "passes": true,
+        "detail": "Palermo vs Catania"
+      }
+    ],
+    "failed_city_ordering": [
+      {
+        "city": "Milan",
+        "ratio": 1.163358962410271,
+        "abs_diff": 745.4453125,
+        "passes": false,
+        "detail": "Milan vs Venice"
+      },
+      {
+        "city": "Venice",
+        "ratio": 1.089307552543865,
+        "abs_diff": 374.11962890625,
+        "passes": false,
+        "detail": "Venice vs Rome"
+      },
+      {
+        "city": "Rome",
+        "ratio": 1.042198092890907,
+        "abs_diff": 169.615234375,
+        "passes": false,
+        "detail": "Rome vs Florence"
+      },
+      {
+        "city": "Florence",
+        "ratio": 1.1560486058179946,
+        "abs_diff": 542.570068359375,
+        "passes": false,
+        "detail": "Florence vs Bologna"
+      },
+      {
+        "city": "Bologna",
+        "ratio": 1.0244584467743616,
+        "abs_diff": 83.010009765625,
+        "passes": false,
+        "detail": "Bologna vs Turin"
+      },
+      {
+        "city": "Verona",
+        "ratio": 1.041943208143346,
+        "abs_diff": 135.64013671875,
+        "passes": false,
+        "detail": "Verona vs Padua"
+      },
+      {
+        "city": "Padua",
+        "ratio": 1.0443085886975145,
+        "abs_diff": 137.2099609375,
+        "passes": false,
+        "detail": "Padua vs Genoa"
+      },
+      {
+        "city": "Naples",
+        "ratio": 1.043868619630364,
+        "abs_diff": 127.530029296875,
+        "passes": false,
+        "detail": "Naples vs Bari"
+      },
+      {
+        "city": "Bari",
+        "ratio": 1.0839726823875573,
+        "abs_diff": 225.205078125,
+        "passes": false,
+        "detail": "Bari vs Cagliari"
+      },
+      {
+        "city": "Cagliari",
+        "ratio": 1.060113189389566,
+        "abs_diff": 152.074951171875,
+        "passes": false,
+        "detail": "Cagliari vs Palermo"
+      }
+    ],
+    "valuation_summary": {
+      "n_rows": 15000,
+      "mean": 482.09320068359375,
+      "median": 414.5050048828125,
+      "std": 292.6419677734375,
+      "quantiles": {
+        "0.01": 94.63829940795898,
+        "0.05": 142.1199951171875,
+        "0.25": 265.8949966430664,
+        "0.5": 414.5050048828125,
+        "0.75": 630.6124877929688,
+        "0.95": 1052.331555175781,
+        "0.99": 1431.2663806152352
+      },
+      "skew": 1.3337562084197998,
+      "kurtosis": 2.3223695755004883,
+      "strongly_incoherent": {
+        "count": 164,
+        "fraction": 0.010933333333333333,
+        "confidence_thresh": 0.6,
+        "val_threshold_quantile": 0.95,
+        "weights": {
+          "condition": 0.5,
+          "luxury": 0.3,
+          "env": 0.2
+        }
+      }
+    },
+    "incoherence": {
+      "strongly_incoherent": {
+        "count": 164,
+        "fraction": 0.010933333333333333,
+        "thresholds": {
+          "val_threshold_quantile": 0.95,
+          "confidence_thresh": 0.6
+        },
+        "weights": {
+          "condition": 0.5,
+          "luxury": 0.3,
+          "env": 0.2
+        }
+      }
+    },
+    "top_outliers": [
+      {
+        "location": "Milan",
+        "zone": "center",
+        "size_m2": 178,
+        "price_per_sqm": 12107.9296875,
+        "valuation_k": 2155.2099609375,
+        "luxury_score": 0.800000011920929,
+        "env_score": 1.0,
+        "condition_score": 0.7929999828338623,
+        "risk_score": 0.21199999749660492,
+        "view": "garden",
+        "orientation": "West",
+        "year_built": 2018,
+        "heating": "centralized",
+        "condition": "new"
+      },
+      {
+        "location": "Milan",
+        "zone": "center",
+        "size_m2": 197,
+        "price_per_sqm": 10797.080078125,
+        "valuation_k": 2127.030029296875,
+        "luxury_score": 0.800000011920929,
+        "env_score": 0.6000000238418579,
+        "condition_score": 0.8560000061988831,
+        "risk_score": 0.14399999380111694,
+        "view": "inner courtyard",
+        "orientation": "South",
+        "year_built": 1982,
+        "heating": "autonomous",
+        "condition": "good"
+      },
+      {
+        "location": "Milan",
+        "zone": "center",
+        "size_m2": 194,
+        "price_per_sqm": 10931.330078125,
+        "valuation_k": 2120.679931640625,
+        "luxury_score": 0.800000011920929,
+        "env_score": 0.0,
+        "condition_score": 0.7960000038146973,
+        "risk_score": 0.1850000023841858,
+        "view": "inner courtyard",
+        "orientation": "South-East",
+        "year_built": 2022,
+        "heating": "autonomous",
+        "condition": "new"
+      },
+      {
+        "location": "Milan",
+        "zone": "center",
+        "size_m2": 189,
+        "price_per_sqm": 11041.83984375,
+        "valuation_k": 2086.909912109375,
+        "luxury_score": 1.0,
+        "env_score": 1.0,
+        "condition_score": 0.8389999866485596,
+        "risk_score": 0.18799999356269836,
+        "view": "street",
+        "orientation": "East",
+        "year_built": 2017,
+        "heating": "centralized",
+        "condition": "renovated"
+      },
+      {
+        "location": "Milan",
+        "zone": "center",
+        "size_m2": 193,
+        "price_per_sqm": 10516.6103515625,
+        "valuation_k": 2029.7099609375,
+        "luxury_score": 0.6000000238418579,
+        "env_score": 0.30000001192092896,
+        "condition_score": 0.7400000095367432,
+        "risk_score": 0.26100000739097595,
+        "view": "inner courtyard",
+        "orientation": "South-West",
+        "year_built": 2021,
+        "heating": "autonomous",
+        "condition": "new"
+      },
+      {
+        "location": "Milan",
+        "zone": "center",
+        "size_m2": 158,
+        "price_per_sqm": 12825.91015625,
+        "valuation_k": 2026.489990234375,
+        "luxury_score": 0.800000011920929,
+        "env_score": 0.6000000238418579,
+        "condition_score": 0.8610000014305115,
+        "risk_score": 0.11299999803304672,
+        "view": "sea",
+        "orientation": "East",
+        "year_built": 2002,
+        "heating": "autonomous",
+        "condition": "good"
+      },
+      {
+        "location": "Milan",
+        "zone": "center",
+        "size_m2": 165,
+        "price_per_sqm": 12195.7001953125,
+        "valuation_k": 2012.2900390625,
+        "luxury_score": 0.800000011920929,
+        "env_score": 0.30000001192092896,
+        "condition_score": 0.8090000152587891,
+        "risk_score": 0.16899999976158142,
+        "view": "garden",
+        "orientation": "North-West",
+        "year_built": 2017,
+        "heating": "centralized",
+        "condition": "new"
+      },
+      {
+        "location": "Milan",
+        "zone": "center",
+        "size_m2": 184,
+        "price_per_sqm": 10906.400390625,
+        "valuation_k": 2006.780029296875,
+        "luxury_score": 1.0,
+        "env_score": 0.699999988079071,
+        "condition_score": 0.7480000257492065,
+        "risk_score": 0.23199999332427979,
+        "view": "garden",
+        "orientation": "South",
+        "year_built": 2002,
+        "heating": "autonomous",
+        "condition": "good"
+      },
+      {
+        "location": "Milan",
+        "zone": "center",
+        "size_m2": 173,
+        "price_per_sqm": 11579.8896484375,
+        "valuation_k": 2003.3199462890625,
+        "luxury_score": 0.800000011920929,
+        "env_score": 0.30000001192092896,
+        "condition_score": 0.8690000176429749,
+        "risk_score": 0.164000004529953,
+        "view": "garden",
+        "orientation": "West",
+        "year_built": 2020,
+        "heating": "heat pump",
+        "condition": "renovated"
+      },
+      {
+        "location": "Milan",
+        "zone": "center",
+        "size_m2": 194,
+        "price_per_sqm": 10099.599609375,
+        "valuation_k": 1959.3199462890625,
+        "luxury_score": 0.800000011920929,
+        "env_score": 0.30000001192092896,
+        "condition_score": 0.7319999933242798,
+        "risk_score": 0.2540000081062317,
+        "view": "street",
+        "orientation": "South",
+        "year_built": 2017,
+        "heating": "autonomous",
+        "condition": "new"
+      }
+    ],
+    "price_caps": {
+      "violations_count": 0,
+      "example_violations": []
+    }
+  }
+}

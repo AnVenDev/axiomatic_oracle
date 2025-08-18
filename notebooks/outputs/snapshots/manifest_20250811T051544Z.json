@@ -1,0 +1,264 @@
+{
+  "generated_at": "2025-08-11T05:15:44.466193Z",
+  "versions": {
+    "dataset": "v2",
+    "feature_set": "v1",
+    "model_family": "axiomatic_rwa_property"
+  },
+  "asset_type": "property",
+  "paths": {
+    "dataset": "outputs\\dataset_generated.csv",
+    "quality_report_json": "outputs\\logs\\quality_report.json",
+    "quality_report_yaml": "outputs\\logs\\quality_report.yaml"
+  },
+  "hashes": {
+    "dataset_file_sha256": "45234385e6ff07750b03a31e60a31f92b8fcbd7dc76961d1df2ade257f357a2f",
+    "quality_report_sha256": "c5b2f4487c5b59094482696f88d9ccd421c58a16aef2450cc11fb0e9f513fa1f",
+    "data_digest_sha256": "293c5a774b05da6f43f1122ac446385b80ebaf8bea90d6aee0abdb313e455ece"
+  },
+  "shape": {
+    "rows": 15000,
+    "columns": [
+      "asset_id",
+      "asset_type",
+      "location",
+      "valuation_k",
+      "price_per_sqm",
+      "last_verified_ts",
+      "listing_month",
+      "region",
+      "urban_type",
+      "zone",
+      "size_m2",
+      "rooms",
+      "bathrooms",
+      "year_built",
+      "age_years",
+      "floor",
+      "building_floors",
+      "is_top_floor",
+      "is_ground_floor",
+      "has_elevator",
+      "has_garden",
+      "has_balcony",
+      "garage",
+      "owner_occupied",
+      "public_transport_nearby",
+      "distance_to_center_km",
+      "parking_spot",
+      "cellar",
+      "attic",
+      "concierge",
+      "energy_class",
+      "humidity_level",
+      "temperature_avg",
+      "noise_level",
+      "air_quality_index",
+      "condition_score",
+      "risk_score",
+      "luxury_score",
+      "env_score",
+      "orientation",
+      "view",
+      "condition",
+      "heating",
+      "confidence_score",
+      "strongly_incoherent"
+    ]
+  },
+  "config_snapshot": {
+    "n_rows": 15000,
+    "asset_type": "property",
+    "generation_version": "v1.0",
+    "source_tag": "synthetic_with_priors",
+    "location_weights": {
+      "Milan": 0.2,
+      "Rome": 0.18,
+      "Turin": 0.08,
+      "Naples": 0.08,
+      "Bologna": 0.06,
+      "Florence": 0.05,
+      "Genoa": 0.05,
+      "Palermo": 0.05,
+      "Venice": 0.04,
+      "Verona": 0.04,
+      "Bari": 0.04,
+      "Padua": 0.04,
+      "Catania": 0.03,
+      "Trieste": 0.03,
+      "Cagliari": 0.03
+    },
+    "city_base_prices": {
+      "Milan": {
+        "center": 7500.0,
+        "semi_center": 5000.0,
+        "periphery": 3500.0
+      },
+      "Rome": {
+        "center": 6000.0,
+        "semi_center": 4000.0,
+        "periphery": 2800.0
+      },
+      "Florence": {
+        "center": 5500.0,
+        "semi_center": 3800.0,
+        "periphery": 2700.0
+      },
+      "Turin": {
+        "center": 4500.0,
+        "semi_center": 3200.0,
+        "periphery": 2100.0
+      },
+      "Naples": {
+        "center": 4000.0,
+        "semi_center": 2800.0,
+        "periphery": 1900.0
+      },
+      "Bologna": {
+        "center": 4700.0,
+        "semi_center": 3400.0,
+        "periphery": 2300.0
+      },
+      "Genoa": {
+        "center": 4200.0,
+        "semi_center": 3000.0,
+        "periphery": 2000.0
+      },
+      "Palermo": {
+        "center": 3500.0,
+        "semi_center": 2500.0,
+        "periphery": 1700.0
+      },
+      "Venice": {
+        "center": 6000.0,
+        "semi_center": 4200.0,
+        "periphery": 3000.0
+      },
+      "Verona": {
+        "center": 4600.0,
+        "semi_center": 3200.0,
+        "periphery": 2200.0
+      },
+      "Bari": {
+        "center": 3800.0,
+        "semi_center": 2700.0,
+        "periphery": 1800.0
+      },
+      "Padua": {
+        "center": 4400.0,
+        "semi_center": 3100.0,
+        "periphery": 2100.0
+      },
+      "Catania": {
+        "center": 3300.0,
+        "semi_center": 2400.0,
+        "periphery": 1600.0
+      },
+      "Trieste": {
+        "center": 4100.0,
+        "semi_center": 2900.0,
+        "periphery": 1900.0
+      },
+      "Cagliari": {
+        "center": 3700.0,
+        "semi_center": 2600.0,
+        "periphery": 1700.0
+      }
+    },
+    "zone_thresholds_km": {
+      "center": 1.5,
+      "semi_center": 5.0
+    },
+    "pricing": {
+      "view_multipliers": {
+        "sea": 1.25,
+        "landmarks": 1.1
+      },
+      "floor_modifiers": {
+        "is_top_floor": 0.08,
+        "is_ground_floor": -0.08
+      },
+      "build_age": {
+        "new": 0.2,
+        "recent": 0.05,
+        "old": -0.15
+      },
+      "energy_class_multipliers": {
+        "A": 1.15,
+        "B": 1.08,
+        "C": 1.0,
+        "D": 0.95,
+        "E": 0.9,
+        "F": 0.85,
+        "G": 0.8
+      },
+      "state_modifiers": {
+        "new": 1.15,
+        "renovated": 1.08,
+        "good": 1.0,
+        "needs_renovation": 0.85
+      },
+      "extras": {
+        "has_balcony": 0.04,
+        "has_garage": 0.06,
+        "has_garden": 0.05
+      }
+    },
+    "seasonality": {
+      "1": 0.98,
+      "2": 0.98,
+      "3": 1.02,
+      "4": 1.05,
+      "5": 1.05,
+      "6": 1.03,
+      "7": 1.0,
+      "8": 0.97,
+      "9": 1.02,
+      "10": 1.01,
+      "11": 0.99,
+      "12": 0.97
+    },
+    "urban_type_by_city": {
+      "Milan": "urban",
+      "Rome": "urban",
+      "Naples": "urban",
+      "Florence": "urban"
+    },
+    "region_by_city": {
+      "Milan": "north",
+      "Turin": "north",
+      "Bologna": "north",
+      "Genoa": "north"
+    },
+    "groupby_observed": true,
+    "expected_profile": {
+      "location_distribution_tolerance": 0.05
+    },
+    "incoherence": {
+      "val_threshold_quantile": 0.95,
+      "confidence_thresh": 0.6,
+      "weights": {
+        "condition": 0.5,
+        "luxury": 0.3,
+        "env": 0.2
+      }
+    },
+    "price_caps": {
+      "max_multiplier": 3.0
+    },
+    "paths": {
+      "output_path": "outputs\\dataset_generated.csv",
+      "snapshot_dir": "outputs\\snapshots",
+      "log_dir": "outputs\\logs"
+    }
+  },
+  "report_summary": {
+    "keys": [
+      "profiling",
+      "quality_report",
+      "sanity_benchmarks",
+      "validation_report"
+    ]
+  },
+  "manifest_hash": "4c270bbc8efcfc42962ec4a14153c175f8d8aa04fb847a70ed9d80760a3d6d62"
+}
