@@ -1,17 +1,18 @@
+# notebooks/shared/common/eda_core.py
 from __future__ import annotations
 from os import PathLike
 
 """
 EDA Core (I/O-free)
 -------------------
-Questo modulo contiene le logiche *pure* per l'analisi esplorativa:
-- descrittive e plotting (senza salvataggi su disco)
-- rilevamento outlier (IQR/Z-score) e aggregazioni
-- anomaly detection (Isolation Forest + robust z-score) con report
-- analisi temporali (freshness) e diagnostiche statistiche
-- feature importance e ablation study (senza salvataggi)
+Pure logic for exploratory data analysis:
+- descriptive analytics and plotting (no disk writes)
+- outlier detection (IQR / Z-score) and aggregation helpers
+- anomaly detection (Isolation Forest + robust z-scores) with reporting
+- temporal analysis (freshness) and statistical diagnostics
+- feature importance and ablation study (no saving)
 
-Tutto l'I/O (CSV/Parquet/PNG/JSON) sarà gestito in `eda_reports.py`.
+All file I/O (CSV/Parquet/PNG/JSON) should be handled in `eda_reports.py`.
 """
 
 import logging
@@ -35,7 +36,7 @@ try:
 except Exception:  # pragma: no cover - optional dependency
     stats = None  # type: ignore
 
-# Plotting (seaborn opzionale)
+# Plotting (seaborn optional)
 import matplotlib.pyplot as plt  # type: ignore
 try:  # pragma: no cover - optional dependency
     import seaborn as sns  # type: ignore
@@ -75,7 +76,7 @@ __all__ = [
     "AnomalyDetector",
     "TemporalAnalyzer",
     "StatisticalTester",
-    "FeatureRecommender",
+    "FeatureRecommender",          # kept in __all__ for backward-compat if referenced elsewhere
     "FeatureImportanceAnalyzer",
     # Utils
     "load_and_validate_dataset",
@@ -83,27 +84,27 @@ __all__ = [
     "plot_correlation_heatmap",
 ]
 
-# ------------------------------ Costanti ------------------------------------
+# ------------------------------ Constants -----------------------------------
 
 DEFAULT_CONTAMINATION: float = 0.05
 DEFAULT_STRONG_Z_THRESHOLD: float = 2.5
 DEFAULT_SEVERITY_PERCENTILE: float = 90.0
-MAD_CONSTANT: float = 1.4826  # per robust z-score
+MAD_CONSTANT: float = 1.4826  # for robust z-score
 
-# Feature che causano leakage
+# Features that cause target leakage
 LEAKY_FEATURES: Set[str] = {
     PRICE_PER_SQM,
     "_viz_price_per_sqm",
     PRICE_PER_SQM_VS_REGION_AVG,
 }
 
-# Candidate di default per anomaly
+# Default anomaly candidate features
 DEFAULT_CANDIDATE_FEATURES: List[str] = [
     SIZE_M2, LUXURY_SCORE, ENV_SCORE,
     "condition_minus_risk", CONDITION_SCORE, RISK_SCORE,
 ]
 
-_DEFAULT_THRESHOLDS = [30, 60, 90]  # giorni
+_DEFAULT_THRESHOLDS = [30, 60, 90]  # days
 
 MIN_SAMPLES_NORMALITY: int = 8
 NORMALITY_ALPHA: float = 0.05
@@ -147,13 +148,13 @@ PROXY_FEATURES: Set[str] = {
     LUXURY_SCORE, ENV_SCORE, "efficiency_score"
 }
 
-# Domain constraints (per clamp IQR). Possono essere estesi dal chiamante.
+# Domain constraints (for IQR clamping). Can be extended by caller.
 DEFAULT_DOMAIN_CONSTRAINTS = {
-    "non_negative": set(),   # es: {"price_per_sqm", "valuation_k"}
-    "unit_interval": set(),  # es: {"env_score"}
+    "non_negative": set(),   # e.g., {"price_per_sqm", "valuation_k"}
+    "unit_interval": set(),  # e.g., {"env_score"}
 }
 
-# --------------------- Utils dataset / validazione --------------------------
+# --------------------- Dataset utils / validation ---------------------------
 
 def load_and_validate_dataset(
     data_path: "PathLike[str] | str",
@@ -161,7 +162,7 @@ def load_and_validate_dataset(
     validate: bool = True,
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     """
-    Carica un dataset e opzionalmente esegue validazione schema.
+    Load a dataset and optionally run schema validation.
 
     Returns:
         (df, validation_report)
@@ -170,7 +171,7 @@ def load_and_validate_dataset(
 
     path = Path(data_path)
     if not path.exists():
-        logger.error("[EXPLORE] File dataset non trovato", extra={"path": str(path)})
+        logger.error("[EXPLORE] Dataset file not found", extra={"path": str(path)})
         return pd.DataFrame(), {}
 
     if path.suffix == ".parquet":
@@ -183,7 +184,7 @@ def load_and_validate_dataset(
         report = validate_dataset(df, asset_type=asset_type, raise_on_failure=False)
         if not report.get("overall_passed", True):
             logger.warning(
-                "[EXPLORE] Problemi validazione schema",
+                "[EXPLORE] Schema validation issues",
                 extra={"missing": report.get("schema", {}).get("missing")}
             )
     return df, report
@@ -193,14 +194,14 @@ def ensure_temporal_columns(
     df: pd.DataFrame,
     reference_time: Optional[datetime] = None
 ) -> pd.DataFrame:
-    """Garantisce che il DataFrame abbia colonne temporali coerenti."""
+    """Ensure the DataFrame has consistent temporal columns."""
     reference_time = reference_time or datetime.now(timezone.utc)
 
     for col in (LAST_VERIFIED_TS, PREDICTION_TS):
         if col not in df:
             if col == PREDICTION_TS:
                 df[col] = reference_time
-                logger.info("[EXPLORE] %s aggiunto con reference_time", PREDICTION_TS)
+                logger.info("[EXPLORE] %s added with reference_time", PREDICTION_TS)
             else:
                 df[col] = pd.NaT
         df[col] = pd.to_datetime(df[col], utc=True, errors="coerce")
@@ -217,7 +218,7 @@ def plot_correlation_heatmap(
     annot: bool = True,
     center: float = 0.0
 ) -> plt.Figure:
-    """Crea una heatmap di correlazione per le colonne fornite (senza salvataggio)."""
+    """Create a correlation heatmap for the given columns (no saving)."""
     created_fig = False
     if ax is None:
         fig, ax = plt.subplots(figsize=(6, 5))
@@ -246,10 +247,10 @@ def plot_correlation_heatmap(
         fig.tight_layout()
     return fig
 
-# --------------------- Descrittive / Visualizzazioni ------------------------
+# --------------------- Descriptive / Visualizations -------------------------
 
 class DescriptiveAnalyzer:
-    """Analisi descrittive e visualizzazioni di distribuzioni e relazioni (no I/O)."""
+    """Descriptive analytics and distribution/relationship plots (no I/O)."""
 
     def box_plot_by_category(
         self,
@@ -261,7 +262,7 @@ class DescriptiveAnalyzer:
         showfliers: bool = False,
         annotate_means: bool = True,
     ) -> plt.Figure:
-        """Crea un boxplot di value_col suddiviso per category_col (no salvataggio)."""
+        """Boxplot of value_col split by category_col (no save)."""
         created_fig = False
         if ax is None:
             fig, ax = plt.subplots(figsize=(8, 4))
@@ -271,7 +272,7 @@ class DescriptiveAnalyzer:
 
         if category_col not in df or value_col not in df:
             logger.warning(
-                "[DESCR] Colonna mancante per boxplot",
+                "[DESCR] Missing columns for boxplot",
                 extra={"category_col": category_col, "value_col": value_col}
             )
             ax.text(0.5, 0.5, "Data missing", ha="center", va="center")
@@ -286,7 +287,6 @@ class DescriptiveAnalyzer:
                 order=order, showfliers=showfliers, ax=ax
             )
         else:
-            # fallback minimale con matplotlib
             groups = [df[df[category_col] == cat][value_col].dropna().values for cat in order]
             ax.boxplot(groups, labels=order, showfliers=showfliers)
 
@@ -312,7 +312,7 @@ class DescriptiveAnalyzer:
         whisker_coef: float = 1.5,
         title: Optional[str] = None
     ) -> plt.Figure:
-        """Evidenzia gli outlier basati su IQR in un boxplot (no salvataggio)."""
+        """Highlight IQR-based outliers in a boxplot (no save)."""
         created_fig = False
         if ax is None:
             fig, ax = plt.subplots(figsize=(6, 3))
@@ -351,7 +351,7 @@ class DescriptiveAnalyzer:
         df: pd.DataFrame,
         figsize: Tuple[int, int] = (12, 10)
     ) -> plt.Figure:
-        """Crea 4 pannelli: Condition vs Risk, Size vs Valuation, Boxplot per Energy/Condition, Heatmap scores."""
+        """Create 4 panels: Condition vs Risk, Size vs Valuation, Boxplot for Energy/Condition, and a score heatmap."""
         fig, axes = plt.subplots(2, 2, figsize=figsize)
 
         # Scatter Condition vs Risk
@@ -367,7 +367,7 @@ class DescriptiveAnalyzer:
                 ax.scatter(df[CONDITION_SCORE], df[RISK_SCORE], alpha=0.6)
             ax.set_title("Condition vs Risk Score")
         else:
-            logger.warning("[DESCR] Dati mancanti per scatter Condition vs Risk")
+            logger.warning("[DESCR] Missing data for Condition vs Risk scatter")
             ax.text(0.5, 0.5, "Data missing", ha="center", va="center")
 
         # Size vs Valuation
@@ -379,7 +379,7 @@ class DescriptiveAnalyzer:
                 ax.scatter(df[SIZE_M2], df[VALUATION_K], alpha=0.4)
             ax.set_title("Size vs Valuation")
         else:
-            logger.warning("[DESCR] Dati mancanti per Size vs Valuation")
+            logger.warning("[DESCR] Missing data for Size vs Valuation")
             ax.text(0.5, 0.5, "Data missing", ha="center", va="center")
 
         # Boxplot Condition by Energy Class
@@ -387,7 +387,7 @@ class DescriptiveAnalyzer:
         if CONDITION_SCORE in df and ENERGY_CLASS in df:
             self.box_plot_by_category(df, ENERGY_CLASS, CONDITION_SCORE, ax, order=list(ENERGY_CLASSES))
         else:
-            logger.warning("[DESCR] Dati mancanti per Boxplot Energy/Condition")
+            logger.warning("[DESCR] Missing data for Energy/Condition boxplot")
             ax.text(0.5, 0.5, "No energy/condition data", ha="center", va="center")
 
         # Score correlations heatmap
@@ -396,28 +396,28 @@ class DescriptiveAnalyzer:
         if len(score_cols) >= 2:
             plot_correlation_heatmap(df, score_cols, ax=ax)
         else:
-            logger.warning("[DESCR] Colonne score insufficienti per heatmap")
+            logger.warning("[DESCR] Not enough score columns for heatmap")
             ax.text(0.5, 0.5, "Not enough score columns", ha="center", va="center")
 
         fig.tight_layout()
         return fig
 
-# ------------------------------- Outliers -----------------------------------
+# -------------------------------- Outliers ----------------------------------
 
 class OutlierDetector:
     """
-    Rilevamento outlier su DataFrame (I/O-free).
+    Outlier detection on a DataFrame (I/O-free).
 
     Parameters
     ----------
     method : str
-        'iqr' o 'zscore'.
+        'iqr' or 'zscore'.
     iqr_multiplier : float
-        Moltiplicatore per limiti IQR.
+        IQR whisker multiplier.
     z_threshold : float
-        Soglia assoluta per Z-score.
+        Absolute threshold for Z-score.
     domain_constraints : Mapping[str, Set[str]]
-        Vincoli (non_negative, unit_interval) per clamp dei bounds.
+        Constraints (non_negative, unit_interval) to clamp bounds.
     """
 
     def __init__(
@@ -435,7 +435,7 @@ class OutlierDetector:
             "unit_interval": set(domain_constraints.get("unit_interval", set())) if domain_constraints else set(),
         }
 
-    # ---------------- API pubblica ----------------
+    # ---------------- Public API ----------------
 
     def detect_outliers(
         self,
@@ -443,15 +443,15 @@ class OutlierDetector:
         columns: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
-        Rileva outlier per le colonne specificate (no salvataggi).
+        Detect outliers for the specified columns (no saves).
 
         Returns
         -------
         dict
-            Risultati per colonna, con statistiche e metadati.
+            Per-column results with stats and metadata.
         """
         if df.empty:
-            logger.warning("DataFrame vuoto: impossibile eseguire rilevamento outlier.")
+            logger.warning("Empty DataFrame: cannot detect outliers.")
             return {}
 
         if columns is None:
@@ -460,7 +460,7 @@ class OutlierDetector:
 
         methods_map = {"iqr": self._detect_outliers_iqr, "zscore": self._detect_outliers_zscore}
         if self.method not in methods_map:
-            raise ValueError(f"Metodo sconosciuto: {self.method}")
+            raise ValueError(f"Unknown method: {self.method}")
 
         return methods_map[self.method](df, columns)
 
@@ -470,7 +470,7 @@ class OutlierDetector:
         outliers_summary: Dict[str, Any],
     ) -> pd.DataFrame:
         """
-        Combina i risultati degli outlier da più colonne in un unico DataFrame.
+        Combine outlier hits across columns into a single DataFrame.
         """
         outlier_records: List[Dict[str, Any]] = []
 
@@ -484,7 +484,7 @@ class OutlierDetector:
                 })
 
         if not outlier_records:
-            logger.info("Nessun outlier trovato nelle colonne analizzate.")
+            logger.info("No outliers found in the analyzed columns.")
             return pd.DataFrame()
 
         combined_df = pd.DataFrame(outlier_records)
@@ -510,7 +510,7 @@ class OutlierDetector:
         outliers_summary: Dict[str, Any],
         combined_outliers: pd.DataFrame
     ) -> Dict[str, Any]:
-        """Calcola statistiche riassuntive sugli outlier rilevati."""
+        """Compute summary metrics about detected outliers."""
         total_rows = len(df)
         unique_records = (
             len(combined_outliers["index"].unique())
@@ -547,19 +547,19 @@ class OutlierDetector:
             "top_multi_source_outliers": top_outliers
         }
 
-    # ---------------- Metodi privati ----------------
+    # ---------------- Private methods ----------------
 
     def _detect_outliers_iqr(self, df: pd.DataFrame, columns: List[str]) -> Dict[str, Any]:
         results: Dict[str, Any] = {}
 
         for col in columns:
             if col not in df.columns:
-                logger.warning("Colonna '%s' non trovata, skip.", col)
+                logger.warning("Column '%s' not found, skipping.", col)
                 continue
 
             series = df[col].dropna()
             if series.empty:
-                logger.warning("Nessun dato per '%s', skip.", col)
+                logger.warning("No data for '%s', skipping.", col)
                 continue
 
             lower, upper = self._compute_clamped_iqr_bounds(col, series)
@@ -577,7 +577,7 @@ class OutlierDetector:
             }
 
             logger.info(
-                "[OUTLIER][IQR] %s: %d (%.2f%%) in bounds [%.2f, %.2f]",
+                "[OUTLIER][IQR] %s: %d (%.2f%%) within bounds [%.2f, %.2f]",
                 col, len(outliers), results[col]["percentage"], lower, upper
             )
 
@@ -597,7 +597,7 @@ class OutlierDetector:
             mean = series.mean()
             std = series.std()
             if std == 0 or np.isnan(std):
-                logger.warning("Std=0 per '%s', skip.", col)
+                logger.warning("Std=0 for '%s', skipping.", col)
                 continue
 
             z_scores = np.abs((df[col] - mean) / std)
@@ -646,10 +646,10 @@ class OutlierDetector:
             "iqr": float(series.quantile(0.75) - series.quantile(0.25)),
         }
 
-# ------------------------------ Anomalie ------------------------------------
+# -------------------------------- Anomalies ---------------------------------
 
 class AnomalyDetector:
-    """Rilevamento anomalie multi-livello con Isolation Forest (no I/O)."""
+    """Multi-level anomaly detection with Isolation Forest (no I/O)."""
 
     def __init__(
         self,
@@ -671,26 +671,26 @@ class AnomalyDetector:
         feature_candidates: Optional[List[str]] = None,
         exclude_features: Optional[Set[str]] = None,
     ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
-        """Esegue anomaly detection + refinement e restituisce df arricchito e report."""
+        """Run anomaly detection + refinement, returning an enriched df and a report."""
         df = df.copy()
         report: Dict[str, Any] = {"status": "started"}
 
-        # 1) Selezione feature
+        # 1) Feature selection
         features = self._select_features(
             df=df,
             candidates=list(feature_candidates) if feature_candidates is not None else list(DEFAULT_CANDIDATE_FEATURES),
             exclude=set(exclude_features) if exclude_features is not None else set(LEAKY_FEATURES),
         )
         if not features:
-            logger.warning("[ANOM] Nessuna feature disponibile per anomaly detection.")
+            logger.warning("[ANOM] No features available for anomaly detection.")
             report["status"] = "no_features"
             return df, report
         report["features_used"] = features
 
-        # 2) Dati completi
+        # 2) Complete rows only
         X_valid, valid_mask = self._prepare_data(df, features)
         if X_valid.empty:
-            logger.warning("[ANOM] Nessuna riga completa per anomaly detection.")
+            logger.warning("[ANOM] No complete rows for anomaly detection.")
             report["status"] = "no_complete_rows"
             return df, report
         report["n_valid_rows"] = int(len(X_valid))
@@ -701,7 +701,7 @@ class AnomalyDetector:
         # 4) Isolation Forest
         anomaly_results = self._run_isolation_forest(X_valid)
 
-        # 5) Assegnazione
+        # 5) Assignment
         df = self._assign_anomaly_scores(
             df=df,
             valid_mask=valid_mask,
@@ -716,7 +716,7 @@ class AnomalyDetector:
         report.update(self._generate_report(df))
         report["status"] = "completed"
         logger.info(
-            "[ANOM] Completata anomaly detection: raw=%s refined=%s",
+            "[ANOM] Anomaly detection completed: raw=%s refined=%s",
             report.get("n_anomalies_raw"), report.get("n_anomalies_refined")
         )
         return df, report
@@ -727,7 +727,7 @@ class AnomalyDetector:
         feature_pairs: Optional[List[Tuple[str, str]]] = None,
         figsize: Tuple[int, int] = (15, 5),
     ) -> Optional[plt.Figure]:
-        """Visualizza anomalie su coppie di feature (no salvataggio)."""
+        """Plot anomalies across feature pairs (no saving)."""
         # default pairs
         if feature_pairs is None:
             candidate_pairs: List[Tuple[str, str]] = []
@@ -741,7 +741,7 @@ class AnomalyDetector:
 
         valid_pairs = [(x, y) for (x, y) in feature_pairs if x in df.columns and y in df.columns]
         if not valid_pairs:
-            logger.warning("[ANOM] Nessuna coppia di feature valida per la visualizzazione.")
+            logger.warning("[ANOM] No valid feature pairs for visualization.")
             return None
 
         n_plots = len(valid_pairs)
@@ -770,7 +770,7 @@ class AnomalyDetector:
 
     def extract_anomaly_frames(self, df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
         """
-        Estrae DataFrame utili: raw/refined (nessun salvataggio).
+        Extract helpful DataFrames: raw/refined (no saving).
         Returns:
             {"raw": df_raw, "refined": df_refined}
         """
@@ -785,11 +785,11 @@ class AnomalyDetector:
                 out["refined"] = ref.copy()
         return out
 
-    # ---------------- Privati --------------
+    # ---------------- Private helpers --------------
 
     def _select_features(self, df: pd.DataFrame, candidates: List[str], exclude: Set[str]) -> List[str]:
         chosen: List[str] = []
-        # aggiungi (se possibile) log del target come feature
+        # add log of target as candidate feature (if allowed)
         if VALUATION_K in df.columns and VALUATION_K not in exclude:
             df["valuation_k_log"] = np.log1p(df[VALUATION_K])
             if "valuation_k_log" not in candidates:
@@ -799,14 +799,14 @@ class AnomalyDetector:
             if feat in df.columns and feat not in exclude:
                 chosen.append(feat)
 
-        logger.info("[ANOM] Feature selezionate (%d): %s", len(chosen), chosen)
+        logger.info("[ANOM] Selected features (%d): %s", len(chosen), chosen)
         return chosen
 
     def _prepare_data(self, df: pd.DataFrame, features: List[str]) -> Tuple[pd.DataFrame, pd.Series]:
         X_raw = df[features].copy()
         valid_mask = X_raw.notna().all(axis=1)
         X_valid = X_raw.loc[valid_mask].copy()
-        logger.info("[ANOM] Righe valide: %d / %d", len(X_valid), len(df))
+        logger.info("[ANOM] Valid rows: %d / %d", len(X_valid), len(df))
         return X_valid, valid_mask
 
     def _calculate_robust_zscores(self, X: pd.DataFrame) -> pd.DataFrame:
@@ -830,11 +830,11 @@ class AnomalyDetector:
         )
         iso.fit(X_scaled)
 
-        decision_scores = iso.decision_function(X_scaled)  # >0 più normale
-        predictions = iso.predict(X_scaled)                 # -1 anomalia
+        decision_scores = iso.decision_function(X_scaled)  # >0 more normal
+        predictions = iso.predict(X_scaled)                 # -1 anomaly
         return {
             "decision_scores": decision_scores,
-            "anomaly_scores": -decision_scores,   # maggiore = più anomalo
+            "anomaly_scores": -decision_scores,   # higher = more anomalous
             "predictions": predictions == -1,     # bool
         }
 
@@ -928,10 +928,10 @@ class AnomalyDetector:
 
         return rpt
 
-# ------------------------------ Temporale -----------------------------------
+# -------------------------------- Temporal ----------------------------------
 
 class TemporalAnalyzer:
-    """Analizza freschezza e trend temporali di un dataset (no I/O)."""
+    """Analyze data freshness and temporal trends (no I/O)."""
 
     def __init__(
         self,
@@ -946,7 +946,7 @@ class TemporalAnalyzer:
         df: pd.DataFrame,
         target: str = VALUATION_K
     ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
-        """Esegue analisi temporale e ritorna (df_enriched, report)."""
+        """Run temporal analysis and return (df_enriched, report)."""
         df = df.copy()
         report: Dict[str, Any] = {"status": "started"}
 
@@ -963,7 +963,7 @@ class TemporalAnalyzer:
         df["days_since_verification"] = age.days
         df["hours_since_verification"] = age.total_seconds().div(3600)
 
-        # Flags staleness
+        # Staleness flags
         for th in self.stale_thresholds:
             df[f"is_stale_{th}d"] = df["days_since_verification"] > th
 
@@ -979,11 +979,11 @@ class TemporalAnalyzer:
             report["warning"] = f"missing target '{target}'"
 
         report["status"] = "completed"
-        logger.info("[TEMPORAL] Analisi completata", extra={"target": target, "stats": stats})
+        logger.info("[TEMPORAL] Analysis completed", extra={"target": target, "stats": stats})
         return df, report
 
     def plot(self, df: pd.DataFrame, target: Optional[str] = None) -> plt.Figure:
-        """Crea istogramma freshness e scatter target vs tempo (no salvataggio)."""
+        """Histogram of freshness and optional scatter of target vs time (no save)."""
         df = df.copy()
         n_axes = 2 if (target is not None and target in df) else 1
         fig, axes = plt.subplots(1, n_axes, figsize=(14, 5))
@@ -1051,10 +1051,10 @@ class TemporalAnalyzer:
             "r2": float(model.rsquared),
         }
 
-# ------------------------------ Statistica ----------------------------------
+# ------------------------------ Statistics ----------------------------------
 
 class StatisticalTester:
-    """Esegue test statistici diagnostici sul dataset (no I/O)."""
+    """Run diagnostic statistical tests on a dataset (no I/O)."""
 
     def __init__(self, normality_alpha: float = NORMALITY_ALPHA, chi2_alpha: float = CHI2_ALPHA):
         self.normality_alpha = float(normality_alpha)
@@ -1068,7 +1068,7 @@ class StatisticalTester:
         *,
         max_numeric_for_stats: int = 20,
     ) -> Dict[str, Any]:
-        """Suite completa: normalità, dipendenze categoriali, statistiche di distribuzione."""
+        """Full suite: normality, categorical dependencies, and distribution stats."""
         norm = self.test_normality(df, normality_features)
         deps = self.test_categorical_dependencies(df, categorical_pairs)
         dist = self.compute_distribution_statistics(df, max_numeric_for_stats=max_numeric_for_stats)
@@ -1083,16 +1083,16 @@ class StatisticalTester:
 
 
     def test_normality(self, df: pd.DataFrame, features: Optional[List[str]] = None) -> Dict[str, Any]:
-        """Test di normalità (D'Agostino K²) sulle feature indicate."""
+        """D'Agostino K² normality test on the specified features."""
         feats = list(features) if features is not None else list(DEFAULT_NORMALITY_FEATURES)
         results: Dict[str, Any] = {}
 
         def _safe_moments(series: pd.Series) -> tuple[float, float]:
             """
-            Restituisce (skewness, kurtosis) in modo robusto:
-            - converte a float ignorando non-numerici
-            - evita RuntimeWarning quando la serie è quasi costante/varianza ~0
-            - se SciPy non è disponibile, torna (0.0, 0.0)
+            Return (skewness, kurtosis) robustly:
+            - cast to float ignoring non-numerics
+            - avoid RuntimeWarnings for near-constant series (variance ~0)
+            - if SciPy is unavailable, return (0.0, 0.0)
             """
             vals = pd.to_numeric(series, errors="coerce").astype(float)
             vals = vals[np.isfinite(vals)]
@@ -1110,7 +1110,6 @@ class StatisticalTester:
         for col in feats:
             if col not in df.columns:
                 results[col] = {"status": "missing"}
-                # meno rumoroso: info invece di warning
                 logger.info("Column '%s' missing for normality test", col)
                 continue
             
@@ -1124,7 +1123,7 @@ class StatisticalTester:
             
             if stats is None:
                 results[col] = {"status": "skipped_no_scipy", "n_samples": n}
-                logger.warning("SciPy non disponibile: salto normality test per %s", col)
+                logger.warning("SciPy not available: skipping normality test for %s", col)
                 continue
             
             try:
@@ -1170,7 +1169,7 @@ class StatisticalTester:
         df: pd.DataFrame,
         pairs: Optional[List[Tuple[str, str]]] = None,
     ) -> Dict[str, Any]:
-        """Test χ² su coppie di variabili (discretizza automaticamente se continuo)."""
+        """χ² tests on variable pairs (auto-bins numeric variables)."""
         test_pairs = list(pairs) if pairs is not None else [(ENERGY_CLASS, LUXURY_SCORE)]
         results: Dict[str, Any] = {}
 
@@ -1185,12 +1184,12 @@ class StatisticalTester:
             try:
                 if stats is None:
                     results[key] = {"status": "skipped_no_scipy"}
-                    logger.warning("SciPy non disponibile: salto chi² per %s", key)
+                    logger.warning("SciPy not available: skipping chi² for %s", key)
                     continue
 
                 data = df[[var1, var2]].copy().dropna(how="any")
 
-                # Se var2 è numerica, discretizza in 3 quantili
+                # If var2 is numeric, discretize it into 3 quantiles
                 var2_cat = var2
                 if pd.api.types.is_numeric_dtype(data[var2]):
                     data[f"{var2}_cat"] = pd.qcut(data[var2], q=3, labels=["low", "medium", "high"], duplicates="drop")
@@ -1248,14 +1247,14 @@ class StatisticalTester:
         *,
         max_numeric_for_stats: int = 20,
     ) -> Dict[str, Any]:
-        """Statistiche distribuzionali per variabili numeriche (limitando #colonne)."""
+        """Distribution statistics for numeric variables (limiting the number of columns)."""
 
         def _safe_moments(series: pd.Series) -> tuple[float, float]:
             """
-            Restituisce (skewness, kurtosis) in modo robusto:
-            - converte a float ignorando non-numerici
-            - evita RuntimeWarning quando la serie è quasi costante/varianza ~0
-            - se SciPy non è disponibile, torna (0.0, 0.0)
+            Return (skewness, kurtosis) robustly:
+            - cast to float ignoring non-numerics
+            - avoid RuntimeWarnings for near-constant series (variance ~0)
+            - if SciPy is unavailable, return (0.0, 0.0)
             """
             vals = pd.to_numeric(series, errors="coerce").astype(float)
             vals = vals[np.isfinite(vals)]
@@ -1302,10 +1301,10 @@ class StatisticalTester:
         return stats_dict
 
     def _summarize_test_results(self, results: Dict[str, Any]) -> Dict[str, Any]:
-        """Riassume normalità e dipendenze."""
+        """Summarize normality and categorical dependency findings."""
         summary: Dict[str, Any] = {}
 
-        # Normalità
+        # Normality
         normality = results.get("normality", {}) or {}
         tested = [k for k, v in normality.items() if v.get("status") == "tested"]
         normal = [k for k, v in normality.items() if v.get("is_normal") is True]
@@ -1316,7 +1315,7 @@ class StatisticalTester:
             "non_normal_features": [k for k in tested if k not in normal],
         }
 
-        # Dipendenze categoriche
+        # Categorical dependencies
         deps = results.get("categorical_dependencies", {}) or {}
         tested_pairs = [k for k, v in deps.items() if v.get("status") == "tested"]
         dependent = [k for k, v in deps.items() if v.get("is_independent") is False]
@@ -1331,7 +1330,7 @@ class StatisticalTester:
 # ------------------------- Feature Importance / Ablation ---------------------
 
 class FeatureImportanceAnalyzer:
-    """Importanza feature e ablation study con Random Forest (no I/O)."""
+    """Feature importance and ablation study using Random Forest (no I/O)."""
 
     def __init__(
         self,
@@ -1353,9 +1352,9 @@ class FeatureImportanceAnalyzer:
         exclude_features: Optional[Set[str]] = None,
         include_proxies: bool = False
     ) -> Tuple[pd.DataFrame, pd.Series, List[str]]:
-        """Prepara features escludendo leakage e target-derived; codifica categoriche."""
+        """Prepare features excluding leakage and target-derived; encode categoricals."""
         if self.target_column not in df.columns:
-            raise ValueError(f"Target '{self.target_column}' non trovato nel dataframe")
+            raise ValueError(f"Target '{self.target_column}' not found in DataFrame")
 
         y = df[self.target_column].copy()
 
@@ -1377,18 +1376,18 @@ class FeatureImportanceAnalyzer:
             if col not in exclude and pd.api.types.is_numeric_dtype(df_features[col])
         ] + [col for col in df_features.columns if col.endswith("_encoded")]
 
-        feature_cols = list(dict.fromkeys(feature_cols))  # dedup preservando ordine
+        feature_cols = list(dict.fromkeys(feature_cols))  # dedup preserving order
 
         if not feature_cols and include_proxies:
-            logger.warning("Feature set vuoto, aggiunta forzata di proxy features selezionate")
+            logger.warning("Empty feature set; force-adding selected proxy features")
             for col in [SIZE_M2, LUXURY_SCORE, ENV_SCORE]:
                 if col in df.columns and col not in exclude:
                     feature_cols.append(col)
 
         if not feature_cols:
-            raise ValueError("Nessuna feature valida disponibile per l'analisi")
+            raise ValueError("No valid features available for analysis")
 
-        logger.info("Selezionate %d features per analisi importanza", len(feature_cols))
+        logger.info("Selected %d features for importance analysis", len(feature_cols))
 
         X = df_features[feature_cols].fillna(0)
         self.feature_names = feature_cols
@@ -1396,7 +1395,7 @@ class FeatureImportanceAnalyzer:
         return X, y, feature_cols
 
     def _encode_categorical_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Codifica le feature categoriali con OrdinalEncoder."""
+        """Encode categorical features with OrdinalEncoder."""
         encoded_dfs: List[pd.DataFrame] = []
 
         for col in CATEGORICAL_FEATURES:
@@ -1407,9 +1406,9 @@ class FeatureImportanceAnalyzer:
                 values = df[[col]].astype(str)
                 encoded = encoder.fit_transform(values)
                 encoded_dfs.append(pd.DataFrame(encoded, columns=[f"{col}_encoded"], index=df.index))
-                logger.debug("Encoded %s con %d categorie", col, len(encoder.categories_[0]))
+                logger.debug("Encoded %s with %d categories", col, len(encoder.categories_[0]))
             except Exception as e:
-                logger.warning("Codifica fallita per '%s': %s", col, e)
+                logger.warning("Encoding failed for '%s': %s", col, e)
 
         return pd.concat(encoded_dfs, axis=1) if encoded_dfs else pd.DataFrame(index=df.index)
 
@@ -1420,7 +1419,7 @@ class FeatureImportanceAnalyzer:
         calculate_permutation: bool = True,
         n_repeats: int = 10
     ) -> Dict[str, pd.DataFrame]:
-        """Calcola feature importance (built-in RF e opzionale permutation)."""
+        """Compute feature importance (RF built-in and optional permutation)."""
         self.model = RandomForestRegressor(
             n_estimators=self.n_estimators,
             random_state=self.random_state,
@@ -1436,7 +1435,7 @@ class FeatureImportanceAnalyzer:
         results: Dict[str, pd.DataFrame] = {"builtin": builtin_imp}
 
         if calculate_permutation:
-            logger.info("Calcolo permutation importances...")
+            logger.info("Computing permutation importances...")
             perm_imp = permutation_importance(
                 self.model, X, y,
                 n_repeats=n_repeats,
@@ -1459,7 +1458,7 @@ class FeatureImportanceAnalyzer:
         features_to_ablate: List[str],
         cv_folds: int = 5
     ) -> pd.DataFrame:
-        """Ablation study rimuovendo feature specifiche (ritorna DataFrame risultati)."""
+        """Ablation study by removing specific features (returns a results DataFrame)."""
         base_features = X.columns.tolist()
         settings = {"full": base_features}
 

@@ -1,5 +1,5 @@
 """
-Modulo per metriche e benchmark relativi alle distribuzioni di location.
+Module for metrics and benchmarks related to location distributions.
 """
 
 from __future__ import annotations
@@ -7,11 +7,23 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict
 
-import pandas as pd     # type: ignore
+import pandas as pd  # type: ignore
 
 logger = logging.getLogger(__name__)
 
+
 def worst_k_decile(y_true: pd.Series, y_pred: pd.Series, k: float = 0.1) -> dict:
+    """
+    Compute metrics for the worst-k fraction of samples by absolute error.
+
+    Args:
+        y_true: Ground-truth values.
+        y_pred: Predicted values.
+        k: Fraction of samples to consider (default = 0.1).
+
+    Returns:
+        Dictionary with mean and max absolute error for the worst-k samples.
+    """
     err = (y_true - y_pred).abs()
     n = max(1, int(len(err) * k))
     top = err.nlargest(n)
@@ -22,21 +34,22 @@ def worst_k_decile(y_true: pd.Series, y_pred: pd.Series, k: float = 0.1) -> dict
         "worst_k_count": int(n),
     }
 
+
 def compute_location_drift(
     df: pd.DataFrame,
     target_weights: Dict[str, float],
-    tolerance: float
+    tolerance: float,
 ) -> Dict[str, Any]:
     """
-    Confronta la distribuzione empirica di 'location' con pesi target attesi.
+    Compare empirical distribution of 'location' with target weights.
 
     Args:
-        df: DataFrame contenente 'location'.
-        target_weights: Mappatura location → peso atteso (fractions ~1).
-        tolerance: Soglia di differenza assoluta per segnalare drift.
+        df: DataFrame containing 'location'.
+        target_weights: Mapping location → target weight (fractions summing to ~1).
+        tolerance: Absolute difference threshold to flag drift.
 
     Returns:
-        Dict {location: {target_weight, empirical_weight, difference, drifted, ratio}}.
+        Dictionary {location: {target_weight, empirical_weight, difference, drifted, ratio}}.
     """
     if not isinstance(df, pd.DataFrame):
         raise TypeError(f"`df` must be a pandas DataFrame, got {type(df).__name__}.")
@@ -69,26 +82,27 @@ def compute_location_drift(
 
     return drift_report
 
+
 def location_benchmark(
     df: pd.DataFrame,
     target_weights: Dict[str, float],
-    tolerance: float = 0.05
+    tolerance: float = 0.05,
 ) -> pd.DataFrame:
     """
-    Genera un DataFrame di benchmark tra distribuzione empirica e target di location.
+    Generate a benchmark DataFrame comparing empirical vs. target location distributions.
 
     Args:
-        df: DataFrame contenente 'location'.
-        target_weights: Mappatura location → peso atteso.
-        tolerance: Soglia di differenza assoluta per segnalare drift.
+        df: DataFrame containing 'location'.
+        target_weights: Mapping location → target weight.
+        tolerance: Absolute difference threshold to flag drift.
 
     Returns:
-        DataFrame indicizzato per location con colonne:
+        DataFrame indexed by location with columns:
         [target_weight, empirical_weight, difference, drifted, ratio].
     """
     drift_report = compute_location_drift(df, target_weights, tolerance)
 
     return pd.DataFrame.from_records(
         [{"location": k, **v} for k, v in drift_report.items()],
-        columns=["location", "target_weight", "empirical_weight", "difference", "drifted", "ratio"]
+        columns=["location", "target_weight", "empirical_weight", "difference", "drifted", "ratio"],
     ).set_index("location")

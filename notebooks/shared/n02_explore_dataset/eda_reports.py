@@ -1,14 +1,16 @@
+# notebooks/shared/n02_explore_dataset/eda_reports.py
 '''
-Layer di orchestrazione + I/O per l'EDA:
-- Chiama le classi *pure* in `shared.nb02.eda_core` (nessun I/O lì)
-- Esporta CSV/Parquet/JSON/PNG
-- Produce un manifest con metadati e percorsi degli artefatti
+EDA Orchestration + I/O layer
+-----------------------------
+- Invokes the *pure* classes in `shared.nb02.eda_core` (no I/O there)
+- Exports CSV/Parquet/JSON/PNG
+- Produces a manifest with metadata and artifact paths
 
-Uso tipico (es. in notebook 02):
+Typical usage (e.g., in notebook 02):
     runner = EDAReportRunner(output_dir="outputs/analysis", meta={"schema_version": "1.0.0"})
     manifest = runner.run_full_eda(df)
 
-Oppure invocazioni granulari (solo outlier, solo importanze, ecc.).
+Or granular invocations (only outliers, only importance, etc.).
 '''
 
 from __future__ import annotations
@@ -27,7 +29,7 @@ import pandas as pd                 # type: ignore
 import matplotlib                   # type: ignore
 import matplotlib.pyplot as plt     # type: ignore
 
-# Importa il core (I/O-free)
+# Import the I/O-free core
 from notebooks.shared.n02_explore_dataset.eda_core import (
     DescriptiveAnalyzer,
     OutlierDetector,
@@ -47,7 +49,7 @@ from notebooks.shared.common.constants import (
 
 logger = logging.getLogger(__name__)
 
-# ------------------------------ Utility I/O ---------------------------------
+# ------------------------------ I/O Utilities -------------------------------
 
 def _ensure_dir(p: Path) -> Path:
     p.mkdir(parents=True, exist_ok=True)
@@ -58,7 +60,7 @@ def _safe_to_parquet(df: pd.DataFrame, path: Path) -> Optional[Path]:
         df.to_parquet(path, index=False)
         return path
     except Exception as e:
-        logger.warning("Parquet non disponibile (%s). Skip parquet per %s.", e, path.name)
+        logger.warning("Parquet not available (%s). Skipping parquet for %s.", e, path.name)
         return None
 
 def save_dataframe(
@@ -69,7 +71,7 @@ def save_dataframe(
     save_csv: bool = True,
     save_parquet: bool = True,
 ) -> Dict[str, str]:
-    """Salva un DataFrame in CSV e/o Parquet. Ritorna mapping {format: path}."""
+    """Save a DataFrame to CSV and/or Parquet. Returns mapping {format: path}."""
     out: Dict[str, str] = {}
     _ensure_dir(basepath)
     if df is None or df.empty:
@@ -100,7 +102,7 @@ def save_fig(fig: plt.Figure, basepath: Path, name: str, *, dpi: int = 144, tran
     return str(p)
 
 def collect_library_versions() -> Dict[str, str]:
-    """Raccoglie versioni librerie principali (best-effort)."""
+    """Collect versions of main libraries (best-effort)."""
     versions: Dict[str, str] = {}
     try:
         import numpy  # type: ignore
@@ -133,24 +135,24 @@ def collect_library_versions() -> Dict[str, str]:
         pass
     return versions
 
-# ---------------------------- Insights Analyzer ------------------------------
+# ---------------------------- Insights Analyzer -----------------------------
 
 DEFAULT_TOP_N = 5
 
 class InsightsAnalyzer:
     """
-    Genera insights di alto livello da un dataset di asset (no I/O).
-    Pensata per essere usata dal runner e poi salvata in JSON.
+    Generate high-level insights from an asset dataset (no I/O).
+    Intended to be used by the runner and then saved to JSON.
     """
 
     def __init__(self, top_n: int = DEFAULT_TOP_N) -> None:
         if not isinstance(top_n, int) or top_n <= 0:
-            raise ValueError("top_n deve essere un numero intero positivo.")
+            raise ValueError("top_n must be a positive integer.")
         self.top_n = top_n
 
     def generate_value_insights(self, df: pd.DataFrame) -> Dict[str, Any]:
         if df.empty:
-            logger.warning("Dataset vuoto: impossibile generare insights.")
+            logger.warning("Empty dataset: cannot generate insights.")
             return {}
 
         insights: Dict[str, Any] = {
@@ -172,11 +174,11 @@ class InsightsAnalyzer:
             if LOCATION in df.columns and VALUATION_K in df.columns:
                 insights["location_analysis"] = self._analyze_locations(df)
 
-            logger.info("Generazione insights completata con successo.")
+            logger.info("Insights generation completed successfully.")
             return insights
 
         except Exception as e:
-            logger.exception(f"Errore durante la generazione degli insights: {e}")
+            logger.exception(f"Error while generating insights: {e}")
             return insights
 
     # --- helpers
@@ -187,7 +189,7 @@ class InsightsAnalyzer:
         available = [c for c in cols if c in df.columns]
 
         if not available:
-            logger.warning("Nessuna colonna disponibile per identificare top_assets.")
+            logger.warning("No columns available to identify top_assets.")
             return {}
 
         top_val = df.nlargest(self.top_n, VALUATION_K)[available]
@@ -206,7 +208,7 @@ class InsightsAnalyzer:
                 "mean_price_per_sqm": float(top_eff[PRICE_PER_SQM].mean()),
             }
 
-        logger.info("Identificati i top %d asset per valutazione/efficienza.", self.top_n)
+        logger.info("Identified top %d assets by valuation/efficiency.", self.top_n)
         return result
 
     def _get_worst_assets(self, df: pd.DataFrame) -> Dict[str, Any]:
@@ -216,13 +218,13 @@ class InsightsAnalyzer:
         )
 
         if not col:
-            logger.warning("Nessuna metrica di condizione disponibile.")
+            logger.warning("No condition metric available.")
             return {}
 
         available = [c for c in [ASSET_ID, VALUATION_K, ENERGY_CLASS, col, LUXURY_SCORE] if c in df.columns]
         worst = df.nsmallest(self.top_n, col)[available]
 
-        logger.info("Identificati i peggiori %d asset per metrica %s.", self.top_n, col)
+        logger.info("Identified worst %d assets by metric %s.", self.top_n, col)
         return {
             "by_condition": {
                 "data": worst.to_dict("records"),
@@ -247,7 +249,7 @@ class InsightsAnalyzer:
     def _analyze_correlations(self, df: pd.DataFrame) -> Dict[str, Any]:
         num_df = df.select_dtypes(include=[np.number])
         if VALUATION_K not in num_df:
-            logger.warning("Colonna VALUATION_K non trovata nei dati numerici per correlazione.")
+            logger.warning("VALUATION_K not found among numeric columns for correlation.")
             return {}
 
         pearson_corr = num_df.corr(method="pearson")[VALUATION_K].drop(labels=[VALUATION_K], errors="ignore")
@@ -273,7 +275,7 @@ class InsightsAnalyzer:
             }
         }
 
-# ------------------------------- Exporter -----------------------------------
+# -------------------------------- Exporter ----------------------------------
 
 @dataclass
 class ReportExporter:
@@ -308,16 +310,16 @@ class ReportExporter:
         base.update(self.meta or {})
         return base
 
-# ------------------------------ Runner --------------------------------------
+# --------------------------------- Runner -----------------------------------
 
 class EDAReportRunner:
     """
-    Orchestratore di EDA: chiama il core e usa ReportExporter per salvare artefatti.
+    EDA orchestrator: calls the core and uses ReportExporter to save artifacts.
     """
 
     def __init__(self, output_dir: str | Path = "outputs/analysis", meta: Optional[Dict[str, Any]] = None, dpi: int = 144) -> None:
         self.exporter = ReportExporter(Path(output_dir), meta or {}, dpi=dpi)
-        # Core analyzers (riusabili)
+        # Reusable core analyzers
         self.descr = DescriptiveAnalyzer()
         self.tester = StatisticalTester()
         self.outlier = OutlierDetector()
@@ -325,20 +327,20 @@ class EDAReportRunner:
         self.temp = TemporalAnalyzer()
         self.fimp = FeatureImportanceAnalyzer()
 
-    # ---------- Sezioni indipendenti (ognuna ritorna Artefatti + paths) -----
+    # ---------- Independent sections (each returns artifacts + paths) --------
 
     def export_descriptive(self, df: pd.DataFrame) -> Dict[str, Any]:
         artifacts: Dict[str, Any] = {}
 
-        # Plot principali
+        # Main plots
         fig_rel = self.descr.create_relationship_plots(df)
         artifacts["relationship_plots"] = self.exporter.export_fig("relationships", fig_rel)
         plt.close(fig_rel)
 
-        # Heatmap correlazioni su subset sensato
+        # Correlation heatmap on a sensible subset
         num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
         if VALUATION_K in num_cols:
-            cols = [c for c in num_cols if c != VALUATION_K][:10]  # evita heatmap enorme
+            cols = [c for c in num_cols if c != VALUATION_K][:10]  # avoid huge heatmaps
             if cols:
                 fig_corr = plot_correlation_heatmap(df, [VALUATION_K, *cols[:9]])
                 artifacts["correlation_heatmap"] = self.exporter.export_fig("correlation_heatmap", fig_corr)
@@ -347,7 +349,7 @@ class EDAReportRunner:
         return artifacts
 
     def export_outliers(self, df: pd.DataFrame, *, columns: Optional[List[str]] = None, method: str = "iqr") -> Dict[str, Any]:
-        # Configura metodo
+        # Configure method
         self.outlier.method = method.lower()
         summary = self.outlier.detect_outliers(df, columns=columns)
         combined = self.outlier.combine_outlier_results(df, summary)
@@ -372,7 +374,7 @@ class EDAReportRunner:
         for label, frame in frames.items():
             artifacts[f"anomalies_{label}"] = self.exporter.export_df(f"anomalies_{label}", frame)
 
-        # Figura opzionale
+        # Optional figure
         fig = self.anom.visualize_anomalies(df_enriched)
         if fig is not None:
             artifacts["anomalies_plot"] = self.exporter.export_fig("anomalies_plot", fig)
@@ -393,17 +395,17 @@ class EDAReportRunner:
         return artifacts
 
     def export_statistics(
-    self,
-    df: pd.DataFrame,
-    normality_features: Optional[List[str]] = None,
-    categorical_pairs: Optional[List[Tuple[str, str]]] = None,
+        self,
+        df: pd.DataFrame,
+        normality_features: Optional[List[str]] = None,
+        categorical_pairs: Optional[List[Tuple[str, str]]] = None,
     ) -> Dict[str, Any]:
         feats = None
         if normality_features:
             feats_present = [c for c in normality_features if c in df.columns]
             missing = sorted(set(normality_features) - set(feats_present))
             if missing:
-                logger.info("Normality: skip missing columns: %s", missing)
+                logger.info("Normality: skipping missing columns: %s", missing)
             feats = feats_present if feats_present else None
 
         results = self.tester.run_comprehensive_tests(
@@ -412,7 +414,6 @@ class EDAReportRunner:
             categorical_pairs=categorical_pairs,
         )
         return {"stats_suite": self.exporter.export_json("statistical_suite", results)}
-
 
     def export_feature_importance(
         self,
@@ -440,7 +441,7 @@ class EDAReportRunner:
             abl = self.fimp.perform_ablation_study(X, y, ablation_features, cv_folds=cv_folds)
             artifacts["ablation_results"] = self.exporter.export_df("ablation_study_results", abl)
 
-        # JSON con metadati delle features usate
+        # JSON with metadata of used features
         artifacts["feature_set"] = self.exporter.export_json("feature_set", {"features": feature_cols})
 
         return artifacts
@@ -450,7 +451,7 @@ class EDAReportRunner:
         insights = ins.generate_value_insights(df)
         return {"insights_json": self.exporter.export_json("insights", insights)}
 
-    # -------------------------- Orchestrazione full --------------------------
+    # --------------------------- Full Orchestration --------------------------
 
     def run_full_eda(
         self,
@@ -466,28 +467,28 @@ class EDAReportRunner:
         insights: bool = True,
     ) -> Dict[str, Any]:
         """
-        Esegue l'intero flusso EDA (sezioni selezionabili) e scrive un manifest con tutti i percorsi.
+        Run the full EDA flow (selectable sections) and write a manifest with all artifact paths.
         """
         sections = include_sections or []
         manifest: Dict[str, Any] = {}
 
-        # Descrittive + plots
+        # Descriptive + plots
         if not sections or "descriptive" in sections:
             manifest["descriptive"] = self.export_descriptive(df)
 
-        # Outlier
+        # Outliers
         if (not sections or "outliers" in sections) and outlier_detection:
             manifest["outliers"] = self.export_outliers(df)
 
-        # Anomalie
+        # Anomalies
         if (not sections or "anomalies" in sections) and anomaly_detection:
             manifest["anomalies"] = self.export_anomalies(df)
 
-        # Temporale
+        # Temporal
         if (not sections or "temporal" in sections) and temporal_analysis:
             manifest["temporal"] = self.export_temporal(df)
 
-        # Statistica
+        # Statistics
         if not sections or "statistics" in sections:
             manifest["statistics"] = self.export_statistics(df, normality_features, categorical_pairs)
 
@@ -495,16 +496,16 @@ class EDAReportRunner:
         if (not sections or "feature_importance" in sections) and feature_importance:
             manifest["feature_importance"] = self.export_feature_importance(df)
 
-        # Insights business-friendly
+        # Business-friendly insights
         if (not sections or "insights" in sections) and insights:
             manifest["insights"] = self.export_insights(df)
 
-        # Manifest finale
+        # Final manifest
         manifest_path = self.exporter.write_manifest(manifest)
 
-        # alias coerente con i notebook
+        # Aliases consistent with notebooks
         manifest["manifest_path"] = manifest_path
         manifest["_manifest_file"] = manifest_path  # back-compat
 
-        logger.info("EDA manifest scritto: %s", manifest_path)
+        logger.info("EDA manifest written: %s", manifest_path)
         return manifest

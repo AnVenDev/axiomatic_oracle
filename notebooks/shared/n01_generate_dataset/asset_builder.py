@@ -1,38 +1,72 @@
-# shared/asset_builder.py
 from __future__ import annotations
 
-from notebooks.shared.common.utils import get_utc_now
-
 """
-Asset builder per 'property' (sintetico) con logica hedonic.
-- Tipizzazione completa
-- Default robusti e input validation
-- Allineamento a constants/schema
-- Compatibile con pricing normalizzato (shared.common.pricing)
+Synthetic asset builder for 'property' with hedonic pricing.
+
+Design principles
+- Pure function (no I/O), deterministic when a seeded RNG is provided.
+- Strong typing and defensive defaults.
+- Aligned with constants/schema and pricing normalization.
+- Stable fallbacks for missing priors and city/zone base prices.
 """
 
 from typing import Any, Dict, Mapping, Optional, Sequence
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 import numpy as np  # type: ignore
 
+from notebooks.shared.common.utils import get_utc_now
 from notebooks.shared.common.constants import (
-    ASSET_ID, ASSET_TYPE, LOCATION, REGION, URBAN_TYPE, ZONE,
-    SIZE_M2, ROOMS, BATHROOMS, YEAR_BUILT, AGE_YEARS, FLOOR, BUILDING_FLOORS,
-    IS_TOP_FLOOR, IS_GROUND_FLOOR, HAS_ELEVATOR, HAS_GARDEN, HAS_BALCONY, GARAGE,
-    OWNER_OCCUPIED, PUBLIC_TRANSPORT_NEARBY, DISTANCE_TO_CENTER_KM,
-    ENERGY_CLASS, HUMIDITY_LEVEL, TEMPERATURE_AVG, NOISE_LEVEL, AIR_QUALITY_INDEX,
-    ORIENTATION, VIEW, CONDITION, HEATING, PARKING_SPOT, CELLAR, ATTIC, CONCIERGE,
-    VALUATION_K, PRICE_PER_SQM, LAST_VERIFIED_TS, LISTING_MONTH,
-    LUXURY_SCORE, ENV_SCORE, CONDITION_SCORE, RISK_SCORE,
+    ASSET_ID,
+    ASSET_TYPE,
+    LOCATION,
+    REGION,
+    URBAN_TYPE,
+    ZONE,
+    SIZE_M2,
+    ROOMS,
+    BATHROOMS,
+    YEAR_BUILT,
+    AGE_YEARS,
+    FLOOR,
+    BUILDING_FLOORS,
+    IS_TOP_FLOOR,
+    IS_GROUND_FLOOR,
+    HAS_ELEVATOR,
+    HAS_GARDEN,
+    HAS_BALCONY,
+    GARAGE,
+    OWNER_OCCUPIED,
+    PUBLIC_TRANSPORT_NEARBY,
+    DISTANCE_TO_CENTER_KM,
+    ENERGY_CLASS,
+    HUMIDITY_LEVEL,
+    TEMPERATURE_AVG,
+    NOISE_LEVEL,
+    AIR_QUALITY_INDEX,
+    ORIENTATION,
+    VIEW,
+    CONDITION,
+    HEATING,
+    PARKING_SPOT,
+    CELLAR,
+    ATTIC,
+    CONCIERGE,
+    VALUATION_K,
+    PRICE_PER_SQM,
+    LAST_VERIFIED_TS,
+    LISTING_MONTH,
+    LUXURY_SCORE,
+    ENV_SCORE,
+    CONDITION_SCORE,
+    RISK_SCORE,
     Cols,
 )
 
 from notebooks.shared.common.pricing import apply_hedonic_adjustments
 from notebooks.shared.common.generation import (
     assign_zone_from_distance,
-    random_recent_timestamp,
     simulate_condition_score,
 )
 
@@ -41,13 +75,17 @@ __all__ = ["generate_property"]
 logger = logging.getLogger(__name__)
 
 
+# ----------------------------------------------------------------------------- #
+# Internal helpers (pure, local scope)
+# ----------------------------------------------------------------------------- #
+
 def _choose_state(year_built: int, rng: np.random.Generator) -> str:
-    """Seleziona lo stato/condizione dell'immobile in base all'anno di costruzione."""
+    """Pick a property condition informed by build year."""
     if year_built > 2020:
         return "new"
     if year_built > 2010:
         return str(rng.choice(["new", "renovated"], p=[0.3, 0.7]))
-    return str(rng.choice(["needs_renovation", "good", "renovated"], p=[0.3, 0.5, 0.2]))
+    return str(rng.choice(["needs_renovation", "good", "renovated"], p=[0.30, 0.50, 0.20]))
 
 
 def _choose_orientation(rng: np.random.Generator) -> str:
@@ -72,6 +110,10 @@ def _choose_heating(rng: np.random.Generator) -> str:
     return str(rng.choice(["autonomous", "centralized", "heat pump", "none"], p=[0.60, 0.30, 0.08, 0.02]))
 
 
+# ----------------------------------------------------------------------------- #
+# Public API
+# ----------------------------------------------------------------------------- #
+
 def generate_property(
     *,
     index: int,
@@ -88,66 +130,83 @@ def generate_property(
     location: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Costruisce un asset 'property' sintetico usando priors (legacy o nuovi) e la logica hedonic.
+    Build a synthetic 'property' asset using hedonic priors and simple environment heuristics.
+
+    Args:
+        index: progressive index used to generate ASSET_ID.
+        config: general generation/pricing config (used for a few thresholds).
+        locations: list of eligible city names (canonical casing expected upstream).
+        urban_map: city -> urban type mapping.
+        region_map: city -> region mapping.
+        pricing_input/pricing: priors (legacy or normalized). `pricing_input` takes precedence.
+        seasonality: month -> seasonal multiplier.
+        city_base_prices: base €/m² per city/zone.
+        rng: optional np.random.Generator for determinism.
+        reference_time: optional reference time for AGE_YEARS; defaults to now UTC.
+        location: optional explicit city override; if None a random one is sampled.
+
+    Returns:
+        Dict[str, Any]: canonical asset record aligned with constants/schema.
     """
-    if rng is None:
-        rng = np.random.default_rng()
+    rng = rng or np.random.default_rng()
     seasonality = seasonality or {}
     city_base_prices = city_base_prices or {}
-
-    # Scegli config pricing effettiva
+    reference_time = reference_time or get_utc_now()
+    # Pricing config precedence: normalized input wins; fallback to legacy `pricing`
     effective_pricing: Mapping[str, Any] = pricing_input or pricing or {}
 
-    # --- Structural (dimensioni, piano, ecc.)
+    # ---------------------- Structural attributes ---------------------- #
+    # Keep size/rooms/baths consistent and realistic for European apartments
     size_m2 = int(rng.integers(40, 200))
-    rooms = int(rng.integers(2, 7))
-    bathrooms = int(rng.integers(1, 4))
+    rooms = int(np.clip(int(rng.normal(loc=max(2, size_m2 // 35), scale=1.0)), 2, 7))
+    bathrooms = int(np.clip(int(rng.choice([1, 2, 2, 3], p=[0.55, 0.35, 0.05, 0.05])), 1, 3))
+
     year_built = int(rng.integers(1950, 2024))
-    floor = int(rng.integers(0, 5))
-    building_floors = int(rng.integers(floor + 1, 10))
+    floor = int(rng.integers(0, 6))
+    # Ensure at least one floor above current when possible
+    building_floors = int(max(floor + 1, int(rng.integers(max(floor + 1, 3), 11))))
     is_top_floor = (floor == (building_floors - 1))
     is_ground_floor = (floor == 0)
     has_elevator = int(building_floors >= int(config.get("min_floors_for_elevator", 4)))
+
     has_garden = int(rng.random() < 0.30)
     has_balcony = int(rng.random() < 0.60)
     has_garage = int(rng.random() < 0.50)
     owner_occupied = int(rng.random() < 0.65)
     public_transport_nearby = int(rng.random() < 0.70)
 
-    # --- Environmental / quality
+    # ---------------------- Environmental / quality --------------------- #
     energy_class = str(rng.choice(["A", "B", "C", "D", "E", "F", "G"]))
     humidity = float(np.round(rng.uniform(30, 70), 1))
     temperature = float(np.round(rng.uniform(12, 25), 1))
     noise_level = int(rng.integers(20, 80))
     air_quality_index = int(rng.integers(30, 150))
 
-    # --- Italian-specific
+    # ---------------------- Italian specifics -------------------------- #
     orientation = _choose_orientation(rng)
     view = _choose_view(rng)
-
-    # --- Condition/state
     condition = _choose_state(year_built, rng)
     heating = _choose_heating(rng)
 
-    # --- Location & geography
+    # ---------------------- Location & geography ----------------------- #
     if location is None:
         if not locations:
-            raise ValueError("`locations` non può essere vuoto se non passi `location` esplicita.")
+            raise ValueError("`locations` must be non-empty when `location` is not provided.")
         location = str(rng.choice(list(locations)))
     urban_type = str(urban_map.get(location, "unknown"))
     region = str(region_map.get(location, "unknown"))
+
+    # Exponential distance gives a realistic right-tail towards periphery
     distance_to_center_km = float(np.round(rng.exponential(scale=3.5), 2))
     zone = assign_zone_from_distance(distance_to_center_km, config.get("zone_thresholds_km", {}))
 
-    # --- Timestamp / age
-    last_verified_ts = get_utc_now().replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    month = (
-        int(datetime.fromisoformat(last_verified_ts.replace("Z", "+00:00")).month)
-        if last_verified_ts else None
-    )
-    age_years = (reference_time.year - year_built) if reference_time else None
+    # ---------------------- Time & age --------------------------------- #
+    now_utc = reference_time.astimezone(timezone.utc)
+    last_verified_ts = now_utc.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    month = int(now_utc.month)
+    age_years = int(max(0, now_utc.year - year_built))
 
-    # --- Scores sintetici
+    # ---------------------- Synthetic scores --------------------------- #
     condition_score = simulate_condition_score(humidity, temperature, energy_class, rng=rng)
     risk_score = float(np.round(min(1.0, max(0.0, (1 - condition_score) + rng.normal(0, 0.02))), 3))
     luxury_score = float(np.round(
@@ -165,8 +224,8 @@ def generate_property(
         2,
     ))
 
-    # --- Interim per pricing (hedonic)
-    # Se lo 'state' non è contemplato nei modifiers, fallback a "good" per stabilità
+    # ---------------------- Hedonic pricing (interim row) -------------- #
+    # Fallback to "good" state if priors do not include the sampled `condition`.
     state_for_pricing = condition if condition in (effective_pricing.get("state_modifiers") or {}) else "good"
     interim = {
         LOCATION: location,
@@ -192,10 +251,10 @@ def generate_property(
         city_base_prices=city_base_prices,
         rng=rng,
     )
-    valuation_k_val = float(np.round((price_per_sqm_val * size_m2) / 1000, 2))
+    valuation_k_val = float(np.round((price_per_sqm_val * size_m2) / 1000.0, 2))
     price_per_sqm_val = float(np.round(price_per_sqm_val, 2))
 
-    # --- Build asset dict (chiavi canoniche)
+    # ---------------------- Canonical asset dict ------------------------ #
     asset: Dict[str, Any] = {
         ASSET_ID: f"asset_{index:06}",
         ASSET_TYPE: str(config.get(ASSET_TYPE, "property")),
@@ -210,14 +269,14 @@ def generate_property(
         AGE_YEARS: age_years,
         FLOOR: floor,
         BUILDING_FLOORS: building_floors,
-        IS_TOP_FLOOR: int(is_top_floor),
-        IS_GROUND_FLOOR: int(is_ground_floor),
-        HAS_ELEVATOR: has_elevator,
-        HAS_GARDEN: has_garden,
-        HAS_BALCONY: has_balcony,
-        GARAGE: has_garage,
-        OWNER_OCCUPIED: owner_occupied,
-        PUBLIC_TRANSPORT_NEARBY: public_transport_nearby,
+        IS_TOP_FLOOR: int(bool(is_top_floor)),
+        IS_GROUND_FLOOR: int(bool(is_ground_floor)),
+        HAS_ELEVATOR: int(bool(has_elevator)),
+        HAS_GARDEN: int(bool(has_garden)),
+        HAS_BALCONY: int(bool(has_balcony)),
+        GARAGE: int(bool(has_garage)),
+        OWNER_OCCUPIED: int(bool(owner_occupied)),
+        PUBLIC_TRANSPORT_NEARBY: int(bool(public_transport_nearby)),
         DISTANCE_TO_CENTER_KM: distance_to_center_km,
         ENERGY_CLASS: energy_class,
         PRICE_PER_SQM: price_per_sqm_val,
@@ -234,19 +293,13 @@ def generate_property(
         VIEW: view,
         CONDITION: condition,
         HEATING: heating,
-        PARKING_SPOT: int((has_garage == 0) and (rng.random() < 0.3)),
-        CELLAR: int(rng.random() < 0.4),
-        ATTIC: int((floor == building_floors - 1) and (rng.random() < 0.3)),
-        CONCIERGE: int((urban_type == "urban") and (size_m2 > 100) and (rng.random() < 0.3)),
+        PARKING_SPOT: int(bool((has_garage == 0) and (rng.random() < 0.30))),
+        CELLAR: int(bool(rng.random() < 0.40)),
+        ATTIC: int(bool((floor == building_floors - 1) and (rng.random() < 0.30))),
+        CONCIERGE: int(bool((urban_type == "urban") and (size_m2 > 100) and (rng.random() < 0.30))),
         LAST_VERIFIED_TS: last_verified_ts,
         LISTING_MONTH: month,
     }
-
-    # Normalizza tipi per coerenza (aiuta schema/serving)
-    for k in (HAS_ELEVATOR, HAS_GARDEN, HAS_BALCONY, GARAGE, OWNER_OCCUPIED,
-              PUBLIC_TRANSPORT_NEARBY, PARKING_SPOT, CELLAR, ATTIC, CONCIERGE,
-              IS_TOP_FLOOR, IS_GROUND_FLOOR):
-        asset[k] = int(bool(asset[k]))
 
     logger.debug(
         "Generated property #%d @%s/%s | sqm=%s rooms=%s price_sqm=%.2f val_k=%.2f",

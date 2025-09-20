@@ -1,20 +1,19 @@
 from __future__ import annotations
 
 """
-Preprocessing e feature preparation per il training.
-- Niente import "magici" (no common_imports)
-- FeatureEngineer: funzioni pure, no leakage per default
-- Categorical domains: enforced con categorie ordinate dove serve
+Preprocessing and feature preparation for training.
+- No "magic" imports (no common_imports)
+- FeatureEngineer: pure functions, no leakage by default
+- Categorical domains: enforced with ordered categories where appropriate
 """
 
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Iterable, Optional, Tuple, Dict, Any, Mapping
 
-import numpy as np      # type: ignore
-import pandas as pd     # type: ignore
+import numpy as np  # type: ignore
+import pandas as pd  # type: ignore
 import logging
-
 
 from notebooks.shared.common.constants import (
     LEAKY_FEATURES,
@@ -28,6 +27,7 @@ from notebooks.shared.common.constants import (
 from notebooks.shared.common.schema import get_all_fields
 from notebooks.shared.common.utils import get_utc_now
 
+# Additional leaky features that must never be used for model training
 ML_LEAKY_FEATURES: set[str] = {
     PRICE_PER_SQM,
     PRICE_PER_SQM_VS_REGION_AVG,
@@ -42,6 +42,10 @@ ML_LEAKY_FEATURES: set[str] = {
 }
 
 def drop_leaky_and_target(df: pd.DataFrame, target: str, extra_leaky: Iterable[str] | None = None) -> pd.DataFrame:
+    """
+    Return a copy of `df` keeping only columns that are neither the target
+    nor in the leaky-feature lists.
+    """
     deny = set(LEAKY_FEATURES) | {target}
     if extra_leaky:
         deny |= set(extra_leaky)
@@ -58,9 +62,9 @@ class FeatureEngineerConfig:
 
 class FeatureEngineer:
     """
-    Genera feature derivate e diagnostica pre-training.
-    - Non introduce leakage (per default).
-    - Calcoli numerici robusti (gestione NA/divisioni).
+    Generates derived features and pre-training diagnostics.
+    - Does not introduce leakage (by default).
+    - Robust numeric calculations (handles NA/divisions).
     """
 
     def __init__(
@@ -73,11 +77,11 @@ class FeatureEngineer:
 
     def prepare_for_training(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, Any]]:
         """
-        Esegue:
-          1) Basic features temporali/strutturali
-          2) (Opzionale) semantic scores (luxury/env/risk)
-          3) Diagnostica finale (completeness)
-        Ritorna: (df_enriched, report)
+        Pipeline:
+          1) Basic temporal/structural features
+          2) (Optional) semantic scores (luxury/env/risk)
+          3) Final diagnostics (completeness)
+        Returns: (df_enriched, report)
         """
         out = df.copy()
         report: Dict[str, Any] = {"features_created": [], "statistics": {}, "diagnostics": {}}
@@ -89,6 +93,7 @@ class FeatureEngineer:
 
         report["diagnostics"] = self._diagnose_features(out)
 
+        # Keep original behavior: cast float columns on the original df (no-op for `out`)
         for col in df.select_dtypes(include="float").columns:
             df[col] = df[col].astype("float32")
         
@@ -100,11 +105,11 @@ class FeatureEngineer:
         df[Cols.LISTING_MONTH] = ts.dt.month.fillna(0).astype("Int16")
         df[Cols.MISSING_TIMESTAMP] = ts.isna().astype("Int8")
 
-        # Opzionale: segnali stagionali
+        # Optional: seasonal signals
         if self.config.add_month_sin_cos:
             # 1..12 → [0, 2π)
             month = df[Cols.LISTING_MONTH].fillna(0).astype("float32")
-            # evita 0→calcola sin/cos su (m-1)
+            # avoid 0 → compute sin/cos on (m-1)
             ang = (month - 1.0) * (2.0 * np.pi / 12.0)
             df[Cols.LISTING_MONTH_SIN] = np.sin(ang).astype("float32")
             df[Cols.LISTING_MONTH_COS] = np.cos(ang).astype("float32")
@@ -112,7 +117,7 @@ class FeatureEngineer:
 
         # Building age
         if Cols.YEAR_BUILT in df.columns:
-            # Nota: YEAR_BUILT potrebbe essere float o contenere NA
+            # Note: YEAR_BUILT may be float or contain NA
             year = pd.to_numeric(df[Cols.YEAR_BUILT], errors="coerce")
             df[Cols.BUILDING_AGE_YEARS] = (self.reference_time.year - year).astype("Int32")
         else:
@@ -123,7 +128,7 @@ class FeatureEngineer:
         rooms = pd.to_numeric(df.get(Cols.ROOMS, np.nan), errors="coerce")
         df[Cols.ROOMS_PER_SQM] = (rooms / size).astype("float32").fillna(0.0)
 
-        # Amenity count (binari)
+        # Amenity count (binary)
         for col in (HAS_GARDEN, HAS_BALCONY, GARAGE, Cols.HAS_ELEVATOR):
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype("Int8")
@@ -134,7 +139,7 @@ class FeatureEngineer:
         )
         report["features_created"] += [Cols.ROOMS_PER_SQM, Cols.BASIC_AMENITY_COUNT]
 
-        # Price per sqm (solo se esplicitamente permesso: potenziale leakage)
+        # Price per sqm (only if explicitly allowed → potential leakage)
         if PRICE_PER_SQM not in df.columns and self.config.allow_target_derived:
             if VALUATION_K in df.columns and SIZE_M2 in df.columns:
                 v = pd.to_numeric(df[VALUATION_K], errors="coerce") * 1000.0
@@ -146,26 +151,27 @@ class FeatureEngineer:
                     "std": float(np.nanstd(df[PRICE_PER_SQM].to_numpy())),
                 }
 
+        # Cast floats to float32
         for col in df.select_dtypes(include="float").columns:
             df[col] = df[col].astype("float32")
 
         return df
 
     def _add_semantic_scores(self, df: pd.DataFrame, report: Dict[str, Any]) -> pd.DataFrame:
-        # Luxury score: scaled count (0..1)
+        # Luxury score: scaled amenity count (0..1)
         amen_max = max(int(df[Cols.BASIC_AMENITY_COUNT].max(skipna=True) or 0), 1)
         df[Cols.LUXURY_SCORE] = (df[Cols.BASIC_AMENITY_COUNT] / amen_max).astype("float32")
 
-        # Environmental score: usa rank EnergyClass normalizzato 0..1
+        # Environmental score: rank of EnergyClass normalized to 0..1
         if ENERGY_CLASS in df.columns:
             rank_map = Mappings.ENERGY_CLASS_RANK  # A=7 .. G=1
             ranks = df[ENERGY_CLASS].map(rank_map).astype("float32")
-            # normalizza su [0,1] (G→0, A→1)
+            # normalize to [0,1] (G→0, A→1)
             df[Cols.ENV_SCORE] = ((ranks - 1.0) / (7.0 - 1.0)).fillna(0.5).astype("float32")
         else:
             df[Cols.ENV_SCORE] = pd.Series(0.5, index=df.index, dtype="float32")
 
-        # Risk score: età edificio normalizzata 0..1 (NA→0.0)
+        # Risk score: building age normalized to 0..1 (NA→0.0)
         age = pd.to_numeric(df.get(Cols.BUILDING_AGE_YEARS, np.nan), errors="coerce")
         max_age = float(np.nanmax(age.to_numpy())) if age.notna().any() else 0.0
         if max_age <= 0:
@@ -175,15 +181,18 @@ class FeatureEngineer:
 
         report["features_created"] += [Cols.LUXURY_SCORE, Cols.ENV_SCORE, Cols.RISK_SCORE]
 
+        # Cast floats to float32
         for col in df.select_dtypes(include="float").columns:
             df[col] = df[col].astype("float32")
 
         return df
 
     def _diagnose_features(self, df: pd.DataFrame) -> Dict[str, Any]:
-        required = set(get_all_fields("property"))  # property oggi, multi-asset domani
+        # Today we target "property"; multi-asset support could be added later
+        required = set(get_all_fields("property"))
         present = set(df.columns)
 
+        # Cast floats to float32 (preserve original behavior)
         for col in df.select_dtypes(include="float").columns:
             df[col] = df[col].astype("float32")
 
@@ -198,12 +207,12 @@ def enforce_categorical_domains(
     location_weights: Mapping[str, float],
 ) -> pd.DataFrame:
     """
-    Applica domini categoriali coerenti:
-    - Location: categorie da config (ordine non rilevante)
-    - EnergyClass: A..G con ordine decrescente di efficienza
-    - Zone: ordine center > semi_center > periphery
-    - Altre colonne semantiche → category generica
-    Non "taglia" i valori: imposta il dtype a Categorical per evitare esplosione di categorie.
+    Enforce consistent categorical domains:
+    - Location: categories from config (order not relevant)
+    - EnergyClass: A..G with descending efficiency order
+    - Zone: ordered center > semi_center > periphery
+    - Other semantic columns → generic 'category'
+    Does not clamp values—only sets dtype to Categorical to avoid category explosion.
     """
     out = df.copy()
 
@@ -212,20 +221,21 @@ def enforce_categorical_domains(
         locs = list(location_weights.keys())
         out[Cols.LOCATION] = pd.Categorical(out[Cols.LOCATION], categories=locs, ordered=False)
 
-    # energy class (ordinata per rank)
+    # energy class (ordered by rank)
     if ENERGY_CLASS in out.columns:
         energy_order = [e.value for e in EnergyClass]  # ["A","B","C","D","E","F","G"]
         out[ENERGY_CLASS] = pd.Categorical(out[ENERGY_CLASS], categories=energy_order, ordered=True)
 
-    # zone (ordinata center > semi_center > periphery)
+    # zone (ordered center > semi_center > periphery)
     if ZONE in out.columns:
         zone_order = [Zone.CENTER.value, Zone.SEMI_CENTER.value, Zone.PERIPHERY.value]
         out[ZONE] = pd.Categorical(out[ZONE], categories=zone_order, ordered=True)
     
+    # Preserve original behavior: cast on the original df (no-op for `out`)
     for col in df.select_dtypes(include="float").columns:
-            df[col] = df[col].astype("float32")
+        df[col] = df[col].astype("float32")
 
-    # altre semantiche
+    # other semantic categoricals
     for col in (URBAN_TYPE, REGION, ORIENTATION, VIEW, CONDITION, HEATING):
         if col in out.columns:
             out[col] = out[col].astype("category")

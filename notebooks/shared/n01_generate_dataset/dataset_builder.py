@@ -1,12 +1,13 @@
+# notebooks/shared/n01_generate_dataset/dataset_builder.py
 from __future__ import annotations
 
 """
 Dataset builder:
-- Generazione batched e deterministica (rng iniettato)
-- Normalizzazione robusta dei pesi location
-- Error budget configurabile sui record falliti
-- Progress bar opzionale (tqdm se disponibile)
-- Drift & quality report invariati (compute_location_drift, enrich_quality_report)
+- Batched, deterministic generation (rng injected)
+- Robust normalization of location weights
+- Configurable error budget on failed records
+- Optional progress bar (tqdm if available)
+- Stable drift & quality reporting (compute_location_drift, enrich_quality_report)
 """
 
 import logging
@@ -24,36 +25,48 @@ from notebooks.shared.n03_train_model.metrics import compute_location_drift
 
 logger = logging.getLogger(__name__)
 
-__all__ = [
-    "generate_dataset_df",
-]
+__all__ = ["generate_dataset_df"]
+
+
+# --------------------------------------------------------------------------- #
+# Helpers
+# --------------------------------------------------------------------------- #
 
 def _normalize_weights(raw_weights: Mapping[str, float], locations: List[str]) -> Dict[str, float]:
-    """Normalizza pesi per location; fallback uniforme se somma non positiva o lista vuota."""
+    """Normalize per-location weights; falls back to uniform if invalid or empty."""
     if not isinstance(raw_weights, Mapping) or not locations:
         return {loc: 1.0 / max(len(locations), 1) for loc in locations}
 
+    # Build weight vector in location order; coerce to float
     probs = np.array([float(raw_weights.get(loc, 0.0)) for loc in locations], dtype=float)
     s = probs.sum()
+
+    # Handle degenerate cases
     if s <= 0.0 or not np.isfinite(s):
         return {loc: 1.0 / len(locations) for loc in locations}
 
     probs = probs / s
     return {loc: float(p) for loc, p in zip(locations, probs)}
 
+
 def _maybe_tqdm(total: int, enabled: bool):
-    """Ritorna un contesto progress (no-op se tqdm non disponibile o disabled)."""
+    """Return a progress context; a no-op context when tqdm is unavailable/disabled."""
     if not enabled:
-        class Dummy:
+        class _Dummy:
             def __enter__(self): return self
             def __exit__(self, *a): return False
             def update(self, *a, **k): pass
-        return Dummy()
+        return _Dummy()
     try:
         from tqdm import tqdm  # type: ignore
     except Exception:
         return _maybe_tqdm(total, enabled=False)
     return tqdm(total=total)
+
+
+# --------------------------------------------------------------------------- #
+# Public API
+# --------------------------------------------------------------------------- #
 
 def generate_dataset_df(
     config: Mapping[str, Any],
@@ -71,18 +84,18 @@ def generate_dataset_df(
     error_budget_pct: float = 0.01,
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     """
-    Genera un dataset di asset sintetici in batch.
+    Generate a synthetic dataset in batches.
 
     Args:
-        config: configurazione end-to-end (contiene location_weights, expected_profile, ecc.)
-        locations: lista di location valide
-        urban_map, region_map, seasonality, city_base_prices: mapping di supporto
-        rng: numpy.random.Generator (determinismo)
-        reference_time: timestamp di riferimento per le feature temporali
-        batch_size: numero di record per batch
-        show_progress: se True, usa tqdm se disponibile
-        validate_each: se True, valida ogni asset (via factory)
-        error_budget_pct: frazione massima di record falliti ammessa prima del fail
+        config: end-to-end configuration (location_weights, expected_profile, etc.)
+        locations: list of valid locations (non-empty)
+        urban_map, region_map, seasonality, city_base_prices: support mappings
+        rng: numpy.random.Generator for determinism
+        reference_time: reference timestamp for temporal features
+        batch_size: rows per batch
+        show_progress: if True, use tqdm when available
+        validate_each: if True, validate each asset via factory
+        error_budget_pct: max tolerated fraction of failed records
 
     Returns:
         (DataFrame, quality_report_dict)
@@ -92,15 +105,18 @@ def generate_dataset_df(
     n_rows = int(config.get("n_rows", 0))
     if n_rows <= 0:
         raise ValueError("n_rows must be > 0")
+    if not locations:
+        raise ValueError("locations must be a non-empty list")
 
     logger.info("[DATASET] Generating %d assets of type '%s'", n_rows, asset_type)
 
-    # Normalizza location_weights e prepara array per sampling
+    # Normalize location_weights and prepare sampling probabilities
     raw_location_weights = config.get("location_weights", {}) or {}
     normalized_location_weights = _normalize_weights(raw_location_weights, locations)
     weight_array = np.array([normalized_location_weights.get(loc, 0.0) for loc in locations], dtype=float)
-    if weight_array.sum() > 0:
-        weight_array = weight_array / weight_array.sum()
+    weight_sum = weight_array.sum()
+    if weight_sum > 0:
+        weight_array = weight_array / weight_sum
     else:
         weight_array = np.ones(len(locations), dtype=float) / max(len(locations), 1)
 
@@ -108,18 +124,18 @@ def generate_dataset_df(
     sampling_cfg = config.get("sampling", {}) or {}
     allow_replacement = bool(sampling_cfg.get("allow_replacement", True))
 
-    # Costruzione sequenza location
+    # Construct the location sequence for all rows
     if len(locations) >= n_rows:
-        # Permutazione senza replacement per i primi n_rows
+        # Permute without replacement, then take first n_rows
         permuted = rng.permutation(locations)
         location_sequence = list(permuted[:n_rows])
     else:
         if not allow_replacement:
             raise ValueError(
-                "La sequenza delle location è più corta di n_rows e 'allow_replacement' è disabilitato."
+                "locations has fewer items than n_rows and 'allow_replacement' is disabled."
             )
         logger.info(
-            "Numero di location (%d) < n_rows (%d): campiono con replacement secondo i pesi.",
+            "locations (%d) < n_rows (%d): sampling with replacement using normalized weights.",
             len(locations), n_rows,
         )
         location_sequence = list(rng.choice(locations, size=n_rows, replace=True, p=weight_array))
@@ -156,8 +172,7 @@ def generate_dataset_df(
                     failures.append(i)
                     logger.exception("[ERROR] Asset %d generation/validation failed: %s", i, e)
                 finally:
-                    if pbar:
-                        pbar.update(1)
+                    pbar.update(1)
 
             if batch_rows:
                 dfs.append(pd.DataFrame(batch_rows))
@@ -166,12 +181,20 @@ def generate_dataset_df(
         raise RuntimeError("No assets generated.")
 
     df = pd.concat(dfs, ignore_index=True)
-    for col in ("location", "zone", "region", "urban_type", "energy_class",
-            "orientation", "view", "condition", "heating"):
-        if col in df.columns:
-            df[col] = df[col].astype("category")
 
-    # Budget error: fail se superiamo la soglia
+    # Cast common categoricals (best-effort)
+    categorical_cols = (
+        "location", "zone", "region", "urban_type", "energy_class",
+        "orientation", "view", "condition", "heating"
+    )
+    for col in categorical_cols:
+        if col in df.columns:
+            try:
+                df[col] = df[col].astype("category")
+            except Exception:
+                pass
+
+    # Error budget: fail if we exceed the threshold
     fail_rate = len(failures) / float(n_rows)
     if fail_rate > error_budget_pct:
         raise RuntimeError(
@@ -180,18 +203,21 @@ def generate_dataset_df(
     if failures:
         logger.warning("[DATASET] %d/%d records failed (%.2f%%).", len(failures), n_rows, 100.0 * fail_rate)
 
-    # Location drift calculation (usa i pesi normalizzati)
-    drift_info = compute_location_drift(
-        df,
-        target_weights=normalized_location_weights,
-        tolerance=float(config.get("expected_profile", {}).get("location_distribution_tolerance", 0.05)),
-    )
-    df.attrs["location_drift_report"] = drift_info
-    drifted = [loc for loc, info in drift_info.items() if info.get("drifted")]
-    if drifted:
-        logger.warning("[DRIFT] Locations drifted: %s", drifted)
-    else:
-        logger.info("[DRIFT] Location distribution within tolerance.")
+    # Location drift calculation (uses normalized weights)
+    try:
+        drift_info = compute_location_drift(
+            df,
+            target_weights=normalized_location_weights,
+            tolerance=float(config.get("expected_profile", {}).get("location_distribution_tolerance", 0.05)),
+        )
+        df.attrs["location_drift_report"] = drift_info
+        drifted = [loc for loc, info in drift_info.items() if info.get("drifted")]
+        if drifted:
+            logger.warning("[DRIFT] Locations drifted: %s", drifted)
+        else:
+            logger.info("[DRIFT] Location distribution within tolerance.")
+    except Exception as e:
+        logger.warning("[DRIFT] compute_location_drift failed: %s", e)
 
     # Quality report (base + enriched)
     try:
@@ -201,30 +227,26 @@ def generate_dataset_df(
         logger.warning("Quality/Drift enrichment skipped: %s", e)
         full_report = {"status": "degraded", "error": str(e)}
 
-    full_report.setdefault("generation", {})
-
-    # 2) prendi il seed preferendo quello passato via config (se presente)
+    # Telemetry
+    gen_meta = full_report.setdefault("generation", {})
+    # Prefer a config-provided seed if present and coercible
     seed_val = None
     try:
         if isinstance(config, dict) and "seed" in config:
             seed_val = int(config["seed"])
     except Exception:
         seed_val = None
-    
-    full_report["generation"]["seed"] = seed_val
-    
-    # (opzionale ma utile per telemetria)
+    gen_meta["seed"] = seed_val
+
     if reference_time is not None:
         try:
             rt_iso = reference_time.replace(microsecond=0).isoformat().replace("+00:00", "Z")
-            full_report["generation"]["reference_time"] = rt_iso
+            gen_meta["reference_time"] = rt_iso
         except Exception:
             pass
 
-    # Telemetria nel report
     elapsed = time.time() - t0
-    full_report.setdefault("generation", {})
-    full_report["generation"].update({
+    gen_meta.update({
         "asset_type": asset_type,
         "n_rows_requested": n_rows,
         "n_rows_generated": int(len(df)),
