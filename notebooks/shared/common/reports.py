@@ -1,15 +1,17 @@
-# shared/reports.py
 from __future__ import annotations
 """
-Report toolkit (unificato):
-- ReportManager: load/merge/save JSON (con NumpyJSONEncoder)
-- DistributionAnalyzer: analisi distribuzioni categoriche + benchmark
-- run_sanity_checks: orchestrazione benchmark, drift, incoerenze, outliers, caps, decomposition
-- build_basic_stats: re-export della versione in shared.quality
+Unified Report toolkit.
 
-Dipendenze esterne:
-- Evita cicli: importa funzioni di quality senza ridefinirle
-- Usa paths aggiornati (shared.common.* / shared.n03_train_model.*)
+Capabilities
+- ReportManager: load/merge/save JSON (numpy-safe, canonical JSON when possible)
+- DistributionAnalyzer: categorical distribution analysis + optional benchmarks
+- run_sanity_checks: orchestration for benchmarks, drift, incoherence, outliers, caps, decomposition
+- build_basic_stats: re-export of shared.quality implementation
+
+Design principles
+- Zero I/O in analytics helpers (return dicts/DFs; persistence lives in ReportManager).
+- Stable, JSON-serializable outputs for downstream services.
+- Soft dependencies: lazy/optional imports where appropriate to avoid tight coupling.
 """
 
 import json
@@ -17,8 +19,8 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import numpy as np      # type: ignore
-import pandas as pd     # type: ignore
+import numpy as np  # type: ignore
+import pandas as pd  # type: ignore
 
 from notebooks.shared.common.constants import (
     LOCATION, REGION, URBAN_TYPE, ZONE,
@@ -27,7 +29,7 @@ from notebooks.shared.common.constants import (
     ORIENTATION, VIEW, HEATING,
     PRICE_PER_SQM, VALUATION_K,
 )
-from notebooks.shared.common.utils import NumpyJSONEncoder
+from notebooks.shared.common.utils import NumpyJSONEncoder, canonical_json_dumps
 
 from notebooks.shared.common.quality import (
     build_basic_stats as _build_basic_stats,
@@ -40,19 +42,18 @@ from notebooks.shared.common.quality import (
     get_top_outliers,
 )
 
+# Hard dependencies for benchmarks/drift (these are Notebook-side modules)
 from notebooks.shared.n03_train_model.metrics import location_benchmark, compute_location_drift
 from notebooks.shared.common.sanity_checks import price_benchmark, critical_city_order_check
 
-from notebooks.shared.common.utils import canonical_json_dumps
-
+# Optional: domain enforcement / pricing normalization
 try:
-    from notebooks.shared.n03_train_model.preprocessing import enforce_categorical_domains    # type: ignore
-except Exception:   # pragma: no cover
+    from notebooks.shared.n03_train_model.preprocessing import enforce_categorical_domains  # type: ignore
+except Exception:  # pragma: no cover
     enforce_categorical_domains = None  # type: ignore
 
-# --- asset/pricing normalization --------------------------------------------
 try:
-    from notebooks.shared.n01_generate_dataset.asset_factory import normalize_pricing_input
+    from notebooks.shared.n01_generate_dataset.asset_factory import normalize_pricing_input  # type: ignore
 except Exception:  # pragma: no cover
     normalize_pricing_input = None  # type: ignore
 
@@ -66,11 +67,13 @@ __all__ = [
     "run_sanity_checks",
 ]
 
-# ============================================================================
-# ReportManager: load / merge / save JSON
-# ============================================================================
 
+# =============================================================================
+# ReportManager: load / merge / save JSON
+# =============================================================================
 class ReportManager:
+    """Minimal persistence manager for JSON reports (atomic enough for notebook workflows)."""
+
     def __init__(self, log_dir: Union[str, Path] = "../logs") -> None:
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(parents=True, exist_ok=True)
@@ -78,57 +81,89 @@ class ReportManager:
     def load(self, filename: str = "quality_report.json") -> Dict[str, Any]:
         path = self.log_dir / filename
         if not path.exists():
-            logger.warning("[REPORT] Report non trovato", extra={"path": str(path)})
+            logger.warning("[REPORT] Report not found", extra={"path": str(path)})
             return {}
         try:
             with path.open("r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception as e:
-            logger.error("[REPORT] Errore caricamento", extra={"path": str(path), "error": str(e)})
+            logger.error("[REPORT] Load error", extra={"path": str(path), "error": str(e)})
             return {}
 
     def merge(self, base: Dict[str, Any], new_data: Dict[str, Any], prefix: Optional[str] = None) -> Dict[str, Any]:
+        """Shallow merge with optional namespacing."""
         if prefix:
             base.setdefault(prefix, {}).update(new_data)
         else:
             base.update(new_data)
         return base
 
-    def save(self, report: Dict[str, Any], filename: str, use_numpy_encoder: bool = True) -> bool:
+    def save(
+        self,
+        report: Dict[str, Any],
+        filename: str,
+        use_numpy_encoder: bool = True,
+        canonical: bool = True,
+    ) -> bool:
+        """
+        Persist a report to JSON.
+
+        Args:
+            report: JSON-serializable dict (numpy types allowed if use_numpy_encoder=True).
+            filename: destination filename under log_dir.
+            use_numpy_encoder: if True, use NumpyJSONEncoder when not using canonical dumps.
+            canonical: if True, write canonical JSON (sorted keys, minimal separators, UTF-8).
+        """
         path = self.log_dir / filename
         try:
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(canonical_json_dumps(obj))
-            logger.info("[REPORT] Salvato report", extra={"path": str(path)})
+            text: str
+            if canonical:
+                # Canonical dump (handles numpy types by converting to base Python internally)
+                text = canonical_json_dumps(report)
+            else:
+                text = json.dumps(
+                    report,
+                    ensure_ascii=False,
+                    indent=2,
+                    cls=NumpyJSONEncoder if use_numpy_encoder else None,  # type: ignore[arg-type]
+                )
+            with path.open("w", encoding="utf-8") as f:
+                f.write(text)
+            logger.info("[REPORT] Report saved", extra={"path": str(path)})
             return True
         except Exception as e:
-            logger.error("[REPORT] Errore salvataggio", extra={"path": str(path), "error": str(e)})
+            logger.error("[REPORT] Save error", extra={"path": str(path), "error": str(e)})
             return False
 
-# ============================================================================
-# DistributionAnalyzer: analisi distribuzioni categoriche + benchmark
-# ============================================================================
 
+# =============================================================================
+# DistributionAnalyzer: categorical distributions + optional benchmarks
+# =============================================================================
 class DistributionAnalyzer:
+    """Lightweight analyzer for categorical distributions on a DataFrame snapshot."""
+
     def __init__(self, df: pd.DataFrame) -> None:
         self.df = df
 
     def analyze_location(
         self,
         target_weights: Optional[Dict[str, float]] = None,
-        tolerance: float = 0.05
+        tolerance: float = 0.05,
     ) -> Dict[str, Any]:
         if LOCATION not in self.df:
-            logger.warning("[DIST] Colonna mancante", extra={"column": LOCATION})
+            logger.warning("[DIST] Missing column", extra={"column": LOCATION})
             return {}
 
-        counts = self.df[LOCATION].value_counts()
+        counts = self.df[LOCATION].value_counts(dropna=True)
+        if counts.empty:
+            return {"counts": {}, "percentages": {}, "total": int(len(self.df)), "summary": {"n_unique": 0}}
+
         pct = (counts / len(self.df) * 100).round(1)
 
         result: Dict[str, Any] = {
             "counts": counts.to_dict(),
             "percentages": pct.to_dict(),
-            "total": len(self.df),
+            "total": int(len(self.df)),
             "summary": {
                 "n_unique": int(counts.size),
                 "top_location": counts.idxmax(),
@@ -145,17 +180,17 @@ class DistributionAnalyzer:
                 "drifted": bench_df.index[bench_df["drifted"]].tolist(),
             }
 
-        logger.info("[DIST] Distribuzione location", extra={"counts": counts.to_dict()})
+        logger.info("[DIST] Location distribution", extra={"counts": counts.to_dict()})
         return result
 
     def analyze_categorical(
         self,
         column: str,
         expected: Optional[List[str]] = None,
-        order: Optional[List[str]] = None
+        order: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         if column not in self.df:
-            logger.warning("[DIST] Colonna mancante", extra={"column": column})
+            logger.warning("[DIST] Missing column", extra={"column": column})
             return {}
 
         vc = self.df[column].value_counts(dropna=False)
@@ -166,7 +201,7 @@ class DistributionAnalyzer:
         invalid: List[str] = []
         if expected:
             mask = self.df[column].notna() & ~self.df[column].isin(expected)
-            invalid = list(self.df.loc[mask, column].unique())
+            invalid = list(pd.Series(self.df.loc[mask, column]).drop_duplicates())
 
         return {
             "counts": vc.to_dict(),
@@ -175,7 +210,7 @@ class DistributionAnalyzer:
             "invalid": invalid,
             "summary": {
                 "n_unique": int(vc.size),
-                "mode": self.df[column].mode().iloc[0] if not vc.empty else None,
+                "mode": (self.df[column].mode().iloc[0] if not vc.empty else None),
             },
         }
 
@@ -190,7 +225,7 @@ class DistributionAnalyzer:
         self,
         columns: Optional[List[str]] = None,
         target_weights: Optional[Dict[str, float]] = None,
-        tolerance: float = 0.05
+        tolerance: float = 0.05,
     ) -> Dict[str, Any]:
         if columns is None:
             columns = [LOCATION, ENERGY_CLASS, ZONE, URBAN_TYPE, REGION]
@@ -205,24 +240,26 @@ class DistributionAnalyzer:
                 out[col] = self.analyze_categorical(col)
         return out
 
-# ============================================================================
-# Orchestrazione sanity/quality (usa API da shared.quality)
-# ============================================================================
 
+# =============================================================================
+# Orchestration: sanity/quality (re-uses shared.quality APIs)
+# =============================================================================
 def build_basic_stats(df: pd.DataFrame) -> Dict[str, Any]:
-    """Re-export della funzione di quality (per retrocompatibilità chiamanti)."""
+    """Re-export for backward compatibility."""
     return _build_basic_stats(df)
 
+
 def _normalize_weights(raw: Dict[str, float] | Any, locations: List[str]) -> Dict[str, float]:
+    """Normalize weights over present locations; fall back to uniform."""
     if not locations:
         return {}
     if not isinstance(raw, dict):
-        logger.warning("location_weights non è un dict; uso pesi uniformi.")
+        logger.warning("location_weights is not a dict; using uniform weights.")
         return {loc: 1.0 / len(locations) for loc in locations}
 
     total = float(sum(float(raw.get(loc, 0.0)) for loc in locations))
     if total <= 0.0 or not np.isfinite(total):
-        logger.warning("location_weights <= 0 o non finiti; uso pesi uniformi.")
+        logger.warning("location_weights sum ≤ 0 or non-finite; using uniform weights.")
         return {loc: 1.0 / len(locations) for loc in locations}
 
     normalized = {loc: float(raw.get(loc, 0.0)) / total for loc in locations}
@@ -231,10 +268,11 @@ def _normalize_weights(raw: Dict[str, float] | Any, locations: List[str]) -> Dic
         normalized = {k: v / s for k, v in normalized.items()}
     return normalized
 
+
 def run_sanity_checks(df: pd.DataFrame, config: Dict[str, Any]) -> Tuple[Dict[str, Any], pd.DataFrame]:
     """
-    Esegue benchmark, drift, incoerenze, outliers, price caps e una decomposizione di esempio.
-    Ritorna (report_dict, df_enriched).
+    Execute benchmarks, drift checks, incoherence flags, outliers, price caps, and a sample decomposition.
+    Returns: (report_dict, df_enriched)
     """
     df = df.copy()
 
@@ -246,11 +284,11 @@ def run_sanity_checks(df: pd.DataFrame, config: Dict[str, Any]) -> Tuple[Dict[st
     if enforce_categorical_domains:
         try:
             try:
-                df = enforce_categorical_domains(df, normalized_location_weights)  # nuova API
+                df = enforce_categorical_domains(df, normalized_location_weights)  # new API
             except TypeError:
-                df = enforce_categorical_domains(df)  # retrocompat
+                df = enforce_categorical_domains(df)  # backward-compat
         except Exception as e:
-            logger.warning("Fallito enforce_categorical_domains: %s", e)
+            logger.warning("enforce_categorical_domains failed: %s", e)
 
     # --- sanity benchmarks: location distribution & price medians -----------
     sb: Dict[str, Any] = {}
@@ -259,9 +297,9 @@ def run_sanity_checks(df: pd.DataFrame, config: Dict[str, Any]) -> Tuple[Dict[st
     try:
         bench_df = location_benchmark(df, target_weights=normalized_location_weights, tolerance=location_tol)
         sb["location_distribution"] = bench_df.reset_index().to_dict(orient="records")
-        logger.info("[BENCH] Location benchmark calcolato.")
+        logger.info("[BENCH] Location benchmark computed.")
     except Exception as e:
-        logger.error("Fallito location_benchmark: %s", e)
+        logger.error("location_benchmark failed: %s", e)
         sb["location_distribution"] = []
 
     city_med = None
@@ -270,11 +308,11 @@ def run_sanity_checks(df: pd.DataFrame, config: Dict[str, Any]) -> Tuple[Dict[st
         sb["city_price_medians"] = city_med.to_dict()
         if zone_med is not None:
             sb["zone_price_medians"] = pd.DataFrame(zone_med).fillna(0).to_dict()
-        logger.info("[BENCH] Price benchmark calcolato.")
+        logger.info("[BENCH] Price benchmark computed.")
     except Exception as e:
-        logger.error("Fallita price_benchmark: %s", e)
+        logger.error("price_benchmark failed: %s", e)
 
-    # alert ordinamento città
+    # Ordering alerts (optional)
     try:
         if city_med is not None:
             city_order_cfg = config.get("city_ordering", {}) or {}
@@ -292,17 +330,17 @@ def run_sanity_checks(df: pd.DataFrame, config: Dict[str, Any]) -> Tuple[Dict[st
             sb["top_city_alerts"] = []
             sb["failed_city_ordering"] = []
     except Exception as e:
-        logger.error("Fallito critical_city_order_check: %s", e)
+        logger.error("critical_city_order_check failed: %s", e)
         sb["top_city_alerts"] = []
         sb["failed_city_ordering"] = []
 
-    # drift
+    # Drift (always best-effort)
     try:
         drift_info = compute_location_drift(df, target_weights=normalized_location_weights, tolerance=location_tol)
         df.attrs["location_drift_report"] = drift_info
         sb["location_drift"] = drift_info
     except Exception as e:
-        logger.error("Fallita compute_location_drift: %s", e)
+        logger.error("compute_location_drift failed: %s", e)
 
     # --- quality summary + incoherence -------------------------------------
     incoh_cfg = config.get("incoherence", {}) or {}
@@ -345,7 +383,7 @@ def run_sanity_checks(df: pd.DataFrame, config: Dict[str, Any]) -> Tuple[Dict[st
         top_outliers_df = get_top_outliers(df, n=30)
         sb["top_outliers"] = top_outliers_df.head(10).to_dict(orient="records")
     except Exception as e:
-        logger.error("Fallito get_top_outliers: %s", e)
+        logger.error("get_top_outliers failed: %s", e)
         sb["top_outliers"] = []
 
     # --- price caps ---------------------------------------------------------
@@ -361,11 +399,11 @@ def run_sanity_checks(df: pd.DataFrame, config: Dict[str, Any]) -> Tuple[Dict[st
             violations[present_cols].head(10).to_dict(orient="records") if not violations.empty else []
         )
     except Exception as e:
-        logger.error("Fallito apply_price_caps: %s", e)
+        logger.error("apply_price_caps failed: %s", e)
         sb.setdefault("price_caps", {}).setdefault("violations_count", 0)
         sb["price_caps"].setdefault("example_violations", [])
 
-    # --- decomposition example (se ci sono outlier) -------------------------
+    # --- decomposition example (if outliers present) ------------------------
     try:
         if "top_outliers_df" in locals() and not top_outliers_df.empty and normalize_pricing_input:
             ex = top_outliers_df.iloc[0]
@@ -387,27 +425,27 @@ def run_sanity_checks(df: pd.DataFrame, config: Dict[str, Any]) -> Tuple[Dict[st
             }
             decomp = decompose_price_per_sqm(
                 interim,
-                normalize_pricing_input(config),
+                normalize_pricing_input(config),  # type: ignore[arg-type]
                 seasonality=config.get("seasonality", {}) or {},
                 city_base_prices=config.get("city_base_prices", {}) or {},
             )
             sb["decomposition_example"] = decomp
     except Exception as e:
-        logger.error("Fallita decomposizione esempio: %s", e)
+        logger.error("decomposition example failed: %s", e)
 
-    # --- report base + enriched --------------------------------------------
+    # --- standard report (base + enriched) ---------------------------------
     try:
         base_report = generate_base_quality_report(df)
         full_report = enrich_quality_report(df, base_report, config)
     except Exception as e:
-        logger.warning("Fallita costruzione report standard: %s", e)
+        logger.warning("standard report build failed: %s", e)
         full_report = {}
 
-    # basic stats e duplicates sempre presenti
+    # Always include fresh basic stats and duplicates
     try:
         full_report["basic_stats"] = _build_basic_stats(df)
     except Exception as e:
-        logger.warning("Impossibile costruire basic_stats: %s", e)
+        logger.warning("basic_stats build failed: %s", e)
         full_report["basic_stats"] = {}
 
     try:
@@ -416,7 +454,7 @@ def run_sanity_checks(df: pd.DataFrame, config: Dict[str, Any]) -> Tuple[Dict[st
         examples = df.loc[dup_mask].head(5).to_dict(orient="records") if dup_count else []
         full_report["duplicates"] = {"total_duplicates": dup_count, "examples": examples}
     except Exception as e:
-        logger.warning("Impossibile costruire duplicates: %s", e)
+        logger.warning("duplicates build failed: %s", e)
         full_report["duplicates"] = {"total_duplicates": 0, "examples": []}
 
     full_report.setdefault("sanity_benchmarks", {}).update(sb)

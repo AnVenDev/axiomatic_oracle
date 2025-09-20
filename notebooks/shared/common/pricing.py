@@ -1,33 +1,47 @@
 from __future__ import annotations
+
 """
 Pricing utilities (single source of truth).
 
-- normalize_priors: uniforma i priors "legacy" a uno schema unificato
-- apply_pricing_pipeline: applica i modificatori al prezzo base (senza rumore, senza euristiche extra)
-- apply_hedonic_adjustments: pipeline completa (base → priors → euristiche → seasonality → noise)
-- explain_price: breakdown trasparente dei moltiplicatori (senza rumore), per reporting/quality
+Provided functions:
+- normalize_priors(raw) -> dict
+- calculate_price_per_sqm_base(city, zone, city_base_prices, default_fallback)
+- apply_pricing_pipeline(row, priors, base_price) -> float
+- apply_hedonic_adjustments(row, pricing_input, seasonality, city_base_prices, rng) -> float
+- explain_price(row, priors, seasonality, city_base_prices) -> dict
 
-Zero I/O. Tutte le funzioni sono pure/deterministiche ad eccezione del rumore controllato
-in `apply_hedonic_adjustments` (disattivabile usando `rng` deterministico).
+Design notes:
+- Pure/deterministic except for the optional, controlled noise in `apply_hedonic_adjustments`
+  (pass a deterministic RNG to disable randomness).
+- Zero I/O. Inputs are plain mappings; callers own schema enforcement.
+- “Priors” are normalized to a fixed internal structure by `normalize_priors`.
 """
 
 from typing import Any, Dict, Mapping, Optional, List, Tuple, Union
 from datetime import datetime
 import logging
-import numpy as np      # type: ignore
-import pandas as pd     # type: ignore
 
-# Colonne/domini
+import numpy as np  # type: ignore
+import pandas as pd  # type: ignore
+
+# Canonical domain/column names
 from notebooks.shared.common.constants import (
-    LOCATION, ZONE, YEAR_BUILT, ENERGY_CLASS,
-    IS_TOP_FLOOR, IS_GROUND_FLOOR,
-    HAS_BALCONY, HAS_GARDEN, GARAGE,
-    VIEW, VIEW_SEA, VIEW_LANDMARKS,
-    ORIENTATION, HEATING,
+    LOCATION,
+    ZONE,
+    YEAR_BUILT,
+    ENERGY_CLASS,
+    IS_TOP_FLOOR,
+    IS_GROUND_FLOOR,
+    HAS_BALCONY,
+    HAS_GARDEN,
+    GARAGE,
+    VIEW,
+    VIEW_SEA,
+    VIEW_LANDMARKS,
+    ORIENTATION,
+    HEATING,
     Cols,
 )
-
-logger = logging.getLogger(__name__)
 
 __all__ = [
     "normalize_priors",
@@ -37,12 +51,27 @@ __all__ = [
     "calculate_price_per_sqm_base",
 ]
 
-ORIENTATION_BONUS: float = 1.05          # South / SE / SW
-HEATING_AUTONOMOUS_BONUS: float = 1.03
-DEFAULT_BASE_PRICE_FALLBACK: float = 3000.0
+logger = logging.getLogger(__name__)
+
+# -----------------------------------------------------------------------------
+# Tunables / heuristics
+# -----------------------------------------------------------------------------
+
+ORIENTATION_BONUS: float = 1.05             # South-like exposure
+HEATING_AUTONOMOUS_BONUS: float = 1.03      # Autonomous heating
+DEFAULT_BASE_PRICE_FALLBACK: float = 3000.0 # €/m² when city/zone missing
 NOISE_RANGE: Tuple[float, float] = (0.95, 1.05)
 
+_SUNNY_ORIENTATIONS = {"South", "South-East", "South-West"}
+_HEATING_AUTONOMOUS = "autonomous"
+
+
+# -----------------------------------------------------------------------------
+# Internals
+# -----------------------------------------------------------------------------
+
 def _get_month(row: Mapping[str, Any]) -> Optional[int]:
+    """Extract month (1..12) from row. Accepts Cols.LISTING_MONTH or a legacy 'month' field."""
     month_val = row.get(Cols.LISTING_MONTH, row.get("month"))
     try:
         if month_val is None:
@@ -52,6 +81,11 @@ def _get_month(row: Mapping[str, Any]) -> Optional[int]:
     except Exception:
         return None
 
+
+# -----------------------------------------------------------------------------
+# Base price
+# -----------------------------------------------------------------------------
+
 def calculate_price_per_sqm_base(
     city: str,
     zone: str,
@@ -59,55 +93,89 @@ def calculate_price_per_sqm_base(
     default_fallback: float = DEFAULT_BASE_PRICE_FALLBACK,
 ) -> float:
     """
-    Base price per (city, zone). Se assente:
-      - media delle zone per la città, se disponibile
-      - altrimenti default_fallback
+    Resolve base €/m² from (city, zone). Fallbacks:
+      1) City mean over known zones, if city exists.
+      2) `default_fallback` otherwise.
+
+    Args:
+        city: canonical city name.
+        zone: {center|semi_center|periphery} (caller ensures normalization).
+        city_base_prices: mapping city -> {zone -> price}.
+        default_fallback: used when city/zone not found.
+
+    Returns:
+        Base price per sqm (float).
     """
-    city_prices = city_base_prices.get(city, {})
-    if zone in city_prices:
-        return float(city_prices[zone])
-    if city_prices:
-        return float(np.mean(list(city_prices.values())))
-    return float(default_fallback)
+    try:
+        city_prices = dict(city_base_prices.get(city, {}) or {})
+        if zone in city_prices:
+            return float(city_prices[zone])
+        if city_prices:
+            return float(np.mean(list(city_prices.values())))
+        return float(default_fallback)
+    except Exception:
+        # Defensive fallback to keep pipelines resilient
+        return float(default_fallback)
+
+
+# -----------------------------------------------------------------------------
+# Priors normalization
+# -----------------------------------------------------------------------------
 
 def normalize_priors(raw: Mapping[str, Any]) -> Dict[str, Any]:
     """
-    Normalizza priors 'legacy' in schema unificato, compatibile con:
-      - asset_factory.normalize_pricing_input
-      - quality.decompose_price_per_sqm
+    Normalize legacy/partial priors into a unified schema:
 
-    Chiavi finali:
-      view_multipliers:{sea, landmarks}
-      floor_modifiers:{is_top_floor, is_ground_floor}
-      build_age:{new, recent, old}
-      energy_class_multipliers:{A..G}
-      state_modifiers:{new, renovated, good, needs_renovation, ...}
-      extras:{has_balcony, has_garage, has_garden}
+      view_multipliers: { "sea":1.xx, "landmarks":1.xx }
+      floor_modifiers:  { "is_top_floor":+Δ, "is_ground_floor":+Δ }
+      build_age:        { "new":+Δ, "recent":+Δ, "old":+Δ }  (Δ are additive to multiplier-1)
+      energy_class_multipliers: { "A":1.xx, ..., "G":0.xx }
+      state_modifiers:  { "new":1.xx, "renovated":1.xx, "good":1.0, "needs_renovation":0.xx }
+      extras:           { "has_balcony":+Δ, "has_garage":+Δ, "has_garden":+Δ }
+
+    Notes:
+      - Values under 'build_age' and 'extras' are additive deltas applied as (1 + delta).
+      - Multiplicative sections (‘energy_class_multipliers’, ‘state_modifiers’, ‘view_multipliers’)
+        are applied directly as multipliers.
     """
-    raw = dict(raw or {})
-    build_age_raw = raw.get("build_age", {}) or {}
+    src = dict(raw or {})
+    build_age_raw = dict(src.get("build_age", {}) or {})
 
     return {
-        "view_multipliers": raw.get("view_multipliers", {VIEW_SEA: 1.0, VIEW_LANDMARKS: 1.0}),
-        "floor_modifiers": raw.get("floor_modifiers", {"is_top_floor": 0.0, "is_ground_floor": 0.0}),
+        "view_multipliers": dict(src.get("view_multipliers", {VIEW_SEA: 1.0, VIEW_LANDMARKS: 1.0})),
+        "floor_modifiers": dict(src.get("floor_modifiers", {"is_top_floor": 0.0, "is_ground_floor": 0.0})),
         "build_age": {
             "new": float(build_age_raw.get("new", 0.0)),
             "recent": float(build_age_raw.get("recent", 0.0)),
             "old": float(build_age_raw.get("old", 0.0)),
         },
-        "energy_class_multipliers": dict(raw.get("energy_class_multipliers", {})),
-        "state_modifiers": dict(raw.get("state_modifiers", {})),
-        "extras": raw.get("extras", {"has_balcony": 0.0, "has_garage": 0.0, "has_garden": 0.0}),
+        "energy_class_multipliers": dict(src.get("energy_class_multipliers", {})),
+        "state_modifiers": dict(src.get("state_modifiers", {})),
+        "extras": dict(src.get("extras", {"has_balcony": 0.0, "has_garage": 0.0, "has_garden": 0.0})),
     }
+
+
+# -----------------------------------------------------------------------------
+# Core pricing pipeline (no heuristics/noise)
+# -----------------------------------------------------------------------------
 
 def apply_pricing_pipeline(row: Mapping[str, Any], priors: Mapping[str, Any], base_price: float) -> float:
     """
-    Applica i modificatori al prezzo base in modo sequenziale usando priors NORMALIZZATI.
-    (Niente bonus orientamento/heating, niente seasonality, niente rumore.)
+    Apply normalized priors to the base €/m² in a deterministic manner.
+    Excludes local heuristics (orientation/heating), seasonality and noise.
+
+    Sections:
+      - build_age: (new/recent/old) → multiplicative (1 + delta)
+      - floor_modifiers:            → multiplicative (1 + delta)
+      - energy_class_multipliers:   → multiplicative (value)
+      - state_modifiers:            → multiplicative (value)
+      - extras: (balcony/garage/garden) → multiplicative (1 + delta)
+      - view_multipliers:           → multiplicative (value)
     """
     price = float(base_price)
+    pri = normalize_priors(priors)
 
-    # Build age / year built
+    # Build age from YEAR_BUILT
     year = row.get(YEAR_BUILT)
     try:
         year_int = int(year) if year is not None else None
@@ -118,90 +186,101 @@ def apply_pricing_pipeline(row: Mapping[str, Any], priors: Mapping[str, Any], ba
         current_year = datetime.now().year
         age = max(current_year - year_int, 0)
         if age <= 1:
-            price *= 1 + float(priors.get("build_age", {}).get("new", 0.0))
+            price *= 1.0 + float(pri["build_age"].get("new", 0.0))
         elif age <= 15:
-            price *= 1 + float(priors.get("build_age", {}).get("recent", 0.0))
+            price *= 1.0 + float(pri["build_age"].get("recent", 0.0))
         elif age >= 50:
-            price *= 1 + float(priors.get("build_age", {}).get("old", 0.0))
+            price *= 1.0 + float(pri["build_age"].get("old", 0.0))
 
-    # Floor
+    # Floor modifiers
     if bool(row.get(IS_TOP_FLOOR, False)):
-        price *= 1 + float(priors.get("floor_modifiers", {}).get("is_top_floor", 0.0))
+        price *= 1.0 + float(pri["floor_modifiers"].get("is_top_floor", 0.0))
     if bool(row.get(IS_GROUND_FLOOR, False)):
-        price *= 1 + float(priors.get("floor_modifiers", {}).get("is_ground_floor", 0.0))
+        price *= 1.0 + float(pri["floor_modifiers"].get("is_ground_floor", 0.0))
 
-    # Energy class
+    # Energy class multiplier
     energy_class = str(row.get(ENERGY_CLASS, "") or "")
-    price *= float(priors.get("energy_class_multipliers", {}).get(energy_class, 1.0))
+    price *= float(pri["energy_class_multipliers"].get(energy_class, 1.0))
 
-    # State
+    # State multiplier (defaults to "good": 1.0)
     state = str(row.get("state", "good") or "good")
-    price *= float(priors.get("state_modifiers", {}).get(state, 1.0))
+    price *= float(pri["state_modifiers"].get(state, 1.0))
 
     # Extras
     if bool(row.get(HAS_BALCONY, False)):
-        price *= 1 + float(priors.get("extras", {}).get("has_balcony", 0.0))
+        price *= 1.0 + float(pri["extras"].get("has_balcony", 0.0))
     if bool(row.get(GARAGE, False)):
-        price *= 1 + float(priors.get("extras", {}).get("has_garage", 0.0))
+        price *= 1.0 + float(pri["extras"].get("has_garage", 0.0))
     if bool(row.get(HAS_GARDEN, False)):
-        price *= 1 + float(priors.get("extras", {}).get("has_garden", 0.0))
+        price *= 1.0 + float(pri["extras"].get("has_garden", 0.0))
 
-    # View multipliers
+    # View multiplier
     view_val = str(row.get(VIEW, "") or "")
-    price *= float(priors.get("view_multipliers", {}).get(view_val, 1.0))
+    price *= float(pri["view_multipliers"].get(view_val, 1.0))
 
     return float(price)
+
+
+# -----------------------------------------------------------------------------
+# Full hedonic pipeline (with heuristics/seasonality/noise)
+# -----------------------------------------------------------------------------
 
 def apply_hedonic_adjustments(
     row: Mapping[str, Any],
     pricing_input: Mapping[str, Any],
     seasonality: Mapping[int, float],
     city_base_prices: Mapping[str, Mapping[str, float]],
-    rng: Optional[np.random.Generator] = None
+    rng: Optional[np.random.Generator] = None,
 ) -> float:
     """
-    Applica l'intera pipeline di prezzo:
-    base_price → priors (normalizzati) → orientation/heating → seasonality → noise
+    Full pricing pipeline:
+        base €/m² → priors → orientation/heating → seasonality → noise
 
-    Returns:
-        price_per_sqm (float)
+    Notes:
+      - To make the result deterministic, pass a seeded `rng` (e.g., np.random.default_rng(42)).
+      - All multipliers are applied multiplicatively; priors are normalized internally.
     """
     if rng is None:
         rng = np.random.default_rng()
 
-    # Base price per sqm
-    base_price = calculate_price_per_sqm_base(
-        str(row.get(LOCATION, "") or ""),
-        str(row.get(ZONE, "") or ""),
-        city_base_prices,
-        default_fallback=DEFAULT_BASE_PRICE_FALLBACK,
-    )
+    # 1) Base €/m²
+    city = str(row.get(LOCATION, "") or "")
+    zone = str(row.get(ZONE, "") or "")
+    base_price = calculate_price_per_sqm_base(city, zone, city_base_prices, DEFAULT_BASE_PRICE_FALLBACK)
 
-    # Priors normalizzati (accetta input legacy)
-    priors = normalize_priors(pricing_input)
+    # 2) Priors (normalized) without local heuristics
+    price = apply_pricing_pipeline(row, normalize_priors(pricing_input), base_price)
 
-    # Pipeline principale (senza euristiche locali)
-    price = apply_pricing_pipeline(row, priors, base_price)
-
-    # Euristiche locali (orientamento, heating)
+    # 3) Local heuristics: orientation & heating
     orientation_val = str(row.get(ORIENTATION, "") or "")
-    if orientation_val in {"South", "South-East", "South-West"}:
+    if orientation_val in _SUNNY_ORIENTATIONS:
         price *= ORIENTATION_BONUS
 
     heating_val = str(row.get(HEATING, "") or "")
-    if heating_val == "autonomous":
+    if heating_val == _HEATING_AUTONOMOUS:
         price *= HEATING_AUTONOMOUS_BONUS
 
-    # Seasonality
+    # 4) Seasonality by month (if provided)
     month_int = _get_month(row)
     if month_int in seasonality:
-        price *= float(seasonality[month_int])  # type: ignore[arg-type]
+        try:
+            price *= float(seasonality[month_int])  # type: ignore[index]
+        except Exception:
+            pass
 
-    # Controlled noise
+    # 5) Controlled noise (optional)
     low, high = NOISE_RANGE
-    price *= float(rng.uniform(low, high))
+    try:
+        price *= float(rng.uniform(low, high))
+    except Exception:
+        pass
 
     return float(price)
+
+
+# -----------------------------------------------------------------------------
+# Explainability (no noise)
+# -----------------------------------------------------------------------------
 
 def explain_price(
     row: Union[Mapping[str, Any], "pd.Series"],
@@ -211,107 +290,122 @@ def explain_price(
     city_base_prices: Mapping[str, Mapping[str, float]],
 ) -> Dict[str, Any]:
     """
-    Ritorna un breakdown trasparente del prezzo (SENZA rumore):
+    Produce a transparent breakdown of price (NO noise):
       - base
-      - multipliers (lista ordinata di (nome, moltiplicatore))
-      - composed_multiplier (prodotto dei moltiplicatori)
-      - final_no_noise (base * composed_multiplier)
+      - multipliers: ordered list of (name, multiplier)
+      - composed_multiplier
+      - final_no_noise
 
-    Non applica rumore; utile per report/quality.
+    Useful for audits and quality checks. Takes the same inputs as the main pipeline.
     """
+    # Convert Series to mapping if needed
     try:
         if isinstance(row, pd.Series):
             row = row.to_dict()
     except Exception:
-        # se pandas non è disponibile va bene lo stesso
         pass
 
-    row_map: Mapping[str, Any] = dict(row)  # shallow copy
+    rm: Mapping[str, Any] = dict(row)  # shallow copy for safety
     pri = normalize_priors(priors)
 
-    city = str(row_map.get(LOCATION, "") or "")
-    zone = str(row_map.get(ZONE, "") or "")
+    city = str(rm.get(LOCATION, "") or "")
+    zone = str(rm.get(ZONE, "") or "")
     base = calculate_price_per_sqm_base(city, zone, city_base_prices, DEFAULT_BASE_PRICE_FALLBACK)
 
     multipliers: List[Tuple[str, float]] = []
 
-    # 1) build age
-    year = row_map.get(YEAR_BUILT)
-    year_int = None
+    # Build age
+    year = rm.get(YEAR_BUILT)
+    year_int: Optional[int]
     try:
-        if year is not None:
-            year_int = int(year)
+        year_int = int(year) if year is not None else None
     except Exception:
         year_int = None
+
     if year_int is not None:
         current_year = datetime.now().year
         age = max(current_year - year_int, 0)
         if age <= 1:
-            m = 1 + float(pri.get("build_age", {}).get("new", 0.0))
-            if m != 1.0: multipliers.append(("build_age_new", m))
+            m = 1.0 + float(pri["build_age"].get("new", 0.0))
+            if m != 1.0:
+                multipliers.append(("build_age_new", m))
         elif age <= 15:
-            m = 1 + float(pri.get("build_age", {}).get("recent", 0.0))
-            if m != 1.0: multipliers.append(("build_age_recent", m))
+            m = 1.0 + float(pri["build_age"].get("recent", 0.0))
+            if m != 1.0:
+                multipliers.append(("build_age_recent", m))
         elif age >= 50:
-            m = 1 + float(pri.get("build_age", {}).get("old", 0.0))
-            if m != 1.0: multipliers.append(("build_age_old", m))
+            m = 1.0 + float(pri["build_age"].get("old", 0.0))
+            if m != 1.0:
+                multipliers.append(("build_age_old", m))
 
-    # 2) floor
-    if bool(row_map.get(IS_TOP_FLOOR, False)):
-        m = 1 + float(pri.get("floor_modifiers", {}).get("is_top_floor", 0.0))
-        if m != 1.0: multipliers.append(("is_top_floor", m))
-    if bool(row_map.get(IS_GROUND_FLOOR, False)):
-        m = 1 + float(pri.get("floor_modifiers", {}).get("is_ground_floor", 0.0))
-        if m != 1.0: multipliers.append(("is_ground_floor", m))
+    # Floor
+    if bool(rm.get(IS_TOP_FLOOR, False)):
+        m = 1.0 + float(pri["floor_modifiers"].get("is_top_floor", 0.0))
+        if m != 1.0:
+            multipliers.append(("is_top_floor", m))
+    if bool(rm.get(IS_GROUND_FLOOR, False)):
+        m = 1.0 + float(pri["floor_modifiers"].get("is_ground_floor", 0.0))
+        if m != 1.0:
+            multipliers.append(("is_ground_floor", m))
 
-    # 3) energy class
-    ec = str(row_map.get(ENERGY_CLASS, "") or "")
-    m = float(pri.get("energy_class_multipliers", {}).get(ec, 1.0))
-    if m != 1.0: multipliers.append((f"energy_class_{ec or 'unknown'}", m))
+    # Energy class
+    ec = str(rm.get(ENERGY_CLASS, "") or "")
+    m = float(pri["energy_class_multipliers"].get(ec, 1.0))
+    if m != 1.0:
+        multipliers.append((f"energy_class_{ec or 'unknown'}", m))
 
-    # 4) state
-    state = str(row_map.get("state", "good") or "good")
-    m = float(pri.get("state_modifiers", {}).get(state, 1.0))
-    if m != 1.0: multipliers.append((f"state_{state}", m))
+    # State
+    state = str(rm.get("state", "good") or "good")
+    m = float(pri["state_modifiers"].get(state, 1.0))
+    if m != 1.0:
+        multipliers.append((f"state_{state}", m))
 
-    # 5) extras
-    if bool(row_map.get(HAS_BALCONY, False)):
-        m = 1 + float(pri.get("extras", {}).get("has_balcony", 0.0))
-        if m != 1.0: multipliers.append(("has_balcony", m))
-    if bool(row_map.get(GARAGE, False)):
-        m = 1 + float(pri.get("extras", {}).get("has_garage", 0.0))
-        if m != 1.0: multipliers.append(("has_garage", m))
-    if bool(row_map.get(HAS_GARDEN, False)):
-        m = 1 + float(pri.get("extras", {}).get("has_garden", 0.0))
-        if m != 1.0: multipliers.append(("has_garden", m))
+    # Extras
+    if bool(rm.get(HAS_BALCONY, False)):
+        m = 1.0 + float(pri["extras"].get("has_balcony", 0.0))
+        if m != 1.0:
+            multipliers.append(("has_balcony", m))
+    if bool(rm.get(GARAGE, False)):
+        m = 1.0 + float(pri["extras"].get("has_garage", 0.0))
+        if m != 1.0:
+            multipliers.append(("has_garage", m))
+    if bool(rm.get(HAS_GARDEN, False)):
+        m = 1.0 + float(pri["extras"].get("has_garden", 0.0))
+        if m != 1.0:
+            multipliers.append(("has_garden", m))
 
-    # 6) view
-    v = str(row_map.get(VIEW, "") or "")
-    m = float(pri.get("view_multipliers", {}).get(v, 1.0))
-    if m != 1.0: multipliers.append((f"view_{v or 'none'}", m))
+    # View
+    v = str(rm.get(VIEW, "") or "")
+    m = float(pri["view_multipliers"].get(v, 1.0))
+    if m != 1.0:
+        multipliers.append((f"view_{v or 'none'}", m))
 
-    # 7) orientation heuristic
-    orientation_val = str(row_map.get(ORIENTATION, "") or "")
-    if orientation_val in {"South", "South-East", "South-West"}:
+    # Orientation heuristic
+    orientation_val = str(rm.get(ORIENTATION, "") or "")
+    if orientation_val in _SUNNY_ORIENTATIONS:
         multipliers.append(("orientation_southish", ORIENTATION_BONUS))
 
-    # 8) heating heuristic
-    heating_val = str(row_map.get(HEATING, "") or "")
-    if heating_val == "autonomous":
+    # Heating heuristic
+    heating_val = str(rm.get(HEATING, "") or "")
+    if heating_val == _HEATING_AUTONOMOUS:
         multipliers.append(("heating_autonomous", HEATING_AUTONOMOUS_BONUS))
 
-    # 9) seasonality
-    m_int = _get_month(row_map)
+    # Seasonality
+    m_int = _get_month(rm)
     if m_int in seasonality:
-        sea_m = float(seasonality[m_int])  # type: ignore[index]
-        if sea_m != 1.0:
-            multipliers.append((f"seasonality_{m_int}", sea_m))
+        try:
+            sea_m = float(seasonality[m_int])  # type: ignore[index]
+            if sea_m != 1.0:
+                multipliers.append((f"seasonality_{m_int}", sea_m))
+        except Exception:
+            pass
 
-    # Compose multiplier & final
+    # Compose
     composed = 1.0
     for _, mul in multipliers:
         composed *= float(mul)
-    final_no_noise = base * composed
+
+    final_no_noise = float(base) * float(composed)
 
     return {
         "base": float(base),

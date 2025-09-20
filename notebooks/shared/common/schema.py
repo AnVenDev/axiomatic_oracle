@@ -1,15 +1,29 @@
-"""Schema unificato e validazione per il progetto RWA Property."""
+"""Unified schema & validation utilities for RWA Property.
+
+Scope
+- Canonical field groups (core/structural/amenity/quality/score/derived).
+- Suggested dtypes and column aliases for backward compatibility.
+- DataFrame-level validation (presence, unknowns, dtype coercion, domain checks).
+- Convenience helpers to normalize column order and enforce categoricals.
+
+Design
+- Pure functions: no I/O, return dicts/DataFrames only.
+- Best-effort conversions — never raise on optional checks.
+- Backward-compatible public API and exports.
+"""
+
 from __future__ import annotations
 
 from typing import Dict, List, Mapping, Iterable, Tuple
 import logging
+
 import pandas as pd                     # type: ignore
 from pydantic import BaseModel, Field   # type: ignore
 
 from notebooks.shared.common.constants import (
-    # Enums/namespaces utili
+    # Enums/namespaces
     EnergyClass, Groups, Mappings, Cols,
-    # Colonne (retrocompat)
+    # Columns (retro-compat re-exports)
     ASSET_ID, ASSET_TYPE, LOCATION, REGION, URBAN_TYPE, ZONE,
     SIZE_M2, ROOMS, BATHROOMS, YEAR_BUILT, AGE_YEARS, FLOOR, BUILDING_FLOORS,
     IS_TOP_FLOOR, IS_GROUND_FLOOR,
@@ -38,9 +52,9 @@ __all__ = [
     "normalize_column_order", "validate_df", "validate_and_coerce",
 ]
 
-# ---------------------------------------------------------------------------
-# Gruppi logici (contratto)
-# ---------------------------------------------------------------------------
+# ============================================================================
+# Logical groups (contract)
+# ============================================================================
 
 CORE_FIELDS: List[str] = [
     ASSET_ID, ASSET_TYPE, LOCATION, VALUATION_K, PRICE_PER_SQM, LAST_VERIFIED_TS, LISTING_MONTH,
@@ -78,9 +92,9 @@ PROPERTY_DERIVED_FIELDS: List[str] = [
     VALUE_SEGMENT, LUXURY_CATEGORY,
 ]
 
-# ---------------------------------------------------------------------------
-# Tipi attesi per macro gruppi (aiutano coerce e validazione)
-# ---------------------------------------------------------------------------
+# ============================================================================
+# Expected macro types (help dtype coercion and validation)
+# ============================================================================
 
 CATEGORICAL: List[str] = [
     LOCATION, REGION, URBAN_TYPE, ZONE, ENERGY_CLASS, ORIENTATION, VIEW, CONDITION, HEATING,
@@ -108,13 +122,13 @@ DATETIME: List[str] = [
     LAST_VERIFIED_TS,
 ]
 
-# ---------------------------------------------------------------------------
-# Dtypes suggeriti (best-effort): pandas dtype strings
-# ---------------------------------------------------------------------------
+# ============================================================================
+# Suggested dtypes (pandas dtype strings) — best-effort
+# ============================================================================
 
 SUGGESTED_DTYPES: Mapping[str, str] = {
     ASSET_ID: "object",
-    SIZE_M2: "Int32",           # nullable int
+    SIZE_M2: "Int32",           # nullable ints
     ROOMS: "Int16",
     BATHROOMS: "Int16",
     YEAR_BUILT: "Int16",
@@ -130,18 +144,19 @@ SUGGESTED_DTYPES: Mapping[str, str] = {
     LAST_VERIFIED_TS: "datetime64[ns, UTC]",
 }
 
-# ---------------------------------------------------------------------------
-# Alias/migrazioni colonne (per retrocompatibilità tra versioni dataset)
-# ---------------------------------------------------------------------------
+# ============================================================================
+# Column aliases (backward compatibility across dataset versions)
+# ============================================================================
 
 COLUMN_ALIASES: Mapping[str, str] = {
+    # Example:
     # "energy_rating": ENERGY_CLASS,
     # "price_sq_m": PRICE_PER_SQM,
 }
 
-# ---------------------------------------------------------------------------
-# Schema Pydantic (contratto formale)
-# ---------------------------------------------------------------------------
+# ============================================================================
+# Pydantic schema (formal contract)
+# ============================================================================
 
 class AssetSchema(BaseModel):
     required: List[str] = Field(default_factory=list)
@@ -149,7 +164,7 @@ class AssetSchema(BaseModel):
     dtypes: Dict[str, str] = Field(default_factory=dict)
 
     def all_fields(self) -> List[str]:
-        # preserva ordine e unicità
+        # Preserve order and remove duplicates
         return list(dict.fromkeys([*self.required, *self.optional]))
 
 
@@ -166,9 +181,9 @@ SCHEMA: Mapping[str, AssetSchema] = {
     )
 }
 
-# ---------------------------------------------------------------------------
-# API utility
-# ---------------------------------------------------------------------------
+# ============================================================================
+# API utilities
+# ============================================================================
 
 def get_required_fields(asset_type: str = "property") -> List[str]:
     return SCHEMA[asset_type].required
@@ -179,11 +194,11 @@ def get_all_fields(asset_type: str = "property") -> List[str]:
 
 
 def apply_aliases(df: pd.DataFrame, aliases: Mapping[str, str] = COLUMN_ALIASES) -> pd.DataFrame:
-    """Rinomina colonne legacy ai nomi canonici se presenti (no-op se assenti)."""
+    """Rename legacy columns to canonical names if present (no-op if absent)."""
     to_rename = {old: new for old, new in aliases.items() if old in df.columns and new not in df.columns}
     if to_rename:
         df = df.rename(columns=to_rename)
-        logger.info("Rinominati alias colonne: %s", to_rename)
+        logger.info("Applied column aliases: %s", to_rename)
     return df
 
 
@@ -197,7 +212,7 @@ def list_unknown(df: pd.DataFrame, known: Iterable[str]) -> List[str]:
 
 
 def _nullable_int_for(target: str) -> str:
-    # Se target inizia con "Int" assumiamo già nullable; se "int" → mappiamo a Int32
+    """Ensure pandas Nullable Int dtype is used (e.g., int32 -> Int32)."""
     if target.startswith("Int"):
         return target
     if target.startswith("int"):
@@ -207,14 +222,14 @@ def _nullable_int_for(target: str) -> str:
 
 
 def coerce_dtypes(df: pd.DataFrame, dtypes: Mapping[str, str]) -> pd.DataFrame:
-    """Best-effort: forza i dtypes suggeriti quando possibile (senza fallire)."""
+    """Best-effort: coerce suggested dtypes where possible without raising."""
     out = df.copy()
     for col, dt in dtypes.items():
         if col not in out.columns:
             continue
         try:
             if dt.lower().startswith("int"):
-                # usa nullable Int
+                # Use nullable Int to preserve NaNs
                 target = _nullable_int_for(dt)
                 out[col] = pd.to_numeric(out[col], errors="coerce").astype(target)
             elif dt.lower().startswith("float"):
@@ -224,14 +239,14 @@ def coerce_dtypes(df: pd.DataFrame, dtypes: Mapping[str, str]) -> pd.DataFrame:
             else:
                 out[col] = out[col].astype(dt)
         except Exception as e:
-            logger.warning("Impossibile convertire dtype per %s→%s: %s", col, dt, e)
+            logger.warning("Unable to cast dtype for %s -> %s: %s", col, dt, e)
     return out
 
 
 def enforce_domains(df: pd.DataFrame) -> Dict[str, Dict[str, int]]:
     """
-    Controlla domini canonici (ad es. EnergyClass) e ritorna conteggi di violazioni.
-    Non modifica il df: solo report (il fix è responsabilità del chiamante).
+    Check canonical domains (e.g., EnergyClass) and return violation counts.
+    Does not mutate df; fixing is the caller's responsibility.
     """
     violations: Dict[str, Dict[str, int]] = {}
 
@@ -252,19 +267,19 @@ def enforce_domains(df: pd.DataFrame) -> Dict[str, Dict[str, int]]:
 
 
 def enforce_categoricals(df: pd.DataFrame, categoricals: Iterable[str] = CATEGORICAL) -> pd.DataFrame:
-    """Casta le colonne categoriali presenti a dtype 'category' (best-effort)."""
+    """Cast present categorical columns to pandas 'category' dtype (best-effort)."""
     out = df.copy()
     for col in categoricals:
         if col in out.columns:
             try:
                 out[col] = out[col].astype("category")
             except Exception as e:
-                logger.debug("Skip category cast per %s: %s", col, e)
+                logger.debug("Skipped category cast for %s: %s", col, e)
     return out
 
 
 def normalize_column_order(df: pd.DataFrame, asset_type: str = "property") -> pd.DataFrame:
-    """Riordina le colonne mettendo i required per primi, poi le altre in ordine stabile."""
+    """Place required fields first, then the remaining columns in stable order."""
     schema = SCHEMA[asset_type]
     req = schema.required
     extras = [c for c in df.columns if c not in req]
@@ -280,12 +295,13 @@ def validate_df(
     check_domains: bool = True,
 ) -> Dict[str, object]:
     """
-    Valida un DataFrame rispetto allo schema:
-      - colonne richieste presenti
-      - colonne sconosciute
-      - dtypes coerenti (best-effort coerce, opzionale)
-      - domini canonici (opzionale)
-    Ritorna un report di validazione (non muta df).
+    Validate a DataFrame against the schema:
+      - required columns present
+      - unknown columns detected
+      - suggested dtype coercion (optional, best-effort)
+      - canonical domain checks (optional)
+
+    Returns a validation report (df is not mutated).
     """
     schema = SCHEMA[asset_type]
     dfx = apply_aliases(df)
@@ -309,7 +325,7 @@ def validate_df(
         "missing": missing,
         "unknown": unknown,
         "domain_violations": domain_violations,
-        "suggested_dtypes_applied": list(schema.dtypes.keys()) if coerce else [],
+        "suggested_dtypes_applied": [c for c in schema.dtypes.keys() if c in df.columns] if coerce else [],
     }
     return report
 
@@ -321,7 +337,8 @@ def validate_and_coerce(
     check_domains: bool = True,
 ) -> Tuple[pd.DataFrame, Dict[str, object]]:
     """
-    Variante comoda: applica coerce/ordering/categoricals e ritorna (df_norm, report).
+    Convenience variant: apply aliases/coerce/categoricals/order and return (df_norm, report).
+    The report reflects validation on the *original* df for transparency.
     """
     schema = SCHEMA[asset_type]
     dfx = apply_aliases(df)

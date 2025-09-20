@@ -1,27 +1,26 @@
 from __future__ import annotations
 """
 Quality & valuation utilities:
-- Decomposizione del price_per_sqm con breakdown dei moltiplicatori (via pricing.explain_price)
-- Summary statistiche e metriche di incoerenza
-- Top outliers
-- Price caps
-- Report API compat: generate_base_quality_report / enrich_quality_report
+- Decompose price_per_sqm via pricing.explain_price (transparent multiplier breakdown)
+- Summary statistics and incoherence metrics
+- Top outliers extraction
+- Price caps (city/zone aware)
+- API-compatible reports: generate_base_quality_report / enrich_quality_report
 
-NOTE:
-- Zero I/O: le funzioni restituiscono dict/DataFrame. La persistenza JSON si fa altrove.
-- Le integrazioni "benchmark/drift/decomposition-example" sono opzionali e importate in modo lazy.
+Design notes:
+- Zero I/O: functions return dicts/DataFrames; persistence is handled by callers.
+- Optional integrations (benchmark/drift/decomposition-example) are imported lazily.
 """
 
 import logging
 from typing import Any, Dict, List, Mapping, Tuple, Optional
 
-import numpy as np      # type: ignore
-import pandas as pd     # type: ignore
+import numpy as np  # type: ignore
+import pandas as pd  # type: ignore
 
 from notebooks.shared.common.constants import (
     LOCATION, ZONE, ORIENTATION, VIEW, HEATING, VALUATION_K,
-    CONDITION_SCORE, ENV_SCORE, LUXURY_SCORE, PRICE_PER_SQM,
-    Cols,
+    CONDITION_SCORE, ENV_SCORE, LUXURY_SCORE, PRICE_PER_SQM, Cols,
 )
 from notebooks.shared.common.pricing import (
     explain_price,
@@ -47,26 +46,32 @@ __all__ = [
     "enrich_quality_report",
 ]
 
+
+# -----------------------------------------------------------------------------
+# Lazy optional metrics (avoid hard coupling)
+# -----------------------------------------------------------------------------
 def _lazy_metrics():
     try:
-        from notebooks.shared.n03_train_model.metrics import (
-            compute_location_drift, location_benchmark
+        from notebooks.shared.n03_train_model.metrics import (  # type: ignore
+            compute_location_drift,
+            location_benchmark,
         )
         return compute_location_drift, location_benchmark
     except Exception:
         return None, None
 
-# ------------------------------ Costanti ------------------------------------
 
+# -----------------------------------------------------------------------------
+# Weights / defaults
+# -----------------------------------------------------------------------------
 W_CONDITION_DEF: float = 0.5
 W_LUXURY_DEF: float = 0.3
 W_ENV_DEF: float = 0.2
 
 
-# ---------------------------------------------------------------------------
-# Decomposition (delegata al modulo common.pricing)
-# ---------------------------------------------------------------------------
-
+# -----------------------------------------------------------------------------
+# Decomposition using pricing.explain_price
+# -----------------------------------------------------------------------------
 def decompose_price_per_sqm(
     interim: Mapping[str, Any],
     pricing_normalized: Mapping[str, Any],
@@ -74,10 +79,16 @@ def decompose_price_per_sqm(
     city_base_prices: Mapping[str, Mapping[str, float]],
 ) -> Dict[str, Any]:
     """
-    Ricostruisce la composizione di price_per_sqm **usando common.pricing.explain_price**.
+    Reconstruct price_per_sqm composition using `common.pricing.explain_price`.
+
+    Args:
+        interim: minimal row-like mapping; supports legacy 'month' → coerced to Cols.LISTING_MONTH.
+        pricing_normalized: priors (pre-normalized or raw; normalization is idempotent).
+        seasonality: {month → multiplier}.
+        city_base_prices: {city → {zone → base_price}}.
 
     Returns:
-        dict con chiavi: base, final_no_noise, multipliers (lista), composed_multiplier
+        dict with keys: base, final_no_noise, multipliers, composed_multiplier.
     """
     if not isinstance(interim, Mapping):
         raise TypeError("`interim` must be a Mapping")
@@ -85,6 +96,7 @@ def decompose_price_per_sqm(
         raise TypeError("`pricing_normalized` must be a Mapping")
 
     interim_std = dict(interim)
+    # Legacy → canonical month field
     if "month" in interim_std and Cols.LISTING_MONTH not in interim_std:
         interim_std[Cols.LISTING_MONTH] = interim_std.pop("month")
 
@@ -99,18 +111,20 @@ def decompose_price_per_sqm(
 
     logger.debug(
         "Decomposition city=%s zone=%s | base=%.2f final=%.2f",
-        interim_std.get(LOCATION), interim_std.get(ZONE), decomp.get("base", float("nan")), decomp.get("final_no_noise", float("nan"))
+        interim_std.get(LOCATION),
+        interim_std.get(ZONE),
+        decomp.get("base", float("nan")),
+        decomp.get("final_no_noise", float("nan")),
     )
     return decomp
 
 
-# ---------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Summaries & incoherence
-# ---------------------------------------------------------------------------
-
+# -----------------------------------------------------------------------------
 def summarize_valuation_distribution(df: pd.DataFrame) -> Dict[str, Any]:
     """
-    Ritorna quantili e statistiche base su valuation_k.
+    Quantiles and descriptive stats for valuation_k.
     """
     if VALUATION_K not in df.columns:
         raise KeyError(f"{VALUATION_K} missing from dataframe for summary.")
@@ -135,11 +149,12 @@ def compute_confidence_score(
     w_env: float = W_ENV_DEF,
 ) -> pd.Series:
     """
-    Combina condition, luxury e env in un punteggio composito di fiducia.
+    Composite confidence score combining condition, luxury, env.
+    Returns a float32 Series aligned to df.
     """
     cond = pd.to_numeric(df.get(CONDITION_SCORE, 0.0), errors="coerce").fillna(0.0)
-    lux  = pd.to_numeric(df.get(LUXURY_SCORE,    0.0), errors="coerce").fillna(0.0)
-    env  = pd.to_numeric(df.get(ENV_SCORE,       0.0), errors="coerce").fillna(0.0)
+    lux = pd.to_numeric(df.get(LUXURY_SCORE, 0.0), errors="coerce").fillna(0.0)
+    env = pd.to_numeric(df.get(ENV_SCORE, 0.0), errors="coerce").fillna(0.0)
     return (w_condition * cond + w_luxury * lux + w_env * env).astype("float32")
 
 
@@ -152,7 +167,10 @@ def flag_strongly_incoherent(
     w_env: float = W_ENV_DEF,
 ) -> Tuple[pd.Series, pd.Series]:
     """
-    Segnala asset ad alto valore (sopra quantile) ma con bassa confidence composita.
+    Flag high-valuation assets (above quantile) with low composite confidence.
+
+    Returns:
+        (boolean mask Series, confidence Series)
     """
     if VALUATION_K not in df.columns:
         raise KeyError(f"{VALUATION_K} missing from dataframe for incoherence flagging.")
@@ -173,7 +191,7 @@ def summarize_valuation_distribution_with_incoherence(
     w_env: float = W_ENV_DEF,
 ) -> Dict[str, Any]:
     """
-    Estende il summary con conteggio/frazione di asset 'strongly incoherent'.
+    Extend summary with strongly-incoherent counts and fractions.
     """
     summary = summarize_valuation_distribution(df)
     incoherent_mask, _ = flag_strongly_incoherent(
@@ -199,18 +217,17 @@ def summarize_valuation_distribution_with_incoherence(
     return summary
 
 
-# ---------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Outliers
-# ---------------------------------------------------------------------------
-
+# -----------------------------------------------------------------------------
 def get_top_outliers(
     df: pd.DataFrame,
     n: int = 20,
-    extra_fields: Optional[List[str]] = None
+    extra_fields: Optional[List[str]] = None,
 ) -> pd.DataFrame:
     """
-    Ritorna le top-n righe con valuation_k più alto, includendo solo colonne esistenti.
-    Non modifica il df originale.
+    Return the top-n rows with highest valuation_k, keeping only existing columns.
+    Does not mutate the input frame.
     """
     if VALUATION_K not in df.columns or df.empty or n <= 0:
         return df.head(0).copy()
@@ -228,10 +245,9 @@ def get_top_outliers(
     return top.loc[:, available].copy()
 
 
-# ---------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Price caps
-# ---------------------------------------------------------------------------
-
+# -----------------------------------------------------------------------------
 def apply_price_caps(
     df: pd.DataFrame,
     city_base_prices: Mapping[str, Mapping[str, float]],
@@ -240,12 +256,13 @@ def apply_price_caps(
     capped_col: str = Cols.PRICE_PER_SQM_CAPPED,
 ) -> pd.DataFrame:
     """
-    Applica un cap su price_per_sqm rispetto a (base price * max_multiplier).
-    Aggiunge:
-      - `capped_col`                   → valore cappato
-      - `f"{capped_col}_violated"`     → bool se price > capped
+    Cap price_per_sqm against (base price * max_multiplier) per (location, zone).
 
-    Ritorna una **copia** del df con le colonne derivate.
+    Adds:
+      - `capped_col`: capped value (float32)
+      - `f"{capped_col}_violated"`: bool flag where price > cap
+
+    Returns a copy of the DataFrame with derived columns.
     """
     if price_col not in df.columns:
         out = df.copy()
@@ -255,7 +272,7 @@ def apply_price_caps(
 
     out = df.copy()
 
-    # Base price per riga da mapping (location, zone)
+    # Base price per row via mapping (location, zone)
     loc = out.get(LOCATION, pd.Series("", index=out.index)).astype(str)
     zon = out.get(ZONE, pd.Series("", index=out.index)).astype(str)
 
@@ -273,20 +290,19 @@ def apply_price_caps(
 
     n_viol = int(out[f"{capped_col}_violated"].sum())
     logger.info(
-        "Price caps: %d violazioni su %d righe (max_multiplier=%.2f, cap[min]=%.2f, cap[max]=%.2f).",
-        n_viol, len(out), max_multiplier, float(cap_arr.min()), float(cap_arr.max())
+        "Price caps: %d violations over %d rows (max_multiplier=%.2f, cap[min]=%.2f, cap[max]=%.2f).",
+        n_viol, len(out), max_multiplier, float(cap_arr.min()), float(cap_arr.max()),
     )
 
     return out
 
 
-# ---------------------------------------------------------------------------
-# Report API (compat)
-# ---------------------------------------------------------------------------
-
+# -----------------------------------------------------------------------------
+# Report API (backward-compatible)
+# -----------------------------------------------------------------------------
 def build_basic_stats(df: pd.DataFrame) -> Dict[str, Any]:
     """
-    Statistiche base (dimensioni, dtypes, missing, descrittive) + target summary (se presente).
+    Basic stats (shape, dtypes, missing ratios, describe) + target summary (if present).
     """
     numeric = df.select_dtypes(include=[np.number])
     categorical = df.select_dtypes(exclude=[np.number])
@@ -312,19 +328,21 @@ def build_basic_stats(df: pd.DataFrame) -> Dict[str, Any]:
 
 def generate_base_quality_report(df: pd.DataFrame) -> Dict[str, Any]:
     """
-    Base report minimale, stabile e JSON-serializzabile.
+    Minimal, stable, JSON-serializable report.
     """
     report: Dict[str, Any] = {
         "basic_stats": build_basic_stats(df),
     }
-    # Aggiunge il summary della target se presente
+
+    # Append valuation summary if present
     if VALUATION_K in df.columns:
         try:
             report["valuation_summary"] = summarize_valuation_distribution(df)
         except Exception as e:
             logger.warning("Unable to compute valuation summary: %s", e)
             report["valuation_summary"] = {}
-    # Duplicates (esempio)
+
+    # Duplicates example set (best-effort)
     try:
         dup_mask = df.duplicated()
         dup_count = int(dup_mask.sum())
@@ -333,6 +351,7 @@ def generate_base_quality_report(df: pd.DataFrame) -> Dict[str, Any]:
     except Exception as e:
         logger.warning("Unable to compute duplicates: %s", e)
         report["duplicates"] = {"total_duplicates": 0, "examples": []}
+
     return report
 
 
@@ -342,10 +361,13 @@ def enrich_quality_report(
     config: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
-    Compat layer: arricchisce il base report con metriche di incoerenza,
-    top outliers e (se possibile) price caps e benchmark opzionali.
+    Enrich a base report with:
+      - Incoherence metrics
+      - Top outliers
+      - Price caps (if city_base_prices provided)
+      - Optional benchmarks/drift (lazy imports)
 
-    - Non solleva: i blocchi opzionali falliscono in silenzio con log warning.
+    Non-raising: optional blocks fail with warnings, returning partial data.
     """
     rpt = dict(base_report or generate_base_quality_report(df))
     cfg = config or {}
@@ -365,13 +387,18 @@ def enrich_quality_report(
             val_threshold_quantile=val_q,
             confidence_thresh=conf_thresh,
             w_condition=w_cond,
-            w_luxury=w_lux,
+            w_lux=w_lux,
             w_env=w_env,
         )
         rpt.setdefault("valuation_summary", {}).update(summary)
+
         strong_mask, _ = flag_strongly_incoherent(
-            df, val_threshold_quantile=val_q, confidence_thresh=conf_thresh,
-            w_condition=w_cond, w_luxury=w_lux, w_env=w_env
+            df,
+            val_threshold_quantile=val_q,
+            confidence_thresh=conf_thresh,
+            w_condition=w_cond,
+            w_lux=w_lux,
+            w_env=w_env,
         )
         rpt.setdefault("incoherence", {})["strongly_incoherent"] = {
             "count": int(strong_mask.sum()),
@@ -390,7 +417,7 @@ def enrich_quality_report(
         logger.warning("Top outliers enrich failed: %s", e)
         rpt["top_outliers"] = []
 
-    # --- price caps (opzionale) --------------------------------------------
+    # --- price caps (optional) ----------------------------------------------
     try:
         price_caps_cfg = cfg.get("price_caps", {}) or {}
         max_multiplier = float(price_caps_cfg.get("max_multiplier", 3.0))
@@ -409,34 +436,35 @@ def enrich_quality_report(
     except Exception as e:
         logger.warning("Price caps enrich failed: %s", e)
 
-    # --- opzionale: benchmark & drift (se disponibile in common.reports_helper) ---
+    # --- optional: location benchmark & drift (lazy) ------------------------
     try:
         target_weights = cfg.get("location_weights", {}) or {}
         if LOCATION in df.columns and target_weights:
             tol = float(cfg.get("expected_profile", {}).get("location_distribution_tolerance", 0.05))
             compute_location_drift, location_benchmark = _lazy_metrics()
-            if compute_location_drift is None:
-                # fallback no-op / ritorna struttura vuota, non esplodere in serving
-                return {"location_drift": None}
-            try:
-                bench_df = location_benchmark(df, target_weights=_normalize_weights(target_weights), tolerance=tol)
-                rpt.setdefault("sanity_benchmarks", {})["location_distribution"] = (
-                    bench_df.reset_index().to_dict(orient="records")
-                    if hasattr(bench_df, "reset_index")
-                    else pd.DataFrame.from_dict(bench_df).reset_index().to_dict(orient="records")
-                )
-            except Exception as e:
-                logger.info("location_benchmark skipped: %s", e)
+            if compute_location_drift is None or location_benchmark is None:
+                # Nothing to add; keep report consistent
+                pass
+            else:
+                try:
+                    bench_df = location_benchmark(df, target_weights=_normalize_weights(target_weights), tolerance=tol)
+                    rpt.setdefault("sanity_benchmarks", {})["location_distribution"] = (
+                        bench_df.reset_index().to_dict(orient="records")
+                        if hasattr(bench_df, "reset_index")
+                        else pd.DataFrame.from_dict(bench_df).reset_index().to_dict(orient="records")
+                    )
+                except Exception as e:
+                    logger.info("location_benchmark skipped: %s", e)
 
-            try:
-                drift = compute_location_drift(df, target_weights=_normalize_weights(target_weights), tolerance=tol)
-                rpt.setdefault("sanity_benchmarks", {})["location_drift"] = drift
-            except Exception as e:
-                logger.info("compute_location_drift skipped: %s", e)
+                try:
+                    drift = compute_location_drift(df, target_weights=_normalize_weights(target_weights), tolerance=tol)
+                    rpt.setdefault("sanity_benchmarks", {})["location_drift"] = drift
+                except Exception as e:
+                    logger.info("compute_location_drift skipped: %s", e)
     except Exception:
         pass
 
-    # --- decomposition example (opzionale) ---------------------------------
+    # --- optional: decomposition example ------------------------------------
     try:
         if "city_base_prices" in cfg:
             sample = df.sort_values(VALUATION_K, ascending=False).head(1)
@@ -453,7 +481,9 @@ def enrich_quality_report(
                     "has_balcony": bool(row.get(Cols.HAS_BALCONY, False)),
                     "has_garden": bool(row.get(Cols.HAS_GARDEN, False)),
                     "has_garage": bool(row.get(Cols.GARAGE, False)),
-                    Cols.LISTING_MONTH: int(row.get(Cols.LISTING_MONTH)) if pd.notna(row.get(Cols.LISTING_MONTH)) else None,
+                    Cols.LISTING_MONTH: (
+                        int(row.get(Cols.LISTING_MONTH)) if pd.notna(row.get(Cols.LISTING_MONTH)) else None
+                    ),
                     "view": row.get(VIEW, ""),
                     "orientation": row.get(ORIENTATION, ""),
                     "heating": row.get(HEATING, ""),

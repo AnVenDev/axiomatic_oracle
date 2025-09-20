@@ -1,33 +1,42 @@
-# shared/common_imports.py
 """
-Common imports for notebooks/EDA ONLY.
-Do NOT import this inside reusable /shared modules.
+Common imports for **notebooks / EDA only**.
+Do **NOT** import this module inside reusable `/shared` libraries or production code.
 
-Provides: pd, np, plt and a curated subset of stdlib/typing names.
+Exposes:
+- Third-party: `np` (NumPy), `pd` (Pandas), `plt` (Matplotlib pyplot)
+- Stdlib subset frequently used in notebooks: `Path` and selected typing aliases
+
+Rationale:
+- Keep notebooks concise while avoiding accidental heavy side-effects.
+- Do not re-export optional/heavy libs (e.g., seaborn, yaml) as API to reduce coupling.
 """
 
-# --- Stdlib (subset) ---
+# --- Stdlib (curated subset) ---
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Optional, Set, Union, Callable, TypedDict
 
-# --- Third-party (curated) ---
+# --- Third-party (curated, no side-effects) ---
 import numpy as np                  # type: ignore
 import pandas as pd                 # type: ignore
 import matplotlib.pyplot as plt     # type: ignore
 
-# Keep heavy libs available but DO NOT execute side-effects.
-# (Not re-exported by default to avoid accidental dependencies.)
+# Optional: keep available for ad-hoc use in notebooks,
+# but do **not** re-export to avoid accidental dependencies downstream.
 try:
-    import seaborn as sns  # noqa: F401 # type: ignore
+    import seaborn as sns  # noqa: F401  # type: ignore
 except Exception:
-    pass
+    sns = None  # type: ignore
 
 try:
-    import yaml  # noqa: F401 # type: ignore
+    import yaml  # noqa: F401  # type: ignore
 except Exception:
-    pass
+    yaml = None  # type: ignore
 
 __all__ = [
-    "Any", "Dict", "List", "Tuple", "Optional", "Set", "Union", "Callable", "TypedDict", "Path",
+    # typing
+    "Any", "Dict", "List", "Tuple", "Optional", "Set", "Union", "Callable", "TypedDict",
+    # stdlib
+    "Path",
+    # third-party
     "np", "pd", "plt",
 ]

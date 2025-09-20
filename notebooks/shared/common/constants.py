@@ -1,24 +1,39 @@
 """
-Costanti canoniche per il progetto RWA Property.
-- Enum tipizzate per domini discreti
-- Namespace per gruppi logici (Cols/Versions/Defaults/Groups/Thresholds/Mappings)
-- Retrocompatibilità: le vecchie costanti stringa restano disponibili
+Canonical constants for the RWA Property project.
+
+Goals
+- Typed enums for discrete domains.
+- Logical namespaces for columns, groups, thresholds, mappings.
+- Backward-compatibility aliases for historical constant names.
+- Export region/urban-type defaults used by config and validators.
+
+Notes
+- Keep this module dependency-free and safe to import from any layer.
+- Prefer low-level primitives (str/float/int) over heavy objects.
 """
 
 from __future__ import annotations
+
 from enum import Enum
-from typing import Any, Final, Tuple, Dict
+from typing import Any, Dict, Final, Tuple
 
-# =========================== Enums (tipizzate) ==============================
+# =============================================================================
+# City mappings & domain defaults
+# =============================================================================
 
-CITY_ALIASES = {
-  "Naples": "Napoli", "Turin": "Torino", "Genoa": "Genova",
-  "Venice": "Venezia", "Padua": "Padova",
+# English → Italian aliases (used by data normalization in certain datasets).
+CITY_ALIASES: Final[Dict[str, str]] = {
+    "Naples": "Napoli",
+    "Turin": "Torino",
+    "Genoa": "Genova",
+    "Venice": "Venezia",
+    "Padua": "Padova",
 }
 
+# Default urban-type by city (keep values small and consistent: "urban|semiurban|rural").
 DEFAULT_URBAN_TYPE_BY_CITY: Final[Dict[str, str]] = {
     "Milan": "urban",
-    "Rome": "urban", 
+    "Rome": "urban",
     "Turin": "urban",
     "Naples": "urban",
     "Bologna": "urban",
@@ -31,9 +46,10 @@ DEFAULT_URBAN_TYPE_BY_CITY: Final[Dict[str, str]] = {
     "Padua": "semiurban",
     "Catania": "urban",
     "Trieste": "semiurban",
-    "Cagliari": "urban"
+    "Cagliari": "urban",
 }
 
+# Macro-region per city (north|center|south). Keep consistent with model features.
 DEFAULT_REGION_BY_CITY: Final[Dict[str, str]] = {
     "Milan": "north",
     "Rome": "center",
@@ -49,8 +65,12 @@ DEFAULT_REGION_BY_CITY: Final[Dict[str, str]] = {
     "Padua": "north",
     "Catania": "south",
     "Trieste": "north",
-    "Cagliari": "south"
+    "Cagliari": "south",
 }
+
+# =============================================================================
+# Enums (typed)
+# =============================================================================
 
 class AssetType(str, Enum):
     PROPERTY = "property"
@@ -83,7 +103,9 @@ class ViewType(str, Enum):
     LANDMARKS = "landmarks"
 
 
-# ============================= Versions/Seed ================================
+# =============================================================================
+# Versioning & on-chain limits
+# =============================================================================
 
 class Versions:
     DATASET: Final[str] = "v2"
@@ -91,27 +113,26 @@ class Versions:
     MODEL_FAMILY: Final[str] = "axiomatic_rwa_property"
 
 
-SEED: Final[int] = 42  # seed centralizzato
-
-# ================================ Versioning & On-chain limits ================================
-from typing import Final
+SEED: Final[int] = 42  # centralized RNG seed
 
 SCHEMA_VERSION: Final[str] = "v2"
-NOTE_MAX_BYTES: Final[int] = 1024          # hard cap Algorand note field
-NOTE_PREFIX: Final[bytes] = b"AXM\x01"     # 4B prefix per indicizzazione explorer/indexer
-NETWORK: Final[str] = "TestNet"            # override via env se serve
+NOTE_MAX_BYTES: Final[int] = 1024            # Algorand note hard cap (bytes)
+NOTE_PREFIX: Final[bytes] = b"AXM\x01"       # 4B prefix for indexer/explorer tagging
+NETWORK: Final[str] = "testnet"              # default; actual runtime via env in secrets_manager
 
-# (opzionale) Leakage gate condiviso — nomi canonici
+# (Optional) Leakage gate — forbid these as inputs to avoid target leakage.
 LEAKY_FEATURES: Final[set[str]] = {
     "valuation_k", "price_per_sqm", "price_per_sqm_vs_region_avg",
-    "target", "y", "label"
+    "target", "y", "label",
 }
 
-# (opzionale) Range attesi per scale check (serve a check_scale + sanity)
-EXPECTED_PRED_RANGE: Final[tuple[float, float]] = (20.0, 20000.0)  # €/m²: demo-safe
+# (Optional) Expected target range (used by sanity/check_scale).
+EXPECTED_PRED_RANGE: Final[tuple[float, float]] = (20.0, 20_000.0)  # €/m², demo-safe
 
 
-# ============================== Column names ================================
+# =============================================================================
+# Canonical column names
+# =============================================================================
 
 class Cols:
     # Core fields
@@ -205,7 +226,9 @@ class Cols:
     TIMESTAMP = "timestamp"
 
 
-# ============================= Groups & Sets ================================
+# =============================================================================
+# Groups & sets
+# =============================================================================
 
 class Groups:
     DERIVED_FEATURES: Final[Tuple[str, ...]] = (
@@ -227,12 +250,14 @@ class Groups:
     ENERGY_CLASSES: Final[Tuple[str, ...]] = tuple(ec.value for ec in EnergyClass)
 
 
-# ============================ Thresholds & Defaults =========================
+# =============================================================================
+# Thresholds & defaults
+# =============================================================================
 
 class Thresholds:
     MIN_SIZE_M2: Final[int] = 10
     MAX_SIZE_M2: Final[int] = 1000
-    MAX_LAG_HOURS: Final[int] = 8760  # 1 anno
+    MAX_LAG_HOURS: Final[int] = 8760  # 1 year
 
     DEFAULT_ZONE_THRESHOLDS_KM: Final[Dict[str, float]] = {
         Zone.CENTER.value: 1.5,
@@ -241,14 +266,16 @@ class Thresholds:
 
 
 class Defaults:
-    # qui potremmo inserire default di scoring/pesi se utili
+    """Reserved for future default knobs (scoring weights, etc.)."""
     pass
 
 
-# =============================== Mappings ===================================
+# =============================================================================
+# Mappings
+# =============================================================================
 
 class Mappings:
-    # energia → rank (A migliore)
+    # Energy class rank (A best)
     ENERGY_CLASS_RANK: Final[Dict[str, int]] = {
         EnergyClass.A.value: 7,
         EnergyClass.B.value: 6,
@@ -259,7 +286,7 @@ class Mappings:
         EnergyClass.G.value: 1,
     }
 
-    # ordine zone (center > semi_center > periphery)
+    # Zone ordering (center > semi_center > periphery)
     ZONE_ORDER: Final[Tuple[str, str, str]] = (
         Zone.CENTER.value,
         Zone.SEMI_CENTER.value,
@@ -267,7 +294,9 @@ class Mappings:
     )
 
 
-# ========================== Retrocompatibilità ==============================
+# =============================================================================
+# Backward-compatibility aliases
+# =============================================================================
 
 # Core fields
 ASSET_ID = Cols.ASSET_ID
@@ -290,7 +319,6 @@ FLOOR = Cols.FLOOR
 BUILDING_FLOORS = Cols.BUILDING_FLOORS
 IS_TOP_FLOOR = Cols.IS_TOP_FLOOR
 IS_GROUND_FLOOR = Cols.IS_GROUND_FLOOR
-
 TOP_FLOOR = IS_TOP_FLOOR
 GROUND_FLOOR = IS_GROUND_FLOOR
 
@@ -335,7 +363,7 @@ URBAN = UrbanType.URBAN.value
 SEMIURBAN = UrbanType.SEMIURBAN.value
 RURAL = UrbanType.RURAL.value
 
-# Zone names
+# Zones
 ZONE_CENTER = Zone.CENTER.value
 ZONE_SEMI_CENTER = Zone.SEMI_CENTER.value
 ZONE_PERIPHERY = Zone.PERIPHERY.value
@@ -382,7 +410,7 @@ TIMESTAMP = Cols.TIMESTAMP
 # Grouping (retrocompat)
 DERIVED_FEATURES: Final[Tuple[str, ...]] = Groups.DERIVED_FEATURES
 
-# Validation thresholds
+# Validation thresholds (retrocompat)
 MIN_SIZE_M2 = Thresholds.MIN_SIZE_M2
 MAX_SIZE_M2 = Thresholds.MAX_SIZE_M2
 MAX_LAG_HOURS = Thresholds.MAX_LAG_HOURS
@@ -397,44 +425,35 @@ ENERGY_CLASS_F = EnergyClass.F.value
 ENERGY_CLASS_G = EnergyClass.G.value
 ENERGY_CLASSES = Groups.ENERGY_CLASSES
 
+
+# =============================================================================
+# Analysis / ML defaults (not used by core libraries; convenient for notebooks)
+# =============================================================================
+
 class AnalysisDefaults:
-    # Soglie statistiche
+    # Statistical thresholds
     VARIANCE_THRESHOLD: float = 0.01
     VIF_THRESHOLD: float = 10.0
     CORRELATION_THRESHOLD: float = 0.95
     OUTLIER_STD_THRESHOLD: float = 3.0
 
-    # Viz defaults (solo suggerimenti; usate dai notebook)
+    # Visualization hints (for notebooks only)
     DEFAULT_FIGSIZE: Tuple[int, int] = (12, 6)
     DEFAULT_PALETTE: str = "husl"
     DEFAULT_STYLE: str = "whitegrid"
 
-    # Colonne (EDA helper)
+    # Columns (EDA helpers)
     NUMERIC_EXCLUDE: Tuple[str, ...] = (
-        Cols.ASSET_ID,
-        Cols.ASSET_TYPE,
-        Cols.LOCATION,
-        Cols.REGION,
-        Cols.URBAN_TYPE,
-        Cols.ZONE,
-        Cols.ORIENTATION,
-        Cols.VIEW,
-        Cols.CONDITION,
-        Cols.HEATING,
-        Cols.LAST_VERIFIED_TS,
-        Cols.PREDICTION_TS,
+        Cols.ASSET_ID, Cols.ASSET_TYPE, Cols.LOCATION, Cols.REGION, Cols.URBAN_TYPE,
+        Cols.ZONE, Cols.ORIENTATION, Cols.VIEW, Cols.CONDITION, Cols.HEATING,
+        Cols.LAST_VERIFIED_TS, Cols.PREDICTION_TS,
     )
 
     CATEGORICAL_FOCUS: Tuple[str, ...] = (
-        Cols.LOCATION,
-        Cols.ZONE,
-        Cols.URBAN_TYPE,
-        Cols.REGION,
-        Cols.ENERGY_CLASS,
-        Cols.CONDITION,
-        Cols.HEATING,
-        Cols.VIEW,
+        Cols.LOCATION, Cols.ZONE, Cols.URBAN_TYPE, Cols.REGION,
+        Cols.ENERGY_CLASS, Cols.CONDITION, Cols.HEATING, Cols.VIEW,
     )
+
 
 class MLDefaults:
     RF_PARAMS_DEFAULT: Dict[str, Any] = {
@@ -445,21 +464,25 @@ class MLDefaults:
         "random_state": 42,
     }
 
-# ================================ __all__ ===================================
+
+# =============================================================================
+# Module exports
+# =============================================================================
 
 __all__ = [
+    # mappings & defaults
+    "CITY_ALIASES", "DEFAULT_URBAN_TYPE_BY_CITY", "DEFAULT_REGION_BY_CITY",
     # enums
     "AssetType", "Zone", "UrbanType", "EnergyClass", "ViewType",
-    # versions/seed
-    "Versions", "SEED",
-    "SCHEMA_VERSION", "NOTE_MAX_BYTES", "NOTE_PREFIX", "NETWORK",
-    "LEAKY_FEATURES", "EXPECTED_PRED_RANGE"
+    # versions/seed/constants
+    "Versions", "SEED", "SCHEMA_VERSION", "NOTE_MAX_BYTES", "NOTE_PREFIX", "NETWORK",
+    "LEAKY_FEATURES", "EXPECTED_PRED_RANGE",
     # namespaces
     "Cols", "Groups", "Thresholds", "Defaults", "Mappings",
-    # retrocompat column names
+    # retrocompat column names & groups
     "ASSET_ID", "ASSET_TYPE", "LOCATION", "VALUATION_K", "PRICE_PER_SQM",
-    "LAST_VERIFIED_TS", "REGION", "URBAN_TYPE", "ZONE", "SIZE_M2",
-    "ROOMS", "BATHROOMS", "YEAR_BUILT", "AGE_YEARS", "FLOOR", "BUILDING_FLOORS",
+    "LAST_VERIFIED_TS", "REGION", "URBAN_TYPE", "ZONE", "SIZE_M2", "ROOMS",
+    "BATHROOMS", "YEAR_BUILT", "AGE_YEARS", "FLOOR", "BUILDING_FLOORS",
     "IS_TOP_FLOOR", "IS_GROUND_FLOOR", "TOP_FLOOR", "GROUND_FLOOR",
     "HAS_ELEVATOR", "HAS_GARDEN", "HAS_BALCONY", "GARAGE", "OWNER_OCCUPIED",
     "PUBLIC_TRANSPORT_NEARBY", "DISTANCE_TO_CENTER_KM", "PARKING_SPOT", "CELLAR",
@@ -477,9 +500,9 @@ __all__ = [
     "IS_STALE_60D", "IS_STALE_90D", "ANOMALY_SCORE", "ANOMALY_SCORE_RAW",
     "ANOMALY_FLAG", "ANOMALY_LABEL", "SEVERITY_SCORE", "CONFIDENCE_SCORE",
     "VALUE_SEGMENT", "LUXURY_CATEGORY", "AGE_CATEGORY", "TIMESTAMP",
-    "DERIVED_FEATURES",
-    "MIN_SIZE_M2", "MAX_SIZE_M2", "MAX_LAG_HOURS",
+    "DERIVED_FEATURES", "MIN_SIZE_M2", "MAX_SIZE_M2", "MAX_LAG_HOURS",
     "ENERGY_CLASS_A", "ENERGY_CLASS_B", "ENERGY_CLASS_C", "ENERGY_CLASS_D",
     "ENERGY_CLASS_E", "ENERGY_CLASS_F", "ENERGY_CLASS_G", "ENERGY_CLASSES",
+    # notebook-oriented defaults
     "AnalysisDefaults", "MLDefaults",
 ]
