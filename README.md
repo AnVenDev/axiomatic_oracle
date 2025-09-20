@@ -8,7 +8,6 @@ A production-ready, modular AI + Blockchain oracle for **automated valuation and
 [![Algorand](https://img.shields.io/badge/Algorand-TestNet-orange.svg)](https://developer.algorand.org/)
 [![Angular](https://img.shields.io/badge/Angular-17-red.svg)](https://angular.io/)
 [![Docker](https://img.shields.io/badge/Docker-ready-blue.svg)](https://www.docker.com/)
-[![CI/CD](https://github.com/AnVenDev/ai-oracle-rwa/actions/workflows/ci.yml/badge.svg)](https://github.com/AnVenDev/ai-oracle-rwa/actions)
 [![Coverage](https://img.shields.io/badge/coverage-83%25-brightgreen.svg)](#)
 
 ## 1. Key Features
