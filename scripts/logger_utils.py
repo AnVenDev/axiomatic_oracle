@@ -1,48 +1,95 @@
 # scripts/logger_utils.py
 from __future__ import annotations
+"""
+Module: logger_utils.py — File-backed logging utilities (atomic & JSON-safe)
 
+Responsibilities
+- Persist publication artifacts in both JSONL (append-only) and JSON array formats.
+- Save detailed prediction payloads for audit/debug (with SHA-256 for integrity).
+- Write minimal audit bundles for on-chain attestations (p1, hashes, canonical input).
+- Provide small helpers (atomic writes, file SHA-256).
+
+Design notes
+- JSONL is the source of truth for append-only logs (robust under concurrency).
+- The JSON array file is kept for backward compatibility with existing tooling/tests.
+- All writes are atomic (tmp + os.replace, or O_APPEND for JSONL).
+- Timestamps use UTC ISO via shared utils.
+
+SECURITY
+- Do not log secrets/PII. Callers must pre-redact sensitive fields.
+- Filenames are sanitized to avoid path traversal & invalid characters.
+
+ENV
+- OUTPUTS_DIR (default: notebooks/outputs)
+- AI_ORACLE_LOG_DIR (default: <OUTPUTS_DIR>/logs)
+- AI_ORACLE_DISABLE_API_LOG=1|true to disable all writes (no-op).
+"""
+
+# =========================
+# Standard library imports
+# =========================
 import json
 import os
+import re
 import tempfile
 from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
-from typing import Dict, List, Optional, Any
-import re
+from typing import Any, Dict, List, Optional
 
-# Shared utils: timestamp + JSON encoder robusto a numpy
-from notebooks.shared.common.utils import get_utc_now, NumpyJSONEncoder
+# ===========
+# Shared deps
+# ===========
+# Provides: get_utc_now() -> ISO UTC string; NumpyJSONEncoder safe for numpy/pandas objects
+from notebooks.shared.common.utils import get_utc_now, NumpyJSONEncoder  # type: ignore
 
-# -----------------------------------------------------------------------------
-# Paths (rispetta AI_ORACLE_LOG_DIR; fallback: notebooks/outputs/logs)
-# -----------------------------------------------------------------------------
+__all__ = [
+    "log_asset_publication",
+    "append_jsonl",
+    "save_publications_to_json",
+    "compute_file_hash",
+    "save_prediction_detail",
+    "save_audit_bundle",
+]
+
+# =============================================================================
+# Paths (honor AI_ORACLE_LOG_DIR; fallback to notebooks/outputs/logs)
+# =============================================================================
 OUTPUTS_DIR = Path(os.getenv("OUTPUTS_DIR", "notebooks/outputs"))
 LOG_DIR = Path(os.getenv("AI_ORACLE_LOG_DIR", OUTPUTS_DIR / "logs"))
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
-LOG_FILE_JSON = LOG_DIR / "published_assets.json"     # array
-LOG_FILE_JSONL = LOG_DIR / "published_assets.jsonl"   # append-only JSONL
+LOG_FILE_JSON = LOG_DIR / "published_assets.json"      # array (compatibility)
+LOG_FILE_JSONL = LOG_DIR / "published_assets.jsonl"    # append-only
 DETAIL_DIR = LOG_DIR / "detail_reports"
 DETAIL_DIR.mkdir(parents=True, exist_ok=True)
 
-# -----------------------------------------------------------------------------
+# =============================================================================
 # Low-level helpers
-# -----------------------------------------------------------------------------
+# =============================================================================
 def _atomic_write_json(path: Path, payload: Any) -> None:
+    """
+    Atomically write a JSON document to `path`.
+    Uses a temp file + os.replace (atomic on POSIX/NTFS).
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile("w", dir=path.parent, delete=False, encoding="utf-8") as tmp:
         json.dump(payload, tmp, indent=2, ensure_ascii=False, cls=NumpyJSONEncoder)
         tmp_path = Path(tmp.name)
-    os.replace(tmp_path, path)  # atomico su NTFS/POSIX
+    os.replace(tmp_path, path)
 
-def _atomic_append_jsonl(payload: dict, path: Path) -> None:
-    """Append atomico (O_APPEND) in formato JSONL."""
+def _atomic_append_jsonl(payload: Dict[str, Any], path: Path) -> None:
+    """
+    Append a single JSON line atomically.
+    Uses O_APPEND to avoid interleaving under concurrent writers.
+    """
     line = json.dumps(payload, cls=NumpyJSONEncoder, ensure_ascii=False)
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND)
     with os.fdopen(fd, "a", encoding="utf-8") as f:
         f.write(line + "\n")
 
 def _file_sha256_stream(path: Path, chunk_size: int = 1 << 20) -> str:
+    """Compute SHA-256 of a file by streaming chunks (default 1 MiB)."""
     h = sha256()
     with path.open("rb") as f:
         for chunk in iter(lambda: f.read(chunk_size), b""):
@@ -50,37 +97,42 @@ def _file_sha256_stream(path: Path, chunk_size: int = 1 << 20) -> str:
     return h.hexdigest()
 
 def _logging_enabled() -> bool:
-    # AI_ORACLE_DISABLE_API_LOG=1/true -> disabilita
+    """
+    Global kill-switch for file writes.
+    AI_ORACLE_DISABLE_API_LOG=1|true → disable.
+    """
     return os.getenv("AI_ORACLE_DISABLE_API_LOG", "0").lower() not in {"1", "true", "yes", "y"}
 
 def _safe_name(name: str, *, maxlen: int = 80) -> str:
     """
-    Converte una stringa in un filename sicuro: [a-zA-Z0-9._-] soltanto, tronca a maxlen.
-    Rimpiazza sequenze vuote con 'item'.
+    Convert any string into a safe filename: allow [a-zA-Z0-9._-] only, trim to `maxlen`.
+    Empty results become 'item'.
     """
     base = re.sub(r"[^a-zA-Z0-9._-]", "-", str(name or "").strip())
     base = base.strip("-._") or "item"
     return base[:maxlen]
 
-# -----------------------------------------------------------------------------
+# =============================================================================
 # Public API
-# -----------------------------------------------------------------------------
-def log_asset_publication(data: dict) -> None:
+# =============================================================================
+def log_asset_publication(data: Dict[str, Any]) -> None:
     """
-    Logga una singola pubblicazione:
-    - Sempre appende su JSONL (append-only, atomic)
-    - Sempre aggiorna anche il file JSON array (compatibilità test)
+    Log a single publication event:
+    - Always appends to JSONL (append-only).
+    - Also mirrors to the JSON array file for compatibility with tests/tools.
+
+    NOTE: Caller is responsible for redaction of sensitive fields.
     """
     if not _logging_enabled():
         return
 
     enriched = {**data, "logged_at": get_utc_now()}
 
-    # JSONL append-only (robusto in concorrenza)
+    # JSONL append-only (concurrency-friendly)
     _atomic_append_jsonl(enriched, LOG_FILE_JSONL)
 
-    # Mantieni anche il formato array (come si aspettano i test)
-    items: List[dict] = []
+    # Maintain JSON array file (compat)
+    items: List[Dict[str, Any]] = []
     if LOG_FILE_JSON.exists():
         try:
             existing = json.loads(LOG_FILE_JSON.read_text(encoding="utf-8"))
@@ -91,10 +143,10 @@ def log_asset_publication(data: dict) -> None:
     items.append(enriched)
     _atomic_write_json(LOG_FILE_JSON, items)
 
-def append_jsonl(record: dict, path: Optional[Path] = None) -> None:
+def append_jsonl(record: Dict[str, Any], path: Optional[Path] = None) -> None:
     """
-    Append generico di una riga JSONL (con timestamp automatico).
-    Utile per logging di predizioni/monitoring.
+    Generic JSONL append with automatic timestamp.
+    Useful for inference/monitoring logs.
     """
     if not _logging_enabled():
         return
@@ -102,10 +154,10 @@ def append_jsonl(record: dict, path: Optional[Path] = None) -> None:
     payload = {**record, "_logged_at": get_utc_now()}
     _atomic_append_jsonl(payload, path)
 
-def save_publications_to_json(results: List[Dict], filename: Path = LOG_FILE_JSON) -> None:
+def save_publications_to_json(results: List[Dict[str, Any]], filename: Path = LOG_FILE_JSON) -> None:
     """
-    Sovrascrive il file JSON (array) con una lista di risultati.
-    (Manteniamo per compatibilità con flussi batch già esistenti.)
+    Overwrite the JSON array file with a list of result dicts.
+    Kept for compatibility with batch flows.
     """
     if not _logging_enabled():
         return
@@ -113,13 +165,15 @@ def save_publications_to_json(results: List[Dict], filename: Path = LOG_FILE_JSO
     _atomic_write_json(filename, enriched)
 
 def compute_file_hash(path: Path) -> str:
-    """SHA256 del file (streaming)."""
+    """Return SHA-256 hex digest of the file at `path`."""
     return _file_sha256_stream(path)
 
-def save_prediction_detail(prediction: dict, *, filename: Optional[Path] = None) -> str:
+def save_prediction_detail(prediction: Dict[str, Any], *, filename: Optional[Path] = None) -> str:
     """
-    Salva il payload completo della predizione in logs/detail_reports/<asset_id>.json
-    (o in un path custom) e ritorna l'hash SHA256 del file salvato.
+    Save the full prediction payload under logs/detail_reports/<asset_id>.json
+    (or at a custom `filename`) and return the resulting file's SHA-256.
+
+    Returns "" if logging is disabled.
     """
     if not _logging_enabled():
         return ""
@@ -139,19 +193,22 @@ def save_audit_bundle(
     *,
     p1_bytes: bytes,
     p1_sha256: str,
-    canonical_input: dict,
-    verify_report: Optional[dict] = None,
+    canonical_input: Dict[str, Any],
+    verify_report: Optional[Dict[str, Any]] = None,
 ) -> str:
     """
-    Scrive un audit bundle minimale nella cartella indicata:
-      - p1.json            (byte ACJ-1)
-      - p1.sha256
+    Write a minimal audit bundle into `bundle_dir`:
+      - p1.json            (ACJ-1 canonical bytes as-is)
+      - p1.sha256          (hex)
       - canonical_input.json
-      - verify_report.json (opzionale)
-    Ritorna il path della cartella (stringa).
+      - verify_report.json (optional)
+    Returns the bundle directory as string.
+
+    SECURITY: Do not include PII in canonical_input/verify_report.
     """
     if not _logging_enabled():
         return str(bundle_dir)
+
     bundle_dir.mkdir(parents=True, exist_ok=True)
     (bundle_dir / "p1.json").write_bytes(p1_bytes)
     (bundle_dir / "p1.sha256").write_text(str(p1_sha256), encoding="utf-8")

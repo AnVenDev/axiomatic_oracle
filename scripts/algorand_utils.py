@@ -1,28 +1,50 @@
 """
-Algorand utilities
+Module: algorand_utils.py — Utilities for publishing and verifying PoVal™ on Algorand.
 
-Funzioni principali:
-- create_algod_client(): istanzia il client con config da env (/secrets_manager)
-- wait_for_confirmation(txid, timeout): attende la conferma con gestione errori robusta
-- publish_p1_attestation(p1_obj): pubblica **PoVal p1** usando i **byte ACJ-1** (fail se > NOTE_MAX_BYTES)
-- publish_to_algorand(note_dict, *, fallback_url=None): LEGACY self-transfer 0 ALGO con nota JSON (<= NOTE_MAX_BYTES)
-- create_token_for_asset(asset_name, unit_name, metadata_content=None, url=None): crea ASA 1:1 (NFT-like)
-- get_tx_note_info(txid): recupera info/nota (decodificata) di una transazione confermata
+Responsibilities:
+- Create clients (Algod / Indexer) from env config.
+- Publish PoVal p1 using ACJ-1 canonical bytes (strict size guard).
+- Legacy JSON note publish with compact fallback (ref/hash/url).
+- Create 1:1 ASA (NFT-like) when needed.
+- Resolve tx → decode note (Indexer first, Algod fallback) for Verify flow.
+
+NOTE:
+- p1 is compact ACJ-1 JSON; we do NOT compact/fallback it. If it exceeds NOTE_MAX_BYTES, fail.
+- For historical transactions, always use the Indexer. Algod is only reliable for pending/immediate.
+- Indexer ingestion may lag for a few seconds — short retry/backoff is applied.
+
+SECURITY:
+- Never log raw private keys or raw on-chain note payloads; expose only sizes/hashes.
 """
 
 from __future__ import annotations
 
-import os
-import json
+# =========================
+# Standard library imports
+# =========================
 import base64
 import hashlib
-from typing import Any, Dict, Optional, Union, Tuple, TypedDict
+import json
+import os
+import time
+from typing import Any, Dict, Optional, Tuple, TypedDict, Union
 
-from algosdk.v2client import algod  # type: ignore
-from algosdk import transaction     # type: ignore
+# ===========
+# Third-party
+# ===========
+from algosdk import transaction  # type: ignore
+from algosdk.v2client import algod, indexer  # type: ignore
 
-from scripts.secrets_manager import get_algod_config, get_account, get_network
-from scripts.canon import canonicalize_jcs  # ACJ-1 per p1
+# ========
+# Local os
+# ========
+from scripts.canon import canonicalize_jcs  # ACJ-1 bytes for p1
+from scripts.secrets_manager import (
+    get_account,
+    get_algod_config,
+    get_indexer_config,
+    get_network,
+)
 
 __all__ = [
     "AlgorandError",
@@ -32,24 +54,25 @@ __all__ = [
     "publish_to_algorand",
     "create_token_for_asset",
     "get_tx_note_info",
-    "explorer_url"
+    "explorer_url",
 ]
 
-# ---------------------------------------------------------------------
-# Costanti / Env
-# ---------------------------------------------------------------------
-_DEFAULT_NOTE_MAX = int(os.getenv("NOTE_MAX_BYTES", "1024"))  # per p1 garantiamo <1KB
+# =============================================================================
+# Constants / Env
+# =============================================================================
+_DEFAULT_NOTE_MAX = int(os.getenv("NOTE_MAX_BYTES", "1024"))  # p1 must be < 1KB (typical)
 
-# ---------------------------------------------------------------------
+# =============================================================================
 # Error type
-# ---------------------------------------------------------------------
+# =============================================================================
 class AlgorandError(Exception):
     """Custom exception for Algorand operations."""
     pass
 
-# ---------------------------------------------------------------------
-# Tipi di ritorno
-# ---------------------------------------------------------------------
+
+# =============================================================================
+# Typed return shapes
+# =============================================================================
 class PublishResult(TypedDict, total=False):
     txid: str
     note_size: int
@@ -58,46 +81,59 @@ class PublishResult(TypedDict, total=False):
     fallback_url_used: bool
     confirmed_round: Optional[int]
 
+
 class TxNoteInfo(TypedDict, total=False):
     confirmed_round: Optional[int]
     note_size: Optional[int]
     note_sha256: Optional[str]
     note_json: Optional[dict]
+    explorer_url: Optional[str]
     raw: Dict[str, Any]
 
-# ---------------------------------------------------------------------
+
+# =============================================================================
 # Client & account helpers
-# ---------------------------------------------------------------------
+# =============================================================================
 def create_algod_client() -> algod.AlgodClient:
     """
-    Crea un client Algod usando la configurazione da env (Algonode/Sandbox/Custom).
-    Accetta token via headers per compatibilità con Algonode.
+    Create an Algod client using env config (Algonode/Sandbox/Custom).
+    NOTE: Token passed via headers for Algonode compatibility.
     """
     cfg = get_algod_config()
-    token = ""  # token passato via headers
+    token = ""  # token via headers
     headers = cfg.headers or {}
     return algod.AlgodClient(token, cfg.algod_url, headers)
 
+
+def _create_indexer_client() -> Optional[indexer.IndexerClient]:
+    """Instantiate Indexer client if configured; otherwise None."""
+    try:
+        cfg = get_indexer_config()
+        token = ""  # Algonode uses header; compatible with cfg.headers
+        headers = cfg.headers or {}
+        return indexer.IndexerClient(token, cfg.indexer_url, headers)
+    except Exception:
+        return None
+
+
 def _require_signing_account() -> Tuple[str, bytes]:
-    """
-    Ritorna (address, private_key). Solleva se i segreti non ci sono.
-    """
+    """Return (address, private_key). Raise if secrets are missing."""
     acc = get_account(require_signing=True)
     if not acc.address or not acc.private_key:
         raise AlgorandError("Signing material not available (address/private_key). Check env secrets.")
     return acc.address, acc.private_key
 
-# ---------------------------------------------------------------------
+
+# =============================================================================
 # JSON helpers
-# ---------------------------------------------------------------------
+# =============================================================================
 def _json_min(obj: Dict[str, Any]) -> bytes:
-    """Serializza JSON minificato UTF-8 (deterministico)."""
+    """Serialize deterministic UTF-8 minified JSON (compact separators)."""
     return json.dumps(obj, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
+
 def _build_compact_note(full_payload: Dict[str, Any], *, fallback_url: Optional[str]) -> Dict[str, Any]:
-    """
-    LEGACY: nota compatta per payload troppo grandi (aioracle:v2).
-    """
+    """LEGACY: compact note for large payloads (aioracle:v2)."""
     raw = _json_min(full_payload)
     return {
         "ref": "aioracle:v2",
@@ -107,14 +143,16 @@ def _build_compact_note(full_payload: Dict[str, Any], *, fallback_url: Optional[
         **({"url": fallback_url} if fallback_url else {}),
     }
 
+
 def _ensure_note_bytes(
     payload: Dict[str, Any],
     *,
     fallback_url: Optional[str],
-    max_bytes: int
+    max_bytes: int,
 ) -> Tuple[bytes, bool, bool]:
     """
-    LEGACY: se eccede, sostituisce con ref/hash (+url se presente).
+    LEGACY: If payload exceeds max_bytes, replace with ref/hash (+url if present).
+    Returns: (note_bytes, is_compacted, fallback_url_used)
     """
     raw = _json_min(payload)
     if len(raw) <= max_bytes:
@@ -125,17 +163,21 @@ def _ensure_note_bytes(
     fallback_used = "url" in compact
 
     if len(cbytes) > max_bytes and "url" in compact:
+        # Try removing url to fit the budget.
         del compact["url"]
         cbytes = _json_min(compact)
         fallback_used = False
 
     if len(cbytes) > max_bytes:
+        # Minimal ref/hash only.
         minimal = {"ref": "aioracle:v2", "hash": compact["hash"]}
         cbytes = _json_min(minimal)
 
     return cbytes, True, fallback_used
 
+
 def _coerce_pending_info(raw: Union[Dict[str, Any], bytes]) -> Dict[str, Any]:
+    """Coerce algod pending_transaction_info outputs to dict."""
     if isinstance(raw, dict):
         return raw
     if isinstance(raw, (bytes, bytearray)):
@@ -145,13 +187,29 @@ def _coerce_pending_info(raw: Union[Dict[str, Any], bytes]) -> Dict[str, Any]:
             raise AlgorandError(f"Invalid JSON bytes from pending_transaction_info: {e}")
     raise AlgorandError("Unexpected type from pending_transaction_info")
 
-# ---------------------------------------------------------------------
+
+def _decode_note_from_base64(note_b64: Optional[str]) -> Tuple[bytes, Optional[dict]]:
+    """Decode base64 note to (bytes, json|None)."""
+    note_bytes = b""
+    if note_b64:
+        try:
+            note_bytes = base64.b64decode(note_b64)
+        except Exception:
+            note_bytes = b""
+    try:
+        note_json = json.loads(note_bytes.decode("utf-8")) if note_bytes else None
+    except Exception:
+        note_json = None
+    return note_bytes, note_json
+
+
+# =============================================================================
 # Explorer helper
-# ---------------------------------------------------------------------
+# =============================================================================
 def explorer_url(txid: str, network: Optional[str] = None) -> Optional[str]:
     """
-    Costruisce l'URL dell'explorer coerente con il network.
-    Ritorna None per network sandbox/custom senza explorer pubblico.
+    Build explorer URL consistent with network.
+    Returns None for sandbox/custom networks.
     """
     if not txid:
         return None
@@ -160,16 +218,19 @@ def explorer_url(txid: str, network: Optional[str] = None) -> Optional[str]:
         return f"https://explorer.perawallet.app/tx/{txid}"
     if net == "testnet":
         return f"https://testnet.explorer.perawallet.app/tx/{txid}"
-    # sandbox/custom → nessun explorer garantito
     return None
 
-# ---------------------------------------------------------------------
+
+# =============================================================================
 # Core ops
-# ---------------------------------------------------------------------
+# =============================================================================
 def wait_for_confirmation(client: algod.AlgodClient, txid: str, timeout: int = 10) -> Dict[str, Any]:
     """
-    Attende che la transazione sia confermata (o timeout in N round).
-    Ritorna il pending info finale (dict) alla conferma.
+    Wait for transaction confirmation (or timeout in N rounds).
+    Returns the final pending info dict upon confirmation.
+
+    WARN:
+    - Use this only for the immediate/pending path. For historical lookups, use Indexer.
     """
     try:
         status = client.status()
@@ -187,6 +248,7 @@ def wait_for_confirmation(client: algod.AlgodClient, txid: str, timeout: int = 1
 
     raise AlgorandError(f"Transaction {txid} not confirmed after {timeout} rounds")
 
+
 def publish_p1_attestation(
     p1_obj: Dict[str, Any],
     *,
@@ -194,14 +256,17 @@ def publish_p1_attestation(
     max_note_bytes: int = _DEFAULT_NOTE_MAX,
 ) -> PublishResult:
     """
-    Pubblica **PoVal p1** in nota, usando i **byte canonici ACJ-1**.
-    - NON effettua fallback: se supera `max_note_bytes` solleva AlgorandError.
-    - Ritorna: txid, note_size, note_sha256, is_compacted(False), confirmed_round.
+    Publish PoVal p1 in the note field using ACJ-1 canonical bytes.
+    - No fallback/compaction: if > max_note_bytes, raise AlgorandError.
+    - Returns txid, note_size, note_sha256, is_compacted(False), confirmed_round.
+
+    SECURITY:
+    - Do not log raw p1 or keys. Log only txid, note_size, note_sha256.
     """
     if not isinstance(p1_obj, dict) or p1_obj.get("s") != "p1":
         raise AlgorandError("Invalid p1 object (missing s='p1').")
 
-    # Byte canonici (ACJ-1)
+    # ACJ-1 canonical bytes (deterministic)
     note_bytes = canonicalize_jcs(p1_obj)
     if len(note_bytes) > max_note_bytes:
         raise AlgorandError(f"p1 note exceeds byte budget ({len(note_bytes)} > {max_note_bytes})")
@@ -231,6 +296,7 @@ def publish_p1_attestation(
     except Exception as e:
         raise AlgorandError(f"Algorand publish failed: {e}")
 
+
 def publish_to_algorand(
     note_dict: Dict[str, Any],
     *,
@@ -239,8 +305,8 @@ def publish_to_algorand(
     max_note_bytes: int = 900,
 ) -> PublishResult:
     """
-    **LEGACY**: self-transfer 0 ALGO con nota JSON 'aioracle:v2' (o ref/hash se troppo grande).
-    Ritorna: txid, note_size, note_sha256, is_compacted, fallback_url_used, confirmed_round.
+    LEGACY: self-transfer 0 ALGO with JSON note 'aioracle:v2' (or ref/hash if too large).
+    Returns: txid, note_size, note_sha256, is_compacted, fallback_url_used, confirmed_round.
     """
     client = create_algod_client()
     sender, sk = _require_signing_account()
@@ -271,6 +337,7 @@ def publish_to_algorand(
     except Exception as e:
         raise AlgorandError(f"Algorand publish failed: {e}")
 
+
 def create_token_for_asset(
     asset_name: str,
     unit_name: str,
@@ -281,9 +348,9 @@ def create_token_for_asset(
     use_flat_fee: bool = True,
 ) -> int:
     """
-    Crea un ASA (1 unità, 0 decimali) con manager/reserve/freeze/clawback = sender.
-    - metadata_content (opz.): usato per metadata_hash (SHA-256 dei byte)
-    - url: URL scritto nell'ASA; se assente usa default_url
+    Create a 1-unit ASA (0 decimals) with manager/reserve/freeze/clawback = sender.
+    - metadata_content (optional): used for metadata_hash (SHA-256 of bytes).
+    - url: URL written into ASA; falls back to default_url.
     """
     client = create_algod_client()
     sender, sk = _require_signing_account()
@@ -322,33 +389,69 @@ def create_token_for_asset(
     except Exception as e:
         raise AlgorandError(f"ASA creation failed: {e}")
 
+
+# =============================================================================
+# Tx lookup (Indexer-first with Algod fallback)
+# =============================================================================
 def get_tx_note_info(txid: str) -> TxNoteInfo:
     """
-    Recupera info (round) + nota decodificata. Se la nota è JSON, la ritorna come dict.
+    Resolve txid → (confirmed_round, note_size, note_sha256, note_json, explorer_url, raw).
+
+    NOTE:
+    - Prefer Indexer for historical transactions (with short retry/backoff).
+    - Fallback to Algod pending path for just-published transactions.
+    - Do not log raw note; compute hash/size and return JSON only to callers explicitly using it.
     """
+    # --- 1) Try Indexer (historical) -----------------------------------------
+    idx = _create_indexer_client()
+    if idx is not None:
+        backoff = 0.4
+        for _ in range(6):  # ~2.5s total before falling back
+            try:
+                resp = idx.transaction(txid)  # single tx by id
+                # Formats may vary: {"transaction": {...}} or direct fields
+                txn = resp.get("transaction", resp)
+                confirmed_round = txn.get("confirmed-round") or txn.get("confirmedRound")
+                note_b64 = txn.get("note")
+                note_bytes, note_json = _decode_note_from_base64(note_b64)
+                return TxNoteInfo(
+                    confirmed_round=int(confirmed_round) if confirmed_round else None,
+                    note_size=(len(note_bytes) if note_bytes else None),
+                    note_sha256=(hashlib.sha256(note_bytes).hexdigest() if note_bytes else None),
+                    note_json=note_json,
+                    explorer_url=explorer_url(txid, get_network()),
+                    raw=txn if isinstance(txn, dict) else {},
+                )
+            except Exception:
+                time.sleep(backoff)
+                backoff *= 1.5  # PERF: incremental backoff
+        # proceed to Algod fallback
+
+    # --- 2) Fallback: Algod pending/immediate -------------------------------
     client = create_algod_client()
-    info = wait_for_confirmation(client, txid, timeout=1)
+    try:
+        info = wait_for_confirmation(client, txid, timeout=1)
+    except Exception as e:
+        # Return minimal structure containing the error (do not crash caller)
+        return TxNoteInfo(
+            confirmed_round=None,
+            note_size=None,
+            note_sha256=None,
+            note_json=None,
+            explorer_url=explorer_url(txid, get_network()),
+            raw={"error": str(e)},
+        )
 
     note_b64 = None
     if isinstance(info, dict):
         note_b64 = info.get("note") or (info.get("txn") or {}).get("txn", {}).get("note")
 
-    note_bytes = b""
-    if note_b64:
-        try:
-            note_bytes = base64.b64decode(note_b64)
-        except Exception:
-            note_bytes = b""
-
-    try:
-        note_json = json.loads(note_bytes.decode("utf-8")) if note_bytes else None
-    except Exception:
-        note_json = None
-
+    note_bytes, note_json = _decode_note_from_base64(note_b64)
     return TxNoteInfo(
         confirmed_round=int(info.get("confirmed-round")) if isinstance(info, dict) and info.get("confirmed-round") else None,
         note_size=(len(note_bytes) if note_bytes else None),
         note_sha256=(hashlib.sha256(note_bytes).hexdigest() if note_bytes else None),
         note_json=note_json,
+        explorer_url=explorer_url(txid, get_network()),
         raw=info if isinstance(info, dict) else {},
     )

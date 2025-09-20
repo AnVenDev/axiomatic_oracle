@@ -1,24 +1,40 @@
 # scripts/sample_property.py
 from __future__ import annotations
+
+"""
+Sample payloads and response builders for the AI Oracle (Property).
+- sample_property_request: example request body for /predict/property
+- make_sample_response_v2(...): builds a schema v2 response (optionally with PoVal p1)
+- sample_response_v2 / multiple_samples_v2: ready-to-use v2 samples
+- sample_response_v1 / multiple_samples_v1: legacy v1 samples (still supported by tests)
+
+This module is used by docs/tests and does NOT load any secret material.
+"""
+
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
-import os
 from pathlib import Path
+import os
 
-# Per generare PoVal p1 dai sample v2
+# PoVal helpers (optional in test envs)
 try:
     from scripts.canon import build_p1_from_response, canonical_note_bytes_p1
 except Exception:  # pragma: no cover
-    build_p1 = None  # type: ignore
-    build_p1_from_response = None  # type: ignore
-    canonical_note_bytes_p1 = None  # type: ignore
+    build_p1_from_response = None   # type: ignore[assignment]
+    canonical_note_bytes_p1 = None  # type: ignore[assignment]
 
+
+# =============================================================================
+# Utilities
+# =============================================================================
 def _now_iso() -> str:
+    """UTC ISO8601 Z without microseconds."""
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
-# -----------------------------------------------------------------------------
-# Esempio di payload di RICHIESTA per /predict/property
-# -----------------------------------------------------------------------------
+
+# =============================================================================
+# Request sample for /predict/property
+# =============================================================================
 sample_property_request: Dict[str, Any] = {
     "location": "Milan",
     "size_m2": 95,
@@ -30,23 +46,31 @@ sample_property_request: Dict[str, Any] = {
     "has_elevator": 1,
     "has_garden": 0,
     "has_balcony": 1,
-    "garage": 1,  # alias accettato → verrà canonicalizzato a has_garage
+    "garage": 1,  # accepted alias -> canonicalized to has_garage server-side
     "energy_class": "B",
     "humidity_level": 50.0,
     "temperature_avg": 20.5,
     "noise_level": 40,
     "air_quality_index": 70,
-    # Il backend calcola age_years, luxury_score, env_score
+    # backend will compute age_years, luxury_score, env_score, region/zone normalization, etc.
 }
 
-# ---- helpers per risolvere il path del modello (solo scopo demo) ----
+
+# =============================================================================
+# Model path helpers (demo only)
+# =============================================================================
 def _models_base() -> Path:
+    """
+    Resolve a plausible models base directory, preferring env overrides.
+    This is ONLY used to populate example metadata fields in sample responses.
+    """
     for env in ("AI_ORACLE_MODELS_BASE", "MODELS_ROOT"):
         v = os.getenv(env)
         if v:
             p = Path(v)
             if p.exists():
                 return p.resolve()
+
     root = Path(__file__).resolve().parents[1]
     candidates = [
         root / "notebooks" / "outputs" / "modeling" / "property",
@@ -59,7 +83,12 @@ def _models_base() -> Path:
             return c.resolve()
     return candidates[0]
 
+
 def _resolve_model_path(version: str = "v2") -> str:
+    """
+    Pick an existing .joblib to show in example metadata.
+    Tries value_regressor_<version>.joblib, then known artifact names.
+    """
     base = _models_base()
     prop_dir = base if base.name == "property" else (base / "property")
     target = prop_dir / f"value_regressor_{version}.joblib"
@@ -72,9 +101,10 @@ def _resolve_model_path(version: str = "v2") -> str:
             return str(cand)
     return str(target)
 
-# -----------------------------------------------------------------------------
-# ESEMPI DI RISPOSTA — SCHEMA v2
-# -----------------------------------------------------------------------------
+
+# =============================================================================
+# Schema v2 samples
+# =============================================================================
 def make_sample_response_v2(
     asset_id: str = "property_001",
     *,
@@ -88,6 +118,10 @@ def make_sample_response_v2(
     n_estimators: Optional[int] = 200,
     latency_ms: float = 12.8,
 ) -> Dict[str, Any]:
+    """
+    Build a realistic schema v2 response (compatible with the API).
+    If PoVal helpers are available, the attestation.p1 + sha/size are included.
+    """
     resp = {
         "schema_version": "v2",
         "asset_id": asset_id,
@@ -128,7 +162,7 @@ def make_sample_response_v2(
         "publish": {"status": "not_attempted"},
     }
 
-    # Se disponibile, allega anche PoVal p1 (come fa l'API)
+    # Attach PoVal p1 if helpers are available
     if build_p1_from_response and canonical_note_bytes_p1:
         try:
             p1, _dbg = build_p1_from_response(resp, allowed_input_keys=[])
@@ -137,9 +171,11 @@ def make_sample_response_v2(
             resp["attestation"].update({"p1_sha256": h, "p1_size_bytes": int(n)})
         except Exception:
             pass
+
     return resp
 
-# Un singolo sample v2 pronto all’uso + lista
+
+# One-off and multiple samples (v2)
 sample_response_v2: Dict[str, Any] = make_sample_response_v2()
 multiple_samples_v2: List[Dict[str, Any]] = [
     make_sample_response_v2(
@@ -152,9 +188,10 @@ multiple_samples_v2: List[Dict[str, Any]] = [
     for i in range(5)
 ]
 
-# -----------------------------------------------------------------------------
-# LEGACY — SCHEMA v1 (ancora supportato)
-# -----------------------------------------------------------------------------
+
+# =============================================================================
+# Legacy schema v1 samples (still used by tests)
+# =============================================================================
 sample_response_v1: Dict[str, Any] = {
     "asset_id": "property_001",
     "asset_type": "property",
@@ -172,6 +209,7 @@ sample_response_v1: Dict[str, Any] = {
     "cache_hit": False,
     "publish": {"status": "not_attempted"},
 }
+
 multiple_samples_v1: List[Dict[str, Any]] = [
     {
         "asset_id": f"property_{i:03}",
@@ -193,8 +231,6 @@ multiple_samples_v1: List[Dict[str, Any]] = [
     for i in range(5)
 ]
 
-# -----------------------------------------------------------------------------
-# Alias attesi dai test
-# -----------------------------------------------------------------------------
+# Aliases expected by tests
 sample_response = sample_response_v2
 multiple_samples = multiple_samples_v2

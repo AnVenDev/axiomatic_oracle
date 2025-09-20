@@ -4,14 +4,26 @@ Centralized registry & loader for AI Oracle model pipelines (Multi-RWA ready).
 
 Key points
 - Models root prefers notebooks outputs (override with env MODELS_ROOT / AI_ORACLE_MODELS_BASE).
-- Loads ONLY fitted models (fallback to newest fitted).
+- Loads ONLY fitted models (fallback to newest fitted among discovered candidates).
 - Registry optional; graceful discovery if missing.
-- Exposes expected feature lists (pref: training_manifest.json, then meta.json, then shared).
+- Exposes expected feature lists (pref: shared spec → training_manifest.json → meta.json).
 - Enriches metadata with sha256, size, timestamps, and validation metrics.
+
+SECURITY
+- No secret material handled here; FS reads only. Do not log PII.
+
+NOTE
+- Public functions used by the API layer:
+    get_pipeline, get_model_paths, get_model_metadata, health_check_model,
+    list_tasks, discover_models_for_asset, refresh_cache, cache_stats,
+    expected_features
 """
 
 from __future__ import annotations
 
+# =========================
+# Standard library imports
+# =========================
 import hashlib
 import json
 import logging
@@ -22,6 +34,9 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+# ===========
+# Third-party
+# ===========
 import joblib  # type: ignore
 from sklearn.utils.validation import check_is_fitted  # type: ignore
 
@@ -120,6 +135,10 @@ def _file_sha256(path: Path, chunk_size: int = 1 << 20) -> Optional[str]:
 
 
 def _is_fitted_pipeline(pl: Any) -> bool:
+    """
+    Best-effort 'is fitted' check. If pipeline has steps, check last estimator;
+    else check the object itself.
+    """
     try:
         if hasattr(pl, "steps"):
             check_is_fitted(pl.steps[-1][1])
@@ -144,6 +163,7 @@ def _find_manifest(models_base: Path, asset_type: str) -> Path:
       3) <models_base>/artifacts/training_manifest.json
       4) ../shared/outputs/<asset_type>/training_manifest.json
       5) ./shared/outputs/<asset_type>/training_manifest.json
+    Returns the first existing path or the first candidate if none exist.
     """
     at = _normalize_key(asset_type)
     candidates = [
@@ -188,7 +208,7 @@ def _list_version_files(asset_type: str, task: str) -> List[Path]:
         cands += list(art.glob(f"*{MODEL_EXT}"))
 
     # Unique + sort by mtime desc
-    uniq = {}
+    uniq: Dict[Path, Path] = {}
     for p in cands:
         try:
             uniq[p.resolve()] = p
@@ -238,6 +258,8 @@ def _resolve_path(asset_type: str, task: str, preferred_version: Optional[str] =
 def _feature_order_path_for(model_path: Path) -> Path:
     """property/value_regressor_v1.joblib -> property/feature_order.json"""
     return model_path.parent / "feature_order.json"
+
+
 # =============================================================================
 # Public API
 # =============================================================================
@@ -284,37 +306,19 @@ def get_model_paths(
     *,
     preferred_version: Optional[str] = None,
 ) -> Dict[str, Path]:
-    """Return dict with 'pipeline', 'meta', 'manifest' (and 'feature_order' if present) paths for the resolved model."""
+    """
+    Return dict with 'pipeline', 'meta', 'manifest' (and 'feature_order' if present)
+    paths for the resolved model.
+    """
     pipeline_path = _resolve_path(asset_type, task, preferred_version=preferred_version)
     meta_path = _metadata_path_for(pipeline_path)
     manifest_path = _find_manifest(MODELS_BASE, asset_type)
     forder_path = _feature_order_path_for(pipeline_path)
-    out = {"pipeline": pipeline_path, "meta": meta_path, "manifest": manifest_path}
+
+    out: Dict[str, Path] = {"pipeline": pipeline_path, "meta": meta_path, "manifest": manifest_path}
     if forder_path.exists():
         out["feature_order"] = forder_path
     return out
-
-def get_feature_order(
-    asset_type: str,
-    task: str = TASK_DEFAULT,
-    *,
-    preferred_version: Optional[str] = None,
-) -> List[str]:
-    """
-    Ritorna la lista ordinata delle **raw features** da usare come fonte per il calcolo di `ih`.
-    Cerca `feature_order.json` accanto al modello; se assente, ritorna [] (caller decide fallback).
-    """
-    try:
-        paths = get_model_paths(asset_type, task, preferred_version=preferred_version)
-        fp = paths.get("feature_order")
-        if isinstance(fp, Path) and fp.exists():
-            data = json.loads(fp.read_text(encoding="utf-8"))
-            if isinstance(data, list):
-                # dedup mantenendo l'ordine
-                seen = set(); return [x for x in map(str, data) if not (x in seen or seen.add(x))]
-    except Exception:
-        pass
-    return []
 
 
 def _features_from_shared(asset_type: str) -> Optional[tuple[list[str], list[str]]]:
@@ -324,6 +328,8 @@ def _features_from_shared(asset_type: str) -> Optional[tuple[list[str], list[str
       2) shared.common.schema.FEATURE_SPEC[asset_type]
       3) shared.common.schema.FEATURES_CATEGORICAL/NUMERIC
       4) shared.common.config.* (same shapes)
+
+    Returns (categorical, numeric) or None.
     """
     candidates = [
         ("shared.common.schema", "get_feature_spec", "func"),
@@ -345,37 +351,49 @@ def _features_from_shared(asset_type: str) -> Optional[tuple[list[str], list[str
                     return cat, num
             elif mode == "map" and isinstance(obj, dict) and asset_type in obj:
                 spec = obj[asset_type]
+                # tolerate typos like 'categororical'
                 cat = list(spec.get("categororical", spec.get("categorical", [])) or [])
                 num = list(spec.get("numeric", []) or [])
                 return cat, num
             elif mode == "split":
                 cats = getattr(mod, "FEATURES_CATEGORICAL", None)
                 nums = getattr(mod, "FEATURES_NUMERIC", None)
-                if isinstance(cats, dict) and isinstance(nums, dict) and asset_type in cats and asset_type in nums:
+                if (
+                    isinstance(cats, dict)
+                    and isinstance(nums, dict)
+                    and asset_type in cats
+                    and asset_type in nums
+                ):
                     return list(cats[asset_type] or []), list(nums[asset_type] or [])
         except Exception:
             continue
     return None
 
 
-def expected_features(meta: dict, manifest_path: Path, asset_type: str | None = None) -> tuple[list[str], list[str]]:
+def expected_features(
+    meta: dict,
+    manifest_path: Path,
+    asset_type: Optional[str] = None,
+) -> tuple[list[str], list[str]]:
     """
     Returns (categorical, numeric).
     Priority:
-      1) shared spec (if available)
-      2) training_manifest.json
-      3) meta.json
+      1) shared spec (if available for asset_type)
+      2) training_manifest.json (model.feature_list or model.features)
+      3) meta.json (features_categorical / features_numeric)
     """
     if asset_type:
         shared_spec = _features_from_shared(asset_type)
         if shared_spec:
             cat, num = shared_spec
-            seen = set(); cat = [c for c in cat if not (c in seen or seen.add(c))]
+            seen = set()
+            cat = [c for c in cat if not (c in seen or seen.add(c))]
             num = [c for c in num if c not in set(cat)]
             return cat, num
 
     cat = list(meta.get("features_categorical", []) or [])
     num = list(meta.get("features_numeric", []) or [])
+
     if manifest_path.exists():
         try:
             mf = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -426,18 +444,18 @@ def get_feature_order(
     preferred_version: Optional[str] = None,
 ) -> list[str]:
     """
-    Risolve l'ordine *raw* delle feature.
-    Priorità:
+    Resolve the *raw* feature order to be used for canonical input/hash.
+    Priority:
       1) meta.json -> "feature_order" (array)
       2) training_manifest.json -> paths.feature_order_path (file JSON)
-      3) file noto: <MODELS_BASE>/<asset_type>/feature_order.json
-    Ritorna [] se non trovato.
+      3) well-known file: <MODELS_BASE>/<asset_type>/feature_order.json
+    Returns [] if none found.
     """
     paths = get_model_paths(asset_type, task, preferred_version=preferred_version)
     meta_path = paths["meta"]
     manifest_path = paths["manifest"]
 
-    # 1) nel meta.json inline
+    # 1) inline meta.json
     try:
         if meta_path.exists():
             md = json.loads(meta_path.read_text(encoding="utf-8"))
@@ -448,7 +466,7 @@ def get_feature_order(
     except Exception:
         pass
 
-    # 2) nel manifest: paths.feature_order_path -> file
+    # 2) manifest -> external file path
     def _read_fo_file(p: Path) -> list[str]:
         try:
             if p.exists():
@@ -471,14 +489,14 @@ def get_feature_order(
             pstr = (mf.get("paths") or {}).get("feature_order_path")
             if pstr:
                 cand = Path(pstr)
-                # risoluzione robusta: relativo al manifest, alla root modelli, alla cartella asset
+                # robust resolution: relative to manifest, models base, or asset dir
                 for base in [manifest_path.parent, MODELS_BASE, MODELS_BASE / _normalize_key(asset_type)]:
                     p = (base / pstr).resolve() if not cand.is_absolute() else cand
                     if p.exists():
                         fo = _read_fo_file(p)
                         if fo:
                             return fo
-                # ultima spiaggia: se pstr è assoluto ed esiste
+                # last resort: absolute path
                 if cand.is_absolute() and cand.exists():
                     fo = _read_fo_file(cand)
                     if fo:
@@ -486,7 +504,7 @@ def get_feature_order(
         except Exception:
             pass
 
-    # 3) path noto: <MODELS_BASE>/<asset_type>/feature_order.json
+    # 3) default well-known path
     default_fo = (MODELS_BASE / _normalize_key(asset_type) / "feature_order.json").resolve()
     fo = _read_fo_file(default_fo)
     if fo:
@@ -494,12 +512,20 @@ def get_feature_order(
 
     return []
 
+
 def get_model_metadata(
     asset_type: str,
     task: str = TASK_DEFAULT,
     *,
     preferred_version: Optional[str] = None,
 ) -> Optional[dict]:
+    """
+    Aggregate metadata for a resolved model:
+    - model path, sha256, size, last_modified
+    - metrics (prefer manifest → notebooks → meta.json)
+    - feature order & counts
+    Fields are normalized for API/UI expectations.
+    """
     paths = get_model_paths(asset_type, task, preferred_version=preferred_version)
     meta_path = paths["meta"]
     pipeline_path = paths["pipeline"]
@@ -516,7 +542,9 @@ def get_model_metadata(
             md.setdefault("model_hash", sha)
         try:
             md["model_size_mb"] = round(pipeline_path.stat().st_size / (1024 * 1024), 2)
-            md["last_modified"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(pipeline_path.stat().st_mtime))
+            md["last_modified"] = time.strftime(
+                "%Y-%m-%dT%H:%M:%SZ", time.gmtime(pipeline_path.stat().st_mtime)
+            )
         except Exception:
             pass
 
@@ -551,14 +579,22 @@ def get_model_metadata(
         # --- Normalize names for API/UI expectations -------------------------
         vmv = md.get("model_version") or md.get("value_model_version")
         vmn = md.get("model_class") or md.get("value_model_name")
-        nft = md.get("n_features") or (len(md.get("feature_order", [])) if isinstance(md.get("feature_order"), list) else None)
-        if vmv: md.setdefault("value_model_version", vmv)
-        if vmn: md.setdefault("value_model_name", vmn)
-        if nft: md.setdefault("n_features_total", int(nft))
+        nft = md.get("n_features") or (
+            len(md.get("feature_order", []))
+            if isinstance(md.get("feature_order"), list)
+            else None
+        )
+        if vmv:
+            md.setdefault("value_model_version", vmv)
+        if vmn:
+            md.setdefault("value_model_name", vmn)
+        if nft:
+            md.setdefault("n_features_total", int(nft))
 
         _METADATA_CACHE[meta_path] = md
 
     return _METADATA_CACHE[meta_path]
+
 
 def validate_model_compatibility(pipeline: Any, expected_features_list: List[str]) -> bool:
     """Order-insensitive check for feature set compatibility (best effort)."""
@@ -568,7 +604,12 @@ def validate_model_compatibility(pipeline: Any, expected_features_list: List[str
     return True
 
 
-def health_check_model(asset_type: str, task: str = TASK_DEFAULT, *, preferred_version: Optional[str] = None) -> dict:
+def health_check_model(
+    asset_type: str,
+    task: str = TASK_DEFAULT,
+    *,
+    preferred_version: Optional[str] = None,
+) -> dict:
     """Quick diagnostic for a given model."""
     try:
         paths = get_model_paths(asset_type, task, preferred_version=preferred_version)
@@ -579,7 +620,9 @@ def health_check_model(asset_type: str, task: str = TASK_DEFAULT, *, preferred_v
             "status": "healthy",
             "model_path": str(paths["pipeline"]),
             "size_mb": round(paths["pipeline"].stat().st_size / (1024 * 1024), 2),
-            "last_modified": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(paths["pipeline"].stat().st_mtime)),
+            "last_modified": time.strftime(
+                "%Y-%m-%dT%H:%M:%SZ", time.gmtime(paths["pipeline"].stat().st_mtime)
+            ),
             "metadata_valid": bool(meta),
             "metrics": (meta or {}).get("metrics"),
             "n_features_total": (meta or {}).get("n_features_total") or (meta or {}).get("n_features"),
@@ -610,10 +653,12 @@ def discover_models_for_asset(asset_type: str) -> List[Path]:
     if art.exists():
         res += list(art.glob(f"*{MODEL_EXT}"))
     # unique
-    seen = set(); out = []
+    seen: set[Path] = set()
+    out: List[Path] = []
     for p in res:
-        if p.resolve() not in seen:
-            seen.add(p.resolve())
+        key = p.resolve()
+        if key not in seen:
+            seen.add(key)
             out.append(p)
     return sorted(out)
 
