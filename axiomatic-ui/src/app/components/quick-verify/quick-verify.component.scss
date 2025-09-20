@@ -1,0 +1,72 @@
+:host {
+  display: block;
+  width: 100%;
+}
+
+.qv {
+  width: 100%;
+}
+
+/* righe locali, niente .row globale */
+.qv-row {
+  width: 100%;
+  box-sizing: border-box;
+}
+.qv-row-input {
+  margin-bottom: 10px;
+}
+
+/* input a tutta larghezza, senza overflow */
+.qv-tx {
+  margin-top: 1rem;
+  width: 100%;
+  height: 44px;
+  padding: 10px 12px;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  background: #111827;
+  color: #e5e7eb;
+  outline: none;
+  box-sizing: border-box;
+  &::placeholder {
+    color: #64748b;
+  }
+  &:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+  }
+}
+
+/* pulsanti in seconda riga */
+.qv-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 1rem;
+}
+
+.pill {
+  height: 44px;
+  border-radius: 999px;
+  padding: 0 18px;
+  text-transform: none;
+  // font-weight: 700;
+}
+button.pill[disabled] {
+  background: #1f2937 !important;
+  color: #64748b !important;
+  border-color: #374151 !important;
+  opacity: 1 !important;
+  cursor: not-allowed;
+}
+
+@media (max-width: 960px) {
+  .qv-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .pill {
+    width: 100%;
+  }
+}

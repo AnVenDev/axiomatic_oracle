@@ -1,6 +1,4 @@
 from __future__ import annotations
-
-from notebooks.shared.n03_train_model.metrics import compute_location_drift, location_benchmark
 """
 Quality & valuation utilities:
 - Decomposizione del price_per_sqm con breakdown dei moltiplicatori (via pricing.explain_price)
@@ -48,6 +46,15 @@ __all__ = [
     "generate_base_quality_report",
     "enrich_quality_report",
 ]
+
+def _lazy_metrics():
+    try:
+        from notebooks.shared.n03_train_model.metrics import (
+            compute_location_drift, location_benchmark
+        )
+        return compute_location_drift, location_benchmark
+    except Exception:
+        return None, None
 
 # ------------------------------ Costanti ------------------------------------
 
@@ -407,6 +414,10 @@ def enrich_quality_report(
         target_weights = cfg.get("location_weights", {}) or {}
         if LOCATION in df.columns and target_weights:
             tol = float(cfg.get("expected_profile", {}).get("location_distribution_tolerance", 0.05))
+            compute_location_drift, location_benchmark = _lazy_metrics()
+            if compute_location_drift is None:
+                # fallback no-op / ritorna struttura vuota, non esplodere in serving
+                return {"location_drift": None}
             try:
                 bench_df = location_benchmark(df, target_weights=_normalize_weights(target_weights), tolerance=tol)
                 rpt.setdefault("sanity_benchmarks", {})["location_distribution"] = (

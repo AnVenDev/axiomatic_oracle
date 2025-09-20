@@ -1,0 +1,35 @@
+<div class="qv">
+  <!-- riga 1: input full width -->
+  <div class="qv-row qv-row-input">
+    <input
+      class="qv-tx"
+      matInput
+      placeholder="TXID (es. Y3FD...)"
+      [(ngModel)]="txid"
+      (keyup.enter)="submit()"
+    />
+  </div>
+
+  <!-- ROW 2: pulsanti -->
+  <div class="qv-row qv-actions">
+    <button
+      class="pill"
+      mat-raised-button
+      color="primary"
+      (click)="submit()"
+      [disabled]="!(txid && txid.trim())"
+    >
+      Verify
+    </button>
+
+    <button
+      class="pill"
+      mat-raised-button
+      color="primary"
+      (click)="useLastTx()"
+      [disabled]="!defaultTxid"
+    >
+      Verify last TXID
+    </button>
+  </div>
+</div>

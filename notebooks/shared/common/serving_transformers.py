@@ -13,7 +13,8 @@ class GeoCanonizer(BaseEstimator, TransformerMixin):
         if "zone" not in out.columns:
             out["zone"] = "semi_center"
         if "region" not in out.columns:
-            out["region"] = "center"
+            # lascia NaN: sarà riempito da region_index_prior o da mapping a valle
+            out["region"] = pd.Series(index=out.index, dtype="object")
         for c in ("city","zone","region"):
             if c in out.columns:
                 out[c] = out[c].astype(str).str.strip().str.lower()

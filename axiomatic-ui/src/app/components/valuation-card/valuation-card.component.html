@@ -1,0 +1,46 @@
+<ng-container *ngIf="res as r">
+  <div class="card valuation">
+    <h3>Valuation</h3>
+
+    <div class="row">
+      <span class="label">Estimated value</span>
+      <span class="value">
+        {{ r.metrics.valuation_k * 1000 | currency : "EUR" }}
+      </span>
+      <span class="muted" *ngIf="r.metrics?.point_pred_k != null">
+        (point: {{ r.metrics.point_pred_k * 1000 | currency : "EUR" }})
+      </span>
+    </div>
+
+    <div
+      class="row"
+      *ngIf="
+        r.metrics?.confidence_low_k != null &&
+        r.metrics?.confidence_high_k != null
+      "
+    >
+      <span class="label">95% CI</span>
+      <span class="value">
+        {{ r.metrics.confidence_low_k * 1000 | currency : "EUR" }} –
+        {{ r.metrics.confidence_high_k * 1000 | currency : "EUR" }}
+      </span>
+      <span class="muted" *ngIf="r.metrics?.ci_margin_k != null">
+        (± {{ r.metrics.ci_margin_k * 1000 | currency : "EUR" }})
+      </span>
+    </div>
+
+    <div class="row" *ngIf="r.metrics?.uncertainty_k != null">
+      <span class="label">Uncertainty (σ)</span>
+      <span class="value">
+        {{ r.metrics.uncertainty_k * 1000 | currency : "EUR" }}
+      </span>
+    </div>
+
+    <div class="row">
+      <span class="label">Model</span>
+      <span class="value">
+        {{ modelName || "—" }} ({{ modelVersion || "—" }})
+      </span>
+    </div>
+  </div>
+</ng-container>

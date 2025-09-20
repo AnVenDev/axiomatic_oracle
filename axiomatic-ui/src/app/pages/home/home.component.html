@@ -1,101 +1,348 @@
-<div class="home-container">
-  <section class="hero-section">
-    <mat-card class="hero-card mat-elevation-z6">
-      <div class="logo-row">
-        <img src="logo.png" alt="Axiomatic Logo" class="hero-logo" />
-        <h1 class="brand-title">AXIOMATIC</h1>
-      </div>
+<!-- home.component.html -->
+<div class="home">
+  <!-- HERO -->
+  <section class="hero">
+    <mat-card class="hero-card">
+      <div class="hero-grid">
+        <!-- Left column -->
+        <div class="hero-col hero-copy">
+          <div class="brand-row">
+            <h1 class="brand-title">Axiomatic Oracle</h1>
 
-      <h2 class="brand-subtitle">
-        Algorand-Powered AI Oracle for Real-World Assets
-      </h2>
+            <div class="status-row" aria-label="Service status">
+              <span
+                class="chip"
+                [class.ok]="status.api.ok"
+                [class.warn]="!status.api.ok"
+                matTooltip="Health & Ready"
+              >
+                <span class="dot"></span>{{ status.api.label }}
+              </span>
+              <span
+                class="chip"
+                [class.ok]="status.indexer.ok"
+                [class.warn]="!status.indexer.ok"
+                matTooltip="Indexer reachability"
+              >
+                <span class="dot"></span>{{ status.indexer.label }}
+              </span>
+              <span
+                class="chip"
+                [class.ok]="status.network.ok"
+                [class.warn]="!status.network.ok"
+                matTooltip="Network"
+              >
+                <span class="dot"></span>{{ status.network.label }}
+              </span>
+            </div>
+          </div>
 
-      <p class="description">
-        Certifica e valorizza immobili, opere d’arte e asset industriali con AI.
-        Pubblica in modo trasparente su blockchain. Affidabile, estendibile,
-        scalabile.
-      </p>
+          <!-- <p class="brand-details-subtitle">
+            • ARC-3/19 &amp; VC-ready • low fees • fast finality • built for
+            enterprise
+          </p> -->
 
-      <div class="badge-row">
-        <span class="badge">Multi-RWA</span>
-        <span class="badge">Blockchain Verified</span>
-        <span class="badge">AI Model Registry</span>
-      </div>
+          <p class="brand-subtitle">
+            AI attestations → PoVal™ on-chain proofs. Submit an ACJ-1 canonical
+            JSON describing the asset; the oracle validates and normalizes it,
+            runs the trained model, and returns a PoVal (Proof of Valuation): a
+            signed valuation with uncertainty and an explainable factor
+            breakdown, cryptographically bound to inputs, model manifest, and
+            code hash. With one click we anchor a tamper-proof hash on Algorand
+            (low fees, fast finality) and register it in the Axiomatic
+            Attestation Registry, returning a txid, a verification link, and a
+            registry ID. Metadata follows ARC-3/19 and can optionally be
+            packaged as a W3C Verifiable Credential—auditable by anyone. Proofs,
+            not data. No PoVal, no asset.
+          </p>
 
-      <div class="cta-row">
-        <button
-          mat-raised-button
-          color="primary"
-          (click)="goToDashboard()"
-          class="btn-primary btn-label"
-        >
-          Dashboard
-        </button>
-        <button
-          mat-stroked-button
-          color="accent"
-          class="btn-secondary btn-label"
-        >
-          Scopri di più
-        </button>
+          <!-- mini flow + bullets -->
+          <!-- <div class="mini-flow" aria-label="3-step flow">
+            <div class="node">
+              <span class="num">1</span><span class="label">Set API Key</span>
+            </div>
+            <div class="connector"></div>
+            <div class="node">
+              <span class="num">1</span><span class="label">Evaluate</span>
+            </div>
+            <div class="connector"></div>
+            <div class="node">
+              <span class="num">2</span><span class="label">Publish</span>
+            </div>
+            <div class="connector"></div>
+            <div class="node">
+              <span class="num">3</span><span class="label">Verify</span>
+            </div>
+          </div> -->
+
+          <!-- <ul class="feature-list">
+            <li>
+              <mat-icon>verified</mat-icon><span>Schema-validated input</span>
+            </li>
+            <li>
+              <mat-icon>insights</mat-icon
+              ><span>Explainable factors (SHAP-like)</span>
+            </li>
+            <li>
+              <mat-icon>lock</mat-icon
+              ><span>Signed outputs &amp; request ID</span>
+            </li>
+            <li>
+              <mat-icon>token</mat-icon
+              ><span>ARC-3/19 metadata &amp; VC-ready</span>
+            </li>
+          </ul> -->
+
+          <!-- Hero micro-metrics -->
+          <!-- <div class="hero-stats" aria-label="Key metrics">
+            <div class="stat">
+              <mat-icon>schedule</mat-icon>
+              <div class="meta">
+                <div class="label">Median finality (p50)</div>
+                <div class="value">~4.2s</div>
+              </div>
+            </div>
+
+            <div class="stat">
+              <mat-icon>payments</mat-icon>
+              <div class="meta">
+                <div class="label">Estimated tx fee</div>
+                <div class="value">&lt;$0.01</div>
+              </div>
+            </div>
+
+            <div class="stat">
+              <mat-icon>account_balance_wallet</mat-icon>
+              <div class="meta">
+                <div class="label">Unique wallets</div>
+                <div class="value">—</div>
+              </div>
+            </div>
+
+            <div class="stat">
+              <mat-icon>verified</mat-icon>
+              <div class="meta">
+                <div class="label">Attestations (24h)</div>
+                <div class="value">—</div>
+              </div>
+            </div>
+          </div> -->
+
+          <div class="cta-row">
+            <!-- <button
+              mat-raised-button
+              color="primary"
+              class="cta"
+              (click)="tryDemo()"
+            >
+              Try Demo
+            </button> -->
+            <button
+              mat-stroked-button
+              color="accent"
+              class="cta"
+              (click)="goToDashboard()"
+            >
+              Open Dashboard
+            </button>
+          </div>
+        </div>
+
+        <!-- Right column -->
+        <div class="hero-col hero-preview">
+          <mat-card class="preview-card">
+            <div class="preview-media" aria-label="Demo video placeholder">
+              <span class="play">&#9658;</span>
+            </div>
+            <!-- <div class="code-snippet">
+              <div class="snippet-head">
+                <strong>curl</strong>
+                <button
+                  mat-icon-button
+                  aria-label="Copy curl"
+                  (click)="copyCurl()"
+                >
+                  <mat-icon>content_copy</mat-icon>
+                </button>
+              </div>
+              <pre><code [textContent]="curlSnippet"></code></pre>
+            </div> -->
+          </mat-card>
+        </div>
       </div>
     </mat-card>
   </section>
 
-  <section class="sections">
-    <h3>🔍 Come funziona</h3>
-    <p>
-      1. Inserisci i dati di un asset reale → 2. Il modello AI genera stime e
-      flag → 3. I risultati vengono pubblicati (opzionalmente) su Algorand.
-    </p>
+  <!-- KPI ROW -->
+  <!-- <mat-card class="hero-card">
+    <section class="kpis">
+      <div class="kpi-toolbar">
+        <h3 class="kpi-title">Metrics</h3>
+        <mat-button-toggle-group
+          [value]="range"
+          (change)="setRange($event.value)"
+        >
+          <mat-button-toggle value="24h">24h</mat-button-toggle>
+          <mat-button-toggle value="7d">7d</mat-button-toggle>
+          <mat-button-toggle value="30d">30d</mat-button-toggle>
+        </mat-button-toggle-group>
+      </div>
 
-    <h3>Chi può usarlo?</h3>
-    <ul>
-      <li>Piattaforme di tokenizzazione immobiliare</li>
-      <li>Marketplace di opere d’arte e collezionismo</li>
-      <li>Sistemi di audit e certificazione industriale</li>
-      <li>Oracoli DeFi e infrastrutture DAO</li>
-    </ul>
+      <mat-card class="kpi-card">
+        <div class="kpi-head">Attestations</div>
+        <div class="kpi-sub">{{ kpi.attestations.sub }}</div>
+        <div class="kpi-value">{{ kpi.attestations.v }}</div>
+        <div class="kpi-sparkline"></div>
+      </mat-card>
 
-    <h3>Feature principali</h3>
-    <ul>
-      <li>AI explainability + confidence intervals</li>
-      <li>Monitoraggio delle anomalie e del drift</li>
-      <li>Registro dei modelli con fallback intelligente</li>
-      <li>Pubblicazione su Algorand TestNet/MainNet</li>
-    </ul>
+      <mat-card class="kpi-card">
+        <div class="kpi-head">Unique wallets / assets</div>
+        <div class="kpi-sub">{{ kpi.unique.sub }}</div>
+        <div class="kpi-value">{{ kpi.unique.v }}</div>
+        <div class="kpi-sparkline"></div>
+      </mat-card>
 
-    <h3>Domande frequenti (FAQ)</h3>
-    <p>
-      <strong>Quali asset supporta?</strong> Inizia con immobili, ma è
-      estendibile a ogni tipo di RWA.
-    </p>
-    <p><strong>È open-source?</strong> Sì! Trovi tutto su GitHub.</p>
-    <p>
-      <strong>È già integrabile?</strong> Può essere integrato via REST API. In
-      futuro: smart contract + IPFS.
-    </p>
+      <mat-card class="kpi-card">
+        <div class="kpi-head">Median finality time</div>
+        <div class="kpi-sub">{{ kpi.finality.sub }}</div>
+        <div class="kpi-value">{{ kpi.finality.v }}</div>
+        <div class="kpi-sparkline"></div>
+      </mat-card>
+    </section>
+  </mat-card> -->
 
-    <h3>Demo live</h3>
-    <p>Testa una valutazione direttamente nella <strong>Dashboard</strong>.</p>
-    <button
-      mat-raised-button
-      color="primary"
-      (click)="goToDashboard()"
-      class="btn-primary btn-label"
-    >
-      Dashboard
-    </button>
+  <!-- QUICKSTART + WHAT YOU’LL SEE -->
+  <section class="quickstart">
+    <mat-card class="hero-card">
+      <div class="qs-left">
+        <h3 class="get-started">Get Started</h3>
+
+        <p class="qs-lead">
+          Try the oracle in three steps. Send a sample valuation, then publish
+          and verify on-chain.
+        </p>
+
+        <div class="steps connected">
+          <!-- <mat-card class="step">
+            <div class="step-title">Set API Key</div>
+            <div class="step-desc">Imposta la chiave per le chiamate</div>
+          </mat-card> -->
+          <mat-card class="step">
+            <div class="step-title">
+              <span class="step-num">1.</span> Send a valuation
+            </div>
+            <div class="step-desc">Send a payload</div>
+          </mat-card>
+          <mat-card class="step">
+            <div class="step-title">
+              <span class="step-num">2.</span> Publish
+            </div>
+            <div class="step-desc">Publish on-chain</div>
+          </mat-card>
+          <mat-card class="step">
+            <div class="step-title">
+              <span class="step-num">3.</span> Verify
+            </div>
+            <div class="step-desc">Verify TX</div>
+          </mat-card>
+        </div>
+      </div>
+    </mat-card>
+
+    <div class="qs-right">
+      <mat-card class="see-card">
+        <h3>What you’ll see</h3>
+        <ul class="checklist">
+          <li><mat-icon>check_circle</mat-icon> Oracle details (pre-chain)</li>
+          <li>
+            <mat-icon>check_circle</mat-icon> On-chain publish (txid / asset)
+          </li>
+          <li><mat-icon>check_circle</mat-icon> Verify TX on Explorer</li>
+        </ul>
+        <div class="badges">
+          <span class="badge">ARC-3/19 validated</span>
+          <span class="badge">VC-ready</span>
+          <span class="badge">Enterprise KMS-ready</span>
+        </div>
+      </mat-card>
+    </div>
   </section>
 
-  <footer class="footer">
-    <p>
-      <a href="https://github.com/AnVenDev/ai-oracle-rwa" target="_blank"
-        >GitHub</a
+  <!-- MINI ACTIVITY FEED / LOGO ROW -->
+  <!-- <section class="activity">
+    <mat-card class="activity-card">
+      <div class="activity-head">
+        <h3>Recent activity</h3>
+        <button mat-stroked-button color="primary" (click)="goToLogs()">
+          Open Logs
+        </button>
+      </div>
+      <ul class="activity-list">
+        <li>
+          <span class="pill success">Published</span>
+          <span class="meta">asset_id: demo-001</span>
+          <span class="meta">txid: …a1b2</span>
+          <span class="time">now</span>
+        </li>
+        <li>
+          <span class="pill info">Predicted</span>
+          <span class="meta">request_id: …9f3c</span>
+          <span class="time">2m</span>
+        </li>
+      </ul>
+    </mat-card>
+
+    <div class="resources-row">
+      <a
+        class="resource"
+        target="_blank"
+        rel="noopener"
+        [href]="explorerBase || null"
       >
-      · <a href="#">Documentazione</a> ·
-      <a href="mailto:anvene.dev@gmail.com">Contatti</a>
-    </p>
-    <span class="footer-note">© 2025 Axiomatic AI Oracle</span>
+        <mat-icon class="res-ic">api</mat-icon>
+        <div class="res-text">
+          <div class="res-title">OpenAPI</div>
+          <div class="res-sub">REST schema: endpoints &amp; types</div>
+        </div>
+      </a>
+
+      <a class="resource" target="_blank" rel="noopener">
+        <mat-icon class="res-ic">assignment</mat-icon>
+        <div class="res-text">
+          <div class="res-title">Postman</div>
+          <div class="res-sub">Ready-to-run collection</div>
+        </div>
+      </a>
+
+      <a class="resource" target="_blank" rel="noopener">
+        <mat-icon class="res-ic">hub</mat-icon>
+        <div class="res-text">
+          <div class="res-title">GitHub</div>
+          <div class="res-sub">Repo &amp; issue tracker</div>
+        </div>
+      </a>
+
+      <a class="resource" target="_blank" rel="noopener">
+        <mat-icon class="res-ic">travel_explore</mat-icon>
+        <div class="res-text">
+          <div class="res-title">Explorer</div>
+          <div class="res-sub">View latest on-chain tx</div>
+        </div>
+      </a>
+    </div>
+  </section> -->
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <!-- <nav class="footer-nav">
+      <a href="#" rel="noopener">Product</a>
+      <a href="#" rel="noopener">Docs</a>
+      <a href="#" rel="noopener">Company</a>
+      <a href="#" rel="noopener">Legal</a>
+    </nav> -->
+    <div class="footer-meta">
+      <span>No financial advice • GDPR note</span>
+      <span>© 2025 Axiomatic Oracle</span>
+    </div>
   </footer>
 </div>

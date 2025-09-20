@@ -5,6 +5,14 @@ from datetime import datetime, timezone
 import os
 from pathlib import Path
 
+# Per generare PoVal p1 dai sample v2
+try:
+    from scripts.canon import build_p1_from_response, canonical_note_bytes_p1
+except Exception:  # pragma: no cover
+    build_p1 = None  # type: ignore
+    build_p1_from_response = None  # type: ignore
+    canonical_note_bytes_p1 = None  # type: ignore
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
@@ -80,7 +88,7 @@ def make_sample_response_v2(
     n_estimators: Optional[int] = 200,
     latency_ms: float = 12.8,
 ) -> Dict[str, Any]:
-    return {
+    resp = {
         "schema_version": "v2",
         "asset_id": asset_id,
         "asset_type": "property",
@@ -119,6 +127,17 @@ def make_sample_response_v2(
         "asa_id": "",
         "publish": {"status": "not_attempted"},
     }
+
+    # Se disponibile, allega anche PoVal p1 (come fa l'API)
+    if build_p1_from_response and canonical_note_bytes_p1:
+        try:
+            p1, _dbg = build_p1_from_response(resp, allowed_input_keys=[])
+            resp.setdefault("attestation", {})["p1"] = p1
+            b, h, n = canonical_note_bytes_p1(p1)
+            resp["attestation"].update({"p1_sha256": h, "p1_size_bytes": int(n)})
+        except Exception:
+            pass
+    return resp
 
 # Un singolo sample v2 pronto all’uso + lista
 sample_response_v2: Dict[str, Any] = make_sample_response_v2()

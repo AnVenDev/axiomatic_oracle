@@ -1,0 +1,64 @@
+:host {
+  display: block;
+}
+
+/* card */
+.card.publish {
+  border: 1px solid #2a2f36;
+  border-radius: 12px;
+  padding: 16px;
+  background: #14181d;
+  margin-top: 2rem;
+}
+
+/* titolo */
+.card.publish h3 {
+  margin: 0 0 8px 0;
+}
+
+/* righe chiave/valore */
+.row {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 8px 16px;
+  padding: 6px 0;
+  align-items: baseline;
+}
+
+.label {
+  color: #94a3b8;
+  text-transform: lowercase;
+  font-size: 13px;
+}
+
+.value {
+  font-weight: 600;
+}
+
+.value.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", monospace;
+  font-size: 13px;
+  word-break: break-all; /* evita overflow di txid/hash */
+}
+
+.ok {
+  color: #10b981;
+}
+.err {
+  color: #ef4444;
+}
+
+/* Nessun connettore decorativo ai bordi */
+.card.publish::before,
+.card.publish::after {
+  content: none !important;
+  display: none !important;
+}
+
+/* responsive */
+@media (max-width: 860px) {
+  .row {
+    grid-template-columns: 1fr;
+  }
+}

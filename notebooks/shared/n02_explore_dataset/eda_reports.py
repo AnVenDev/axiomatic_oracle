@@ -16,9 +16,11 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
+from os import path
 from typing import Any, Dict, List, Optional, Tuple, Mapping
 
 from pathlib import Path
+from notebooks.shared.common.utils import canonical_json_dumps
 import numpy as np                  # type: ignore
 import pandas as pd                 # type: ignore
 
@@ -232,6 +234,7 @@ class InsightsAnalyzer:
 
     def _analyze_locations(self, df: pd.DataFrame) -> Dict[str, Any]:
         grp = df.groupby(LOCATION, observed=True)[VALUATION_K]
+
         return {
             "valuation": {
                 "mean": grp.mean().sort_values(ascending=False).to_dict(),
@@ -281,10 +284,6 @@ class ReportExporter:
     def __post_init__(self) -> None:
         _ensure_dir(self.output_dir)
 
-    def export_json(self, name: str, payload: Mapping[str, Any]) -> str:
-        obj = {"meta": self._meta_block(), "data": payload}
-        return save_json(obj, self.output_dir, name)
-
     def export_df(self, name: str, df: pd.DataFrame) -> Dict[str, str]:
         return save_dataframe(df, self.output_dir, name)
 
@@ -294,6 +293,13 @@ class ReportExporter:
     def write_manifest(self, manifest: Dict[str, Any], name: str = "eda_manifest") -> str:
         final = {"meta": self._meta_block(), "artifacts": manifest}
         return save_json(final, self.output_dir, name)
+    
+    def export_json(self, name: str, payload: Mapping[str, Any]) -> str:
+        obj = {"meta": self._meta_block(), "data": payload}
+        out_path = Path(self.output_dir) / f"{name}.json"
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(canonical_json_dumps(obj), encoding="utf-8")
+        return str(out_path)
 
     def _meta_block(self) -> Dict[str, Any]:
         base = {
@@ -387,20 +393,26 @@ class EDAReportRunner:
         return artifacts
 
     def export_statistics(
-        self,
-        df: pd.DataFrame,
-        normality_features: Optional[List[str]] = None,
-        categorical_pairs: Optional[List[Tuple[str, str]]] = None,
+    self,
+    df: pd.DataFrame,
+    normality_features: Optional[List[str]] = None,
+    categorical_pairs: Optional[List[Tuple[str, str]]] = None,
     ) -> Dict[str, Any]:
+        feats = None
+        if normality_features:
+            feats_present = [c for c in normality_features if c in df.columns]
+            missing = sorted(set(normality_features) - set(feats_present))
+            if missing:
+                logger.info("Normality: skip missing columns: %s", missing)
+            feats = feats_present if feats_present else None
+
         results = self.tester.run_comprehensive_tests(
             df,
-            normality_features=normality_features,
+            normality_features=feats,
             categorical_pairs=categorical_pairs,
         )
-        artifacts: Dict[str, Any] = {
-            "stats_suite": self.exporter.export_json("statistical_suite", results),
-        }
-        return artifacts
+        return {"stats_suite": self.exporter.export_json("statistical_suite", results)}
+
 
     def export_feature_importance(
         self,
@@ -489,6 +501,10 @@ class EDAReportRunner:
 
         # Manifest finale
         manifest_path = self.exporter.write_manifest(manifest)
-        manifest["_manifest_file"] = manifest_path
+
+        # alias coerente con i notebook
+        manifest["manifest_path"] = manifest_path
+        manifest["_manifest_file"] = manifest_path  # back-compat
+
         logger.info("EDA manifest scritto: %s", manifest_path)
         return manifest

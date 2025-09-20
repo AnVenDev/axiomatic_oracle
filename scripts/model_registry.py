@@ -2,11 +2,11 @@
 model_registry.py
 Centralized registry & loader for AI Oracle model pipelines (Multi-RWA ready).
 
-Refactor notes (aligned with notebooks + /shared):
-- Models root prefers ../shared/outputs/models (override with env MODELS_ROOT).
-- Loads ONLY fitted models, with auto-fallback to the newest fitted version.
-- Accepts explicit registry entries but gracefully falls back to dynamic discovery.
-- Exposes expected feature lists, preferring training_manifest.json over meta.json.
+Key points
+- Models root prefers notebooks outputs (override with env MODELS_ROOT / AI_ORACLE_MODELS_BASE).
+- Loads ONLY fitted models (fallback to newest fitted).
+- Registry optional; graceful discovery if missing.
+- Exposes expected feature lists (pref: training_manifest.json, then meta.json, then shared).
 - Enriches metadata with sha256, size, timestamps, and validation metrics.
 """
 
@@ -18,7 +18,7 @@ import logging
 import os
 import re
 import time
-from difflib import get_close_matches
+from importlib import import_module
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -29,78 +29,43 @@ from sklearn.utils.validation import check_is_fitted  # type: ignore
 # Configuration
 # =============================================================================
 
-# Preferred root: env → ../shared/outputs/models → ./shared/outputs/models → ../models → ./models
 def _resolve_models_root() -> Path:
-    """Risolve la root dei modelli con supporto per struttura notebooks"""
+    """
+    Resolve the base directory for models.
+    Order:
+      0) env MODELS_ROOT / AI_ORACLE_MODELS_BASE
+      1) notebooks/outputs/modeling
+      2) ./notebooks/outputs/modeling
+      3) ../notebooks/outputs/modeling
+      4) outputs/modeling
+      5) ../shared/outputs/models
+      6) ./shared/outputs/models
+      7) ../models
+      8) ./models
+    First directory that exists wins.
+    """
     candidates: List[Path] = []
-    
-    # Check env first
     env_root = os.getenv("MODELS_ROOT") or os.getenv("AI_ORACLE_MODELS_BASE")
     if env_root and env_root.strip():
         candidates.append(Path(env_root))
-    
-    # Path specifici per la struttura notebooks
+
     candidates += [
-        Path("notebooks/outputs/modeling"),           # 🔴 NUOVO: struttura notebooks
-        Path("./notebooks/outputs/modeling"),         # 🔴 NUOVO: relativo
-        Path("../notebooks/outputs/modeling"),        # 🔴 NUOVO: da tests/
-        Path("outputs/modeling"),                     # Se eseguito da notebooks/
+        Path("notebooks/outputs/modeling"),
+        Path("./notebooks/outputs/modeling"),
+        Path("../notebooks/outputs/modeling"),
+        Path("outputs/modeling"),
         Path("../shared/outputs/models"),
         Path("./shared/outputs/models"),
         Path("../models"),
         Path("./models"),
     ]
-    
+
     for c in candidates:
         if c.exists():
-            # Verifica contenuto
-            if (c / "property").exists():
-                print(f"✅ Using models root: {c}")
-                return c.resolve()
-            # Check anche in artifacts/ per i modelli
-            if (c / "artifacts").exists():
-                artifacts = c / "artifacts"
-                if any(artifacts.glob("*.joblib")):
-                    print(f"✅ Found models in artifacts: {c}")
-                    return c.resolve()
-    
-    # Default
-    default = Path("./models")
-    print(f"⚠️ Using default (may be empty): {default}")
-    return default.resolve()
+            return c.resolve()
 
-def _resolve_path(asset_type: str, task: str, preferred_version: Optional[str] = None) -> Path:
-    """
-    Supporta sia struttura standard che notebooks/outputs/modeling/artifacts/
-    """
-    at = _normalize_key(asset_type)
-    tk = _normalize_key(task)
-    
-    # Check struttura standard
-    standard_path = MODELS_BASE / at / f"{tk}_v1.joblib"
-    if standard_path.exists():
-        return standard_path
-    
-    # Check in artifacts (struttura notebooks)
-    artifacts_path = MODELS_BASE / "artifacts" / f"rf_champion_A.joblib"
-    if artifacts_path.exists():
-        return artifacts_path
-    
-    artifacts_path_b = MODELS_BASE / "artifacts" / f"rf_champion_B.joblib"
-    if artifacts_path_b.exists():
-        return artifacts_path_b
-    
-    # Discovery
-    for pattern in [f"{tk}_*.joblib", "rf_*.joblib", "*.joblib"]:
-        for candidate in MODELS_BASE.rglob(pattern):
-            try:
-                pl = joblib.load(candidate)
-                if _is_fitted_pipeline(pl):
-                    return candidate
-            except:
-                continue
-    
-    raise ModelNotFoundError(f"No fitted model found for '{asset_type}/{task}'")
+    return Path("./models").resolve()
+
 
 MODELS_BASE: Path = _resolve_models_root()
 
@@ -111,10 +76,9 @@ TASK_DEFAULT = "value_regressor"
 
 logger = logging.getLogger("model_registry")
 if not logger.handlers:
-    # non invasivo: lascia che l'app imposti i handlers; qui solo livello
     logger.setLevel(logging.INFO)
 
-# Registry (optional): (asset_type, task) -> relative path (under MODELS_BASE)
+# Optional registry: (asset_type, task) -> relative path under MODELS_BASE
 MODEL_REGISTRY: Dict[str, Dict[str, str]] = {
     "property": {
         "value_regressor": "property/value_regressor_v2.joblib",
@@ -125,7 +89,6 @@ MODEL_REGISTRY: Dict[str, Dict[str, str]] = {
 _PIPELINE_TTL_CACHE: Dict[str, Tuple[Any, float]] = {}
 _METADATA_CACHE: Dict[Path, dict] = {}
 CACHE_TTL_SECONDS = 3600
-
 
 # =============================================================================
 # Exceptions
@@ -156,28 +119,9 @@ def _file_sha256(path: Path, chunk_size: int = 1 << 20) -> Optional[str]:
         return None
 
 
-def _list_version_files(asset_type: str, task: str) -> List[Path]:
-    """All model files for task under asset_type folder, sorted desc by version number."""
-    at_dir = MODELS_BASE / _normalize_key(asset_type)
-    if not at_dir.exists():
-        return []
-    # pattern: <task>_v*.joblib
-    files = sorted(at_dir.glob(f"{task}_v*.joblib"))
-    # sort by numeric version desc when possible
-    def _ver_num(p: Path) -> int:
-        m = VERSION_RE.search(p.name)
-        if m:
-            try:
-                return int(m.group(1)[1:])
-            except Exception:
-                return -1
-        return -1
-    return sorted(files, key=_ver_num, reverse=True)
-
-
 def _is_fitted_pipeline(pl: Any) -> bool:
     try:
-        if hasattr(pl, "steps"):  # sklearn Pipeline
+        if hasattr(pl, "steps"):
             check_is_fitted(pl.steps[-1][1])
         else:
             check_is_fitted(pl)
@@ -186,32 +130,35 @@ def _is_fitted_pipeline(pl: Any) -> bool:
         return False
 
 
-def _suggest_similar_models(asset_type: str, task: str, max_suggestions: int = 3) -> List[str]:
-    """Suggest similar tasks registered for the given asset_type."""
-    at = _normalize_key(asset_type)
-    if at not in MODEL_REGISTRY:
-        return []
-    all_tasks = list(MODEL_REGISTRY[at].keys())
-    return get_close_matches(task, all_tasks, n=max_suggestions, cutoff=0.6)
-
-
 def _metadata_path_for(model_path: Path) -> Path:
-    """
-    Given: property/value_regressor_v1.joblib
-    Expect: property/value_regressor_v1_meta.json
-    """
+    """property/value_regressor_v1.joblib -> property/value_regressor_v1_meta.json"""
     stem = model_path.name.replace(MODEL_EXT, "")
     return model_path.parent / f"{stem}{META_SUFFIX}"
 
 
-def _manifest_path_for(asset_type: str) -> Path:
-    """training_manifest.json placed at the asset_type folder root."""
-    return (MODELS_BASE / _normalize_key(asset_type)) / "training_manifest.json"
+def _find_manifest(models_base: Path, asset_type: str) -> Path:
+    """
+    Look for training_manifest.json in common locations:
+      1) <models_base>/<asset_type>/training_manifest.json
+      2) <models_base>/training_manifest.json
+      3) <models_base>/artifacts/training_manifest.json
+      4) ../shared/outputs/<asset_type>/training_manifest.json
+      5) ./shared/outputs/<asset_type>/training_manifest.json
+    """
+    at = _normalize_key(asset_type)
+    candidates = [
+        models_base / at / "training_manifest.json",
+        models_base / "training_manifest.json",
+        models_base / "artifacts" / "training_manifest.json",
+        Path("../shared/outputs") / at / "training_manifest.json",
+        Path("./shared/outputs") / at / "training_manifest.json",
+    ]
+    for c in candidates:
+        if c.exists():
+            return c
+    return candidates[0]
 
 
-# =============================================================================
-# Path resolution (registry → discovery) and fitted fallback
-# =============================================================================
 def _resolve_registered(asset_type: str, task: str) -> Optional[Path]:
     at = _normalize_key(asset_type)
     tk = _normalize_key(task)
@@ -223,31 +170,60 @@ def _resolve_registered(asset_type: str, task: str) -> Optional[Path]:
         return None
 
 
+def _list_version_files(asset_type: str, task: str) -> List[Path]:
+    """
+    Collect plausible model candidates:
+      - <MODELS_BASE>/<asset_type>/<task>_v*.joblib
+      - <MODELS_BASE>/<asset_type>/*.joblib
+      - <MODELS_BASE>/artifacts/*.joblib  (notebooks style)
+    Sorted by modification time (newest first).
+    """
+    at_dir = MODELS_BASE / _normalize_key(asset_type)
+    cands: List[Path] = []
+    if at_dir.exists():
+        cands += list(at_dir.glob(f"{task}_v*{MODEL_EXT}"))
+        cands += list(at_dir.glob(f"*{MODEL_EXT}"))
+    art = MODELS_BASE / "artifacts"
+    if art.exists():
+        cands += list(art.glob(f"*{MODEL_EXT}"))
+
+    # Unique + sort by mtime desc
+    uniq = {}
+    for p in cands:
+        try:
+            uniq[p.resolve()] = p
+        except Exception:
+            uniq[p] = p
+    cands = list(uniq.values())
+    cands.sort(key=lambda p: p.stat().st_mtime if p.exists() else 0.0, reverse=True)
+    return cands
+
+
 def _resolve_path(asset_type: str, task: str, preferred_version: Optional[str] = None) -> Path:
     """
     Resolution order:
-    1) If preferred_version is provided: try models/<asset_type>/<task>_<preferred>.joblib
-    2) Registered path from MODEL_REGISTRY
-    3) Discovery: pick newest **fitted** version in models/<asset_type>/
+      1) Preferred version (if provided)
+      2) Registry entry
+      3) Discovery: newest **fitted** among plausible candidates
     """
     at = _normalize_key(asset_type)
     tk = _normalize_key(task)
 
-    # 1) explicit preferred version
+    # 1) preferred explicit file
     if preferred_version:
         p = MODELS_BASE / at / f"{tk}_{preferred_version}.joblib"
         if p.exists():
             return p
-        logger.warning(f"Preferred version not found: {p.name}. Falling back…")
+        logger.warning("Preferred version not found: %s", p)
 
-    # 2) registry entry
+    # 2) registry
     reg = _resolve_registered(at, tk)
     if reg is not None:
         if reg.exists():
             return reg
-        logger.warning(f"Registry path missing: {reg}. Falling back…")
+        logger.warning("Registry path missing: %s", reg)
 
-    # 3) discovery: newest **fitted** model
+    # 3) discovery → pick first that is fitted
     for cand in _list_version_files(at, tk):
         try:
             pl = joblib.load(cand)
@@ -256,11 +232,12 @@ def _resolve_path(asset_type: str, task: str, preferred_version: Optional[str] =
         except Exception:
             continue
 
-    suggestions = _suggest_similar_models(at, tk)
-    hint = f" Did you mean: {suggestions}?" if suggestions else ""
-    raise ModelNotFoundError(f"No fitted model found for '{asset_type}/{task}' under {MODELS_BASE}.{hint}")
+    raise ModelNotFoundError(f"No fitted model found for '{asset_type}/{task}' under {MODELS_BASE}.")
 
 
+def _feature_order_path_for(model_path: Path) -> Path:
+    """property/value_regressor_v1.joblib -> property/feature_order.json"""
+    return model_path.parent / "feature_order.json"
 # =============================================================================
 # Public API
 # =============================================================================
@@ -270,9 +247,7 @@ def get_pipeline(
     *,
     preferred_version: Optional[str] = None,
 ) -> Any:
-    """
-    Return a loaded (and TTL-cached) model pipeline (only if fitted).
-    """
+    """Return a loaded (and TTL-cached) fitted model pipeline."""
     model_path = _resolve_path(asset_type, task, preferred_version=preferred_version)
     now = time.time()
     cache_key = str(model_path.resolve())
@@ -283,7 +258,7 @@ def get_pipeline(
 
     pipeline = joblib.load(model_path)
     if not _is_fitted_pipeline(pipeline):
-        # try fallback to another fitted candidate
+        # Try fallback among other candidates
         for cand in _list_version_files(asset_type, task):
             if cand == model_path:
                 continue
@@ -299,7 +274,7 @@ def get_pipeline(
             raise ModelNotFoundError(f"Model at {model_path} is not fitted and no fallback found")
 
     _PIPELINE_TTL_CACHE[cache_key] = (pipeline, now)
-    logger.info(f"Model loaded: {model_path.name}")
+    logger.info("Model loaded: %s", model_path.name)
     return pipeline
 
 
@@ -309,24 +284,46 @@ def get_model_paths(
     *,
     preferred_version: Optional[str] = None,
 ) -> Dict[str, Path]:
-    """Return dict with 'pipeline', 'meta', 'manifest' paths for the resolved model."""
+    """Return dict with 'pipeline', 'meta', 'manifest' (and 'feature_order' if present) paths for the resolved model."""
     pipeline_path = _resolve_path(asset_type, task, preferred_version=preferred_version)
     meta_path = _metadata_path_for(pipeline_path)
-    manifest_path = _manifest_path_for(asset_type)
-    return {"pipeline": pipeline_path, "meta": meta_path, "manifest": manifest_path}
+    manifest_path = _find_manifest(MODELS_BASE, asset_type)
+    forder_path = _feature_order_path_for(pipeline_path)
+    out = {"pipeline": pipeline_path, "meta": meta_path, "manifest": manifest_path}
+    if forder_path.exists():
+        out["feature_order"] = forder_path
+    return out
 
+def get_feature_order(
+    asset_type: str,
+    task: str = TASK_DEFAULT,
+    *,
+    preferred_version: Optional[str] = None,
+) -> List[str]:
+    """
+    Ritorna la lista ordinata delle **raw features** da usare come fonte per il calcolo di `ih`.
+    Cerca `feature_order.json` accanto al modello; se assente, ritorna [] (caller decide fallback).
+    """
+    try:
+        paths = get_model_paths(asset_type, task, preferred_version=preferred_version)
+        fp = paths.get("feature_order")
+        if isinstance(fp, Path) and fp.exists():
+            data = json.loads(fp.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                # dedup mantenendo l'ordine
+                seen = set(); return [x for x in map(str, data) if not (x in seen or seen.add(x))]
+    except Exception:
+        pass
+    return []
 
-# --- NEW: shared schema/config probing ---------------------------------------
-from importlib import import_module
 
 def _features_from_shared(asset_type: str) -> Optional[tuple[list[str], list[str]]]:
     """
-    Tenta di leggere le feature da /shared:
-    Priorità (first-hit wins):
+    Try to read feature spec from /shared if available:
       1) shared.common.schema.get_feature_spec(asset_type) -> {"categorical":[...], "numeric":[...]}
-      2) shared.common.schema.FEATURE_SPEC[asset_type]      -> idem
-      3) shared.common.schema.FEATURES_CATEGORICAL[asset], FEATURES_NUMERIC[asset]
-      4) shared.common.config.FEATURE_SPEC (stesse varianti)
+      2) shared.common.schema.FEATURE_SPEC[asset_type]
+      3) shared.common.schema.FEATURES_CATEGORICAL/NUMERIC
+      4) shared.common.config.* (same shapes)
     """
     candidates = [
         ("shared.common.schema", "get_feature_spec", "func"),
@@ -360,50 +357,23 @@ def _features_from_shared(asset_type: str) -> Optional[tuple[list[str], list[str
             continue
     return None
 
-def _find_manifest(models_base: Path, asset_type: str) -> Path:
-    """
-    Cerca training_manifest.json in più posti comuni:
-      1) <models_base>/<asset_type>/training_manifest.json
-      2) <models_base>/training_manifest.json
-      3) ../shared/outputs/<asset_type>/training_manifest.json
-      4) ./shared/outputs/<asset_type>/training_manifest.json
-    Ritorna il primo percorso esistente (o quello #1 anche se non esiste).
-    """
-    at = _normalize_key(asset_type)
-    candidates = [
-        models_base / at / "training_manifest.json",
-        models_base / "training_manifest.json",
-        Path("../shared/outputs") / at / "training_manifest.json",
-        Path("./shared/outputs") / at / "training_manifest.json",
-    ]
-    for c in candidates:
-        if c.exists():
-            return c
-    return candidates[0]  # default (potrebbe non esistere)
-
-def get_model_paths(
-    asset_type: str,
-    task: str = TASK_DEFAULT,
-    *,
-    preferred_version: Optional[str] = None,
-) -> Dict[str, Path]:
-    pipeline_path = _resolve_path(asset_type, task, preferred_version=preferred_version)
-    meta_path = _metadata_path_for(pipeline_path)
-    manifest_path = _find_manifest(MODELS_BASE, asset_type)
-    return {"pipeline": pipeline_path, "meta": meta_path, "manifest": manifest_path}
 
 def expected_features(meta: dict, manifest_path: Path, asset_type: str | None = None) -> tuple[list[str], list[str]]:
-    # 1) prova da /shared (se asset_type è noto)
+    """
+    Returns (categorical, numeric).
+    Priority:
+      1) shared spec (if available)
+      2) training_manifest.json
+      3) meta.json
+    """
     if asset_type:
         shared_spec = _features_from_shared(asset_type)
         if shared_spec:
             cat, num = shared_spec
-            # dedup/no-overlap
             seen = set(); cat = [c for c in cat if not (c in seen or seen.add(c))]
             num = [c for c in num if c not in set(cat)]
             return cat, num
 
-    # 2) training manifest
     cat = list(meta.get("features_categorical", []) or [])
     num = list(meta.get("features_numeric", []) or [])
     if manifest_path.exists():
@@ -416,16 +386,17 @@ def expected_features(meta: dict, manifest_path: Path, asset_type: str | None = 
         except Exception:
             pass
 
-    seen = set(); cat = [c for c in cat if not (c in seen or seen.add(c))]
+    seen = set()
+    cat = [c for c in cat if not (c in seen or seen.add(c))]
     num = [c for c in num if c not in set(cat)]
     return cat, num
 
+
 def _load_nb_outputs(asset_type: str) -> dict:
     """
-    Prova a caricare outputs utili dei notebooks per arricchire i metadata:
-      - ../shared/outputs/<asset>/metrics/*.json (es. valid_metrics.json)
-      - ../shared/outputs/<asset>/dataset_stats.json
-    Merge non distruttivo in un dict {"metrics": {...}, "dataset_stats": {...}}
+    Load additional notebook outputs (metrics/dataset stats) to enrich metadata:
+      ../shared/outputs/<asset>/metrics/*.json
+      ../shared/outputs/<asset>/dataset_stats.json
     """
     at = _normalize_key(asset_type)
     root_candidates = [Path("../shared/outputs") / at, Path("./shared/outputs") / at]
@@ -447,6 +418,82 @@ def _load_nb_outputs(asset_type: str) -> dict:
             continue
     return out
 
+
+def get_feature_order(
+    asset_type: str,
+    task: str = TASK_DEFAULT,
+    *,
+    preferred_version: Optional[str] = None,
+) -> list[str]:
+    """
+    Risolve l'ordine *raw* delle feature.
+    Priorità:
+      1) meta.json -> "feature_order" (array)
+      2) training_manifest.json -> paths.feature_order_path (file JSON)
+      3) file noto: <MODELS_BASE>/<asset_type>/feature_order.json
+    Ritorna [] se non trovato.
+    """
+    paths = get_model_paths(asset_type, task, preferred_version=preferred_version)
+    meta_path = paths["meta"]
+    manifest_path = paths["manifest"]
+
+    # 1) nel meta.json inline
+    try:
+        if meta_path.exists():
+            md = json.loads(meta_path.read_text(encoding="utf-8"))
+            fo = md.get("feature_order")
+            if isinstance(fo, list) and fo:
+                seen = set()
+                return [str(x) for x in fo if not (x in seen or seen.add(x))]
+    except Exception:
+        pass
+
+    # 2) nel manifest: paths.feature_order_path -> file
+    def _read_fo_file(p: Path) -> list[str]:
+        try:
+            if p.exists():
+                raw = json.loads(p.read_text(encoding="utf-8"))
+                if isinstance(raw, list):
+                    seen = set()
+                    return [str(x) for x in raw if not (x in seen or seen.add(x))]
+                if isinstance(raw, dict):
+                    arr = raw.get("feature_order") or raw.get("features") or []
+                    if isinstance(arr, list) and arr:
+                        seen = set()
+                        return [str(x) for x in arr if not (x in seen or seen.add(x))]
+        except Exception:
+            pass
+        return []
+
+    if manifest_path.exists():
+        try:
+            mf = json.loads(manifest_path.read_text(encoding="utf-8"))
+            pstr = (mf.get("paths") or {}).get("feature_order_path")
+            if pstr:
+                cand = Path(pstr)
+                # risoluzione robusta: relativo al manifest, alla root modelli, alla cartella asset
+                for base in [manifest_path.parent, MODELS_BASE, MODELS_BASE / _normalize_key(asset_type)]:
+                    p = (base / pstr).resolve() if not cand.is_absolute() else cand
+                    if p.exists():
+                        fo = _read_fo_file(p)
+                        if fo:
+                            return fo
+                # ultima spiaggia: se pstr è assoluto ed esiste
+                if cand.is_absolute() and cand.exists():
+                    fo = _read_fo_file(cand)
+                    if fo:
+                        return fo
+        except Exception:
+            pass
+
+    # 3) path noto: <MODELS_BASE>/<asset_type>/feature_order.json
+    default_fo = (MODELS_BASE / _normalize_key(asset_type) / "feature_order.json").resolve()
+    fo = _read_fo_file(default_fo)
+    if fo:
+        return fo
+
+    return []
+
 def get_model_metadata(
     asset_type: str,
     task: str = TASK_DEFAULT,
@@ -454,7 +501,9 @@ def get_model_metadata(
     preferred_version: Optional[str] = None,
 ) -> Optional[dict]:
     paths = get_model_paths(asset_type, task, preferred_version=preferred_version)
-    meta_path = paths["meta"]; pipeline_path = paths["pipeline"]; manifest_path = paths["manifest"]
+    meta_path = paths["meta"]
+    pipeline_path = paths["pipeline"]
+    manifest_path = paths["manifest"]
 
     if not meta_path.exists():
         return None
@@ -471,7 +520,7 @@ def get_model_metadata(
         except Exception:
             pass
 
-        # Preferisci metrics dal manifest → poi notebook outputs → poi meta.json
+        # Prefer metrics from manifest → then notebooks → then meta.json
         try:
             if manifest_path.exists():
                 mf = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -481,7 +530,6 @@ def get_model_metadata(
         except Exception:
             pass
 
-        # Merge outputs notebooks (non distruttivo)
         try:
             nb_out = _load_nb_outputs(asset_type)
             if nb_out.get("metrics"):
@@ -491,30 +539,37 @@ def get_model_metadata(
         except Exception:
             pass
 
+        # --- Feature order & n_features_total --------------------------------
+        try:
+            forder = get_feature_order(asset_type, task, preferred_version=preferred_version)
+        except Exception:
+            forder = []
+        if forder:
+            md.setdefault("feature_order", forder)
+            md.setdefault("n_features", len(forder))
+
+        # --- Normalize names for API/UI expectations -------------------------
+        vmv = md.get("model_version") or md.get("value_model_version")
+        vmn = md.get("model_class") or md.get("value_model_name")
+        nft = md.get("n_features") or (len(md.get("feature_order", [])) if isinstance(md.get("feature_order"), list) else None)
+        if vmv: md.setdefault("value_model_version", vmv)
+        if vmn: md.setdefault("value_model_name", vmn)
+        if nft: md.setdefault("n_features_total", int(nft))
+
         _METADATA_CACHE[meta_path] = md
 
     return _METADATA_CACHE[meta_path]
 
-
 def validate_model_compatibility(pipeline: Any, expected_features_list: List[str]) -> bool:
-    """
-    Checks if the model's expected input features match the expected list (order-insensitive).
-    """
+    """Order-insensitive check for feature set compatibility (best effort)."""
     if hasattr(pipeline, "feature_names_in_"):
         pipeline_features = list(pipeline.feature_names_in_)
         return set(pipeline_features) == set(expected_features_list)
-    # If the attribute is not available, assume compatible (sklearn versions vary)
     return True
 
 
 def health_check_model(asset_type: str, task: str = TASK_DEFAULT, *, preferred_version: Optional[str] = None) -> dict:
-    """
-    Returns a health diagnostic for the given model:
-    - Load success
-    - Metadata presence
-    - Size and last modification
-    - Training metrics (if available)
-    """
+    """Quick diagnostic for a given model."""
     try:
         paths = get_model_paths(asset_type, task, preferred_version=preferred_version)
         pipeline = get_pipeline(asset_type, task, preferred_version=preferred_version)
@@ -527,6 +582,7 @@ def health_check_model(asset_type: str, task: str = TASK_DEFAULT, *, preferred_v
             "last_modified": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(paths["pipeline"].stat().st_mtime)),
             "metadata_valid": bool(meta),
             "metrics": (meta or {}).get("metrics"),
+            "n_features_total": (meta or {}).get("n_features_total") or (meta or {}).get("n_features"),
             "fitted": _is_fitted_pipeline(pipeline),
         }
     except Exception as e:
@@ -537,7 +593,6 @@ def health_check_model(asset_type: str, task: str = TASK_DEFAULT, *, preferred_v
 # Discovery / helpers (backward-compatible)
 # =============================================================================
 def list_asset_types() -> List[str]:
-    # present folders under MODELS_BASE OR keys in registry
     assets = set(MODEL_REGISTRY.keys())
     if MODELS_BASE.exists():
         for p in MODELS_BASE.iterdir():
@@ -546,10 +601,38 @@ def list_asset_types() -> List[str]:
     return sorted(assets)
 
 
+def discover_models_for_asset(asset_type: str) -> List[Path]:
+    at_dir = MODELS_BASE / _normalize_key(asset_type)
+    res: List[Path] = []
+    if at_dir.exists():
+        res += list(at_dir.glob(f"*{MODEL_EXT}"))
+    art = MODELS_BASE / "artifacts"
+    if art.exists():
+        res += list(art.glob(f"*{MODEL_EXT}"))
+    # unique
+    seen = set(); out = []
+    for p in res:
+        if p.resolve() not in seen:
+            seen.add(p.resolve())
+            out.append(p)
+    return sorted(out)
+
+
+def parse_task_and_version(model_filename: str) -> Optional[Tuple[str, str]]:
+    """value_regressor_v1.joblib -> ('value_regressor', 'v1')"""
+    if not model_filename.endswith(MODEL_EXT):
+        return None
+    m = VERSION_RE.search(model_filename)
+    if not m:
+        return None
+    version = m.group(1)
+    task_part = model_filename[: model_filename.rfind("_" + version)]
+    return task_part, version
+
+
 def list_tasks(asset_type: str) -> List[str]:
     at = _normalize_key(asset_type)
     tasks = set(MODEL_REGISTRY.get(at, {}).keys())
-    # discover tasks by scanning filenames
     for p in discover_models_for_asset(at):
         parsed = parse_task_and_version(p.name)
         if parsed:
@@ -569,7 +652,7 @@ def model_exists(asset_type: str, task: str = TASK_DEFAULT) -> bool:
 
 
 def refresh_cache(asset_type: Optional[str] = None, task: Optional[str] = None) -> None:
-    """Clear cached entries (all or selected) so next call reloads from disk."""
+    """Clear cached entries (all or selected)."""
     if asset_type and task:
         try:
             path = _resolve_path(asset_type, task)
@@ -605,61 +688,20 @@ def cache_stats() -> dict:
     }
 
 
-def discover_models_for_asset(asset_type: str) -> List[Path]:
-    """Scan the asset_type directory for *.joblib models (not only those registered)."""
-    at_dir = MODELS_BASE / _normalize_key(asset_type)
-    if not at_dir.exists():
-        return []
-    return sorted(at_dir.glob(f"*{MODEL_EXT}"))
-
-
-def parse_task_and_version(model_filename: str) -> Optional[Tuple[str, str]]:
-    """From value_regressor_v1.joblib -> ("value_regressor", "v1")"""
-    if not model_filename.endswith(MODEL_EXT):
-        return None
-    m = VERSION_RE.search(model_filename)
-    if not m:
-        return None
-    version = m.group(1)
-    task_part = model_filename[: model_filename.rfind("_" + version)]
-    return task_part, version
-
-
-def suggest_task_versions(asset_type: str, task: str) -> List[str]:
-    """Return a list of versioned model filenames matching a task prefix."""
-    matches = []
-    for p in discover_models_for_asset(asset_type):
-        parsed = parse_task_and_version(p.name)
-        if parsed and parsed[0] == task:
-            matches.append(p.name)
-    return sorted(matches)
-
-
-def latest_version_filename(asset_type: str, task: str) -> Optional[str]:
-    """Pick the highest version number available for task under asset_type."""
-    cands = suggest_task_versions(asset_type, task)
-    if not cands:
-        return None
-    def _vn(name: str) -> int:
-        m = VERSION_RE.search(name)
-        if not m:
-            return -1
-        try:
-            return int(m.group(1)[1:])
-        except Exception:
-            return -1
-    return sorted(cands, key=_vn, reverse=True)[0]
-
-
 # =============================================================================
-# Diagnostics when run directly
+# Diagnostics
 # =============================================================================
 if __name__ == "__main__":
     print("MODELS_BASE:", MODELS_BASE)
     print("Available asset types:", list_asset_types())
     for at in list_asset_types():
         print(f"\nAsset Type: {at}")
-        for t in list_tasks(at):
+        try:
+            tasks = list_tasks(at)
+        except Exception as e:
+            print("  (no tasks)", e)
+            continue
+        for t in tasks:
             ok = model_exists(at, t)
             print(f"  Task: {t} -> exists: {ok}")
             if ok:
@@ -668,13 +710,7 @@ if __name__ == "__main__":
                 print(
                     f"    pipeline: {paths['pipeline'].name} | "
                     f"version: {(meta or {}).get('model_version')} | "
-                    f"hash: {(meta or {}).get('model_hash', '')[:16]}"
+                    f"hash: {(meta or {}).get('model_hash', '')[:16]} | "
+                    f"n_features_total: {(meta or {}).get('n_features_total')}"
                 )
-        discovered = discover_models_for_asset(at)
-        if discovered:
-            print("  Discovered files:")
-            for p in discovered:
-                parsed = parse_task_and_version(p.name)
-                pv = f"{parsed[0]} ({parsed[1]})" if parsed else "unparsed"
-                print(f"    - {p.name} -> {pv}")
     print("\nCache stats:", cache_stats())

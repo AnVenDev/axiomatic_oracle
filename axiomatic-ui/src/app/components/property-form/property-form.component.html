@@ -1,0 +1,198 @@
+<div class="panel">
+  <h3 class="title">Property details</h3>
+
+  <div class="grid">
+    <mat-form-field appearance="outline">
+      <mat-label>Asset ID</mat-label>
+      <input
+        matInput
+        [(ngModel)]="value['asset_id']"
+        (ngModelChange)="onChange()"
+        [disabled]="disabled"
+      />
+    </mat-form-field>
+
+    <div class="blank-div"></div>
+
+    <mat-form-field appearance="outline">
+      <mat-label>Location (city)</mat-label>
+      <input
+        matInput
+        [(ngModel)]="value['location']"
+        (ngModelChange)="onChange()"
+        [disabled]="disabled"
+      />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>Size (m²)</mat-label>
+      <input
+        matInput
+        type="number"
+        [(ngModel)]="value['size_m2']"
+        (ngModelChange)="onChange()"
+        [disabled]="disabled"
+      />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>Rooms</mat-label>
+      <input
+        matInput
+        type="number"
+        [(ngModel)]="value['rooms']"
+        (ngModelChange)="onChange()"
+        [disabled]="disabled"
+      />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>Bathrooms</mat-label>
+      <input
+        matInput
+        type="number"
+        [(ngModel)]="value['bathrooms']"
+        (ngModelChange)="onChange()"
+        [disabled]="disabled"
+      />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>Year built</mat-label>
+      <input
+        matInput
+        type="number"
+        [(ngModel)]="value['year_built']"
+        (ngModelChange)="onChange()"
+        [disabled]="disabled"
+      />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>Floor</mat-label>
+      <input
+        matInput
+        type="number"
+        [(ngModel)]="value['floor']"
+        (ngModelChange)="onChange()"
+        [disabled]="disabled"
+      />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>Building floors</mat-label>
+      <input
+        matInput
+        type="number"
+        [(ngModel)]="value['building_floors']"
+        (ngModelChange)="onChange()"
+        [disabled]="disabled"
+      />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>Energy class</mat-label>
+      <mat-select
+        [(ngModel)]="value['energy_class']"
+        (ngModelChange)="onChange()"
+        [disabled]="disabled"
+      >
+        <mat-option *ngFor="let ec of energyClasses" [value]="ec">{{
+          ec
+        }}</mat-option>
+      </mat-select>
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>Distance to center (km)</mat-label>
+      <input
+        matInput
+        type="number"
+        [(ngModel)]="value['distance_to_center_km']"
+        (ngModelChange)="onChange()"
+        [disabled]="disabled"
+      />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>Garage (0/1)</mat-label>
+      <input
+        matInput
+        type="number"
+        [(ngModel)]="value['garage']"
+        (ngModelChange)="onChange()"
+        [disabled]="disabled"
+      />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>Balcony (0/1)</mat-label>
+      <input
+        matInput
+        type="number"
+        [(ngModel)]="value['has_balcony']"
+        (ngModelChange)="onChange()"
+        [disabled]="disabled"
+      />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>Elevator (0/1)</mat-label>
+      <input
+        matInput
+        type="number"
+        [(ngModel)]="value['has_elevator']"
+        (ngModelChange)="onChange()"
+        [disabled]="disabled"
+      />
+    </mat-form-field>
+  </div>
+
+  <h3 class="title">Advanced</h3>
+
+  <div class="grid advanced-grid">
+    <mat-form-field appearance="outline">
+      <mat-label>Humidity (%)</mat-label>
+      <input
+        matInput
+        type="number"
+        [(ngModel)]="value['humidity_level']"
+        (ngModelChange)="onChange()"
+        [disabled]="disabled"
+      />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>Avg temperature (°C)</mat-label>
+      <input
+        matInput
+        type="number"
+        [(ngModel)]="value['temperature_avg']"
+        (ngModelChange)="onChange()"
+        [disabled]="disabled"
+      />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>AQI</mat-label>
+      <input
+        matInput
+        type="number"
+        [(ngModel)]="value['air_quality_index']"
+        (ngModelChange)="onChange()"
+        [disabled]="disabled"
+      />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>Noise (dB)</mat-label>
+      <input
+        matInput
+        type="number"
+        [(ngModel)]="value['noise_level']"
+        (ngModelChange)="onChange()"
+        [disabled]="disabled"
+      />
+    </mat-form-field>
+  </div>
+</div>

@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
 from typing import Dict, List, Optional, Any
+import re
 
 # Shared utils: timestamp + JSON encoder robusto a numpy
 from notebooks.shared.common.utils import get_utc_now, NumpyJSONEncoder
@@ -51,6 +52,15 @@ def _file_sha256_stream(path: Path, chunk_size: int = 1 << 20) -> str:
 def _logging_enabled() -> bool:
     # AI_ORACLE_DISABLE_API_LOG=1/true -> disabilita
     return os.getenv("AI_ORACLE_DISABLE_API_LOG", "0").lower() not in {"1", "true", "yes", "y"}
+
+def _safe_name(name: str, *, maxlen: int = 80) -> str:
+    """
+    Converte una stringa in un filename sicuro: [a-zA-Z0-9._-] soltanto, tronca a maxlen.
+    Rimpiazza sequenze vuote con 'item'.
+    """
+    base = re.sub(r"[^a-zA-Z0-9._-]", "-", str(name or "").strip())
+    base = base.strip("-._") or "item"
+    return base[:maxlen]
 
 # -----------------------------------------------------------------------------
 # Public API
@@ -114,7 +124,8 @@ def save_prediction_detail(prediction: dict, *, filename: Optional[Path] = None)
     if not _logging_enabled():
         return ""
     asset_id = prediction.get("asset_id") or f"asset_{int(datetime.now(timezone.utc).timestamp())}"
-    detail_path = filename or (DETAIL_DIR / f"{asset_id}.json")
+    safe_id = _safe_name(asset_id)
+    detail_path = filename or (DETAIL_DIR / f"{safe_id}.json")
     detail_path.parent.mkdir(parents=True, exist_ok=True)
 
     payload = dict(prediction)
@@ -122,3 +133,29 @@ def save_prediction_detail(prediction: dict, *, filename: Optional[Path] = None)
     _atomic_write_json(detail_path, payload)
 
     return compute_file_hash(detail_path)
+
+def save_audit_bundle(
+    bundle_dir: Path,
+    *,
+    p1_bytes: bytes,
+    p1_sha256: str,
+    canonical_input: dict,
+    verify_report: Optional[dict] = None,
+) -> str:
+    """
+    Scrive un audit bundle minimale nella cartella indicata:
+      - p1.json            (byte ACJ-1)
+      - p1.sha256
+      - canonical_input.json
+      - verify_report.json (opzionale)
+    Ritorna il path della cartella (stringa).
+    """
+    if not _logging_enabled():
+        return str(bundle_dir)
+    bundle_dir.mkdir(parents=True, exist_ok=True)
+    (bundle_dir / "p1.json").write_bytes(p1_bytes)
+    (bundle_dir / "p1.sha256").write_text(str(p1_sha256), encoding="utf-8")
+    _atomic_write_json(bundle_dir / "canonical_input.json", canonical_input)
+    if verify_report is not None:
+        _atomic_write_json(bundle_dir / "verify_report.json", verify_report)
+    return str(bundle_dir)

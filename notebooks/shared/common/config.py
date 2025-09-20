@@ -16,14 +16,6 @@ except Exception:   # pragma: no cover
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator     # type: ignore   
 
 from notebooks.shared.common.constants import (
-    ASSET_ID, ASSET_TYPE, CONDITION_SCORE, LOCATION, ENERGY_CLASS, OWNER_OCCUPIED, PUBLIC_TRANSPORT_NEARBY, RISK_SCORE,
-    SIZE_M2, ROOMS, BATHROOMS, YEAR_BUILT, FLOOR, BUILDING_FLOORS,
-    HUMIDITY_LEVEL, TEMPERATURE_AVG, NOISE_LEVEL, AIR_QUALITY_INDEX,
-    LUXURY_SCORE, ENV_SCORE, DISTANCE_TO_CENTER_KM,
-    VALUATION_K, PREDICTION_TS, AGE_YEARS, AGE_CATEGORY, LUXURY_CATEGORY, VALUE_SEGMENT, TIMESTAMP
-)
-
-from notebooks.shared.common.constants import (
     DEFAULT_REGION_BY_CITY,
     DEFAULT_URBAN_TYPE_BY_CITY,
 )
@@ -42,6 +34,12 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
+# ----------------------------- Versions/limits -----------------------------
+from notebooks.shared.common.constants import SCHEMA_VERSION, NOTE_MAX_BYTES, NETWORK  # reuse
+
+schema_version: str = Field(default=SCHEMA_VERSION)
+note_max_bytes: int = Field(default=NOTE_MAX_BYTES)
+network: str = Field(default=NETWORK)
 
 # ----------------------------- Errors --------------------------------------
 
@@ -288,7 +286,6 @@ class PipelineConfig(BaseModel):
 # --------------- Defaults preserved for backward compatibility --------------
 
 DEFAULT_CONFIG: Dict[str, Any] = PipelineConfig().to_dict()
-
 
 # --------------------------- Logger configuration ---------------------------
 

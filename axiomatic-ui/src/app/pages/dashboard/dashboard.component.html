@@ -1,97 +1,160 @@
-<div class="dashboard-container">
-  <h1>DASHBOARD</h1>
-
-  <section class="input-section">
-    <h2>Enter or upload asset details in JSON format</h2>
-
-    <label for="jsonFileUpload">Upload JSON file:</label>
-    <input
-      id="jsonFileUpload"
-      type="file"
-      (change)="loadFile($event)"
-      accept=".json"
-      style="margin-bottom: 1rem"
-    />
-
-    <textarea
-      [(ngModel)]="jsonInput"
-      rows="15"
-      placeholder="Paste here your JSON input..."
-    ></textarea>
-
-    <div class="cta-row">
+<div class="dash-wrap">
+  <!-- Top bar -->
+  <!-- <div class="topbar">
+    <div class="right">
       <button
-        mat-raised-button
-        color="primary"
-        class="btn-primary"
-        (click)="sendRequest()"
-        [disabled]="loading"
+        class="published-on-algo-btn"
+        mat-stroked-button
+        *ngIf="response?.publish?.status === 'success' && txId"
+        (click)="openExplorer()"
       >
-        Send to Oracle
+        Published on Algorand
       </button>
-      <mat-spinner *ngIf="loading" diameter="32"></mat-spinner>
-    </div>
-  </section>
-
-  <section *ngIf="errorMessage && !response" class="error-section">
-    <mat-card class="error-card" color="warn">
-      <strong>Error:</strong>
-      <pre>{{ errorMessage }}</pre>
-    </mat-card>
-  </section>
-
-  <!-- Type narrowing: r è sicuramente PredictionResponseV2 dentro al blocco -->
-  <section class="output-section" *ngIf="response as r">
-    <h2 class="output-title">Valutazione AI</h2>
-
-    <p>
-      <strong>Valore stimato:</strong>
-      {{ r.metrics.valuation_k * 1000 | currency : "EUR" }}
-      <span class="muted">
-        (punto: {{ r.metrics.point_pred_k * 1000 | currency : "EUR" }})
-      </span>
-    </p>
-
-    <p>
-      <strong
-        >Intervallo
-        {{ r.metrics.confidence * 100 | number : "1.0-0" }}%:</strong
+      <button
+        class="to-publish-on-algo-btn"
+        mat-stroked-button
+        *ngIf="!response && !txId"
+        (click)="openExplorer()"
       >
-      {{ r.metrics.confidence_low_k * 1000 | currency : "EUR" }} –
-      {{ r.metrics.confidence_high_k * 1000 | currency : "EUR" }}
-      <span class="muted">
-        (± {{ r.metrics.ci_margin_k * 1000 | currency : "EUR" }})
-      </span>
-    </p>
+        Nothing has been published yet
+      </button>
+    </div>
+  </div> -->
 
-    <p>
-      <strong>Incertezza (σ):</strong>
-      {{ r.metrics.uncertainty_k * 1000 | currency : "EUR" }}
-    </p>
+  <div class="grid">
+    <!-- LEFT: form + actions -->
+    <div class="col-left">
+      <app-property-form
+        [(value)]="formValue"
+        [loading]="loading"
+      ></app-property-form>
 
-    <p>
-      <strong>Modello:</strong>
-      {{ r.model_meta.value_model_name }} ({{
-        r.model_meta.value_model_version
-      }})
-    </p>
+      <div class="card actions" role="region" aria-label="Actions">
+        <!-- Rail di azioni: 4 step collegati -->
+        <div class="action-rail" role="group" aria-label="Workflow actions">
+          <!-- <mat-slide-toggle
+            [checked]="attOnly"
+            (change)="attOnly = $event.checked"
+            [disabled]="loading || publishing"
+            matTooltip="If enabled, create attestation bundle without publishing on-chain"
+            >Attestation only</mat-slide-toggle
+          > -->
 
-    <p>
-      <strong>Stato publish:</strong>
-      {{ r.publish.status }}
-      <ng-container *ngIf="r.publish.status === 'success'">
-        · TX:
-        <a
-          [href]="getExplorerUrl(r.blockchain_txid || r.publish.txid!)"
-          target="_blank"
-        >
-          {{ r.blockchain_txid || r.publish.txid }}
-        </a>
-        · ASA: {{ r.asa_id || r.publish.asa_id }}
+          <!-- 1) Send -->
+          <button
+            class="pill rail-btn"
+            mat-raised-button
+            color="primary"
+            (click)="sendRequest()"
+            [disabled]="!canSend"
+            [ngClass]="statusClass('request')"
+            matTooltip="Validate & score the payload with the trained model."
+          >
+            <span>Evaluate</span>
+          </button>
+
+          <span class="connector" [class.on]="stepDone('request')"></span>
+
+          <!-- 2) Publish -->
+          <button
+            class="pill rail-btn"
+            mat-raised-button
+            color="primary"
+            (click)="publishToBlockchain()"
+            [disabled]="!canPublish"
+            [ngClass]="statusClass('publish')"
+            matTooltip="Anchor a tamper-proof hash to Algorand (low fees, fast finality)."
+          >
+            <span>Publish</span>
+          </button>
+
+          <span class="connector" [class.on]="stepDone('publish')"></span>
+
+          <!-- 4) Download -->
+          <button
+            class="pill rail-btn"
+            mat-raised-button
+            color="primary"
+            (click)="downloadResponse()"
+            [disabled]="!canDownload"
+            [ngClass]="statusClass('download')"
+            matTooltip="Download audit ZIP (if available) or JSON response."
+          >
+            <span>Download</span>
+          </button>
+        </div>
+
+        <div class="error-wrap" *ngIf="errorMessage && !response">
+          <pre>{{ errorMessage }}</pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: playbook (pre-eval) oppure valuation / publish / verify -->
+    <div
+      class="col-right"
+      [ngStyle]="{ 'flex-direction': response ? 'column' : 'row' }"
+    >
+      <!-- TODO: guided Playbook (mostrato finché non c’è una valutazione) -->
+
+      <!-- Post-evaluation cards -->
+      <ng-container *ngIf="response">
+        <app-valuation-card [res]="response"></app-valuation-card>
+
+        <app-publish-details
+          *ngIf="response?.publish"
+          [res]="response"
+        ></app-publish-details>
+
+        <!-- Verify: visibile dalla prima valutazione.
+             Se c'è un publish, precompila con txId e call-to-action esplicita -->
+        <div class="card verify-card" id="verify-card">
+          <div class="qv-head">
+            <span class="qv-title">Verify</span>
+            <span class="qv-muted">
+              · paste TXID or pick from last publish</span
+            >
+          </div>
+          <!-- <p class="verify-hint" *ngIf="!response?.publish">
+            You can paste any Algorand txid to check confirmations. After you
+            publish, we’ll prefill this with your latest <strong>txid</strong>.
+          </p> -->
+          <p class="verify-hint" *ngIf="response?.publish">
+            Latest publish:
+            <strong>{{
+              txId ?? "No TXID has been sent in this session."
+            }}</strong>
+          </p>
+
+          <app-quick-verify
+            [defaultTxid]="txId || ''"
+            (submitTxid)="onVerifyTx($event)"
+          ></app-quick-verify>
+        </div>
       </ng-container>
-      <ng-container *ngIf="r.publish.status === 'error'">
-        · Error: {{ r.publish.error }}
-      </ng-container>
-    </p>
-  </section>
+    </div>
+  </div>
+
+  <!-- Overlay spinner -->
+  <div class="screen-loading-cover" *ngIf="loading || publishing">
+    <div class="spinner">
+      <img src="logo.png" alt="Axiomatic" class="axi-spinner-logo" />
+      <div class="label">
+        {{ publishing ? "Publishing to Algorand…" : "Evaluating…" }}
+      </div>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <!-- <nav class="footer-nav">
+      <a href="#" rel="noopener">Product</a>
+      <a href="#" rel="noopener">Docs</a>
+      <a href="#" rel="noopener">Company</a>
+      <a href="#" rel="noopener">Legal</a>
+    </nav> -->
+    <div class="footer-meta">
+      <span>No financial advice • GDPR note</span>
+      <span>© 2025 Axiomatic Oracle</span>
+    </div>
+  </footer>
 </div>

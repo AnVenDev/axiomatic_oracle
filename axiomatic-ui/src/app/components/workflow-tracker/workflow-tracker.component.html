@@ -1,0 +1,21 @@
+<div class="wf-card">
+  <h3 class="wf-title">{{ title }}</h3>
+
+  <div class="wf-row">
+    <ng-container *ngFor="let s of steps; let i = index">
+      <div class="wf-step" [class]="s.status">
+        <div class="dot"></div>
+        <div class="label">
+          {{ s.label }}
+          <ng-container *ngIf="s.meta?.txid">
+            ·
+            <a target="_blank" [href]="urlFor(s)">
+              {{ s.meta!.txid | slice : 0 : 6 }}…{{ s.meta!.txid | slice : -4 }}
+            </a>
+          </ng-container>
+        </div>
+      </div>
+      <div class="connector" *ngIf="i < steps.length - 1"></div>
+    </ng-container>
+  </div>
+</div>

@@ -1,27 +1,9 @@
 {
-  "/logs/api": {
-    "target": "http://localhost:8000",
+  "/api": {
+    "target": "http://127.0.0.1:8000",
     "secure": false,
-    "changeOrigin": true
-  },
-  "/logs/published": {
-    "target": "http://localhost:8000",
-    "secure": false,
-    "changeOrigin": true
-  },
-  "/logs/detail_reports": {
-    "target": "http://localhost:8000",
-    "secure": false,
-    "changeOrigin": true
-  },
-  "/predict": {
-    "target": "http://localhost:8000",
-    "secure": false,
-    "changeOrigin": true
-  },
-  "/models": {
-    "target": "http://localhost:8000",
-    "secure": false,
-    "changeOrigin": true
+    "changeOrigin": true,
+    "logLevel": "debug",
+    "pathRewrite": { "^/api": "" }
   }
 }

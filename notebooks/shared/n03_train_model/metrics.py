@@ -11,6 +11,16 @@ import pandas as pd     # type: ignore
 
 logger = logging.getLogger(__name__)
 
+def worst_k_decile(y_true: pd.Series, y_pred: pd.Series, k: float = 0.1) -> dict:
+    err = (y_true - y_pred).abs()
+    n = max(1, int(len(err) * k))
+    top = err.nlargest(n)
+    return {
+        "worst_k": float(k),
+        "worst_k_mean_abs_err": float(top.mean()),
+        "worst_k_max_abs_err": float(top.max()),
+        "worst_k_count": int(n),
+    }
 
 def compute_location_drift(
     df: pd.DataFrame,
@@ -58,7 +68,6 @@ def compute_location_drift(
         logger.info("No significant location drift detected.")
 
     return drift_report
-
 
 def location_benchmark(
     df: pd.DataFrame,

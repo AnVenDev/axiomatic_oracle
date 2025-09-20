@@ -9,7 +9,7 @@ Preprocessing e feature preparation per il training.
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, Tuple, Dict, Any, Mapping
+from typing import Iterable, Optional, Tuple, Dict, Any, Mapping
 
 import numpy as np      # type: ignore
 import pandas as pd     # type: ignore
@@ -17,6 +17,7 @@ import logging
 
 
 from notebooks.shared.common.constants import (
+    LEAKY_FEATURES,
     PRICE_PER_SQM_CAPPED_VIOLATED,
     Cols,
     ENERGY_CLASS, URBAN_TYPE, REGION, ZONE, ORIENTATION, VIEW, CONDITION, HEATING,
@@ -40,12 +41,12 @@ ML_LEAKY_FEATURES: set[str] = {
     "is_top_valuation",
 }
 
-
-def drop_leaky_and_target(df: pd.DataFrame, target: str = VALUATION_K) -> pd.DataFrame:
-    """Rimuove target e feature che possono causare leakage dal DF."""
-    cols_to_drop = {target} | ML_LEAKY_FEATURES
-    present = [c for c in cols_to_drop if c in df.columns]
-    return df.drop(columns=present, errors="ignore")
+def drop_leaky_and_target(df: pd.DataFrame, target: str, extra_leaky: Iterable[str] | None = None) -> pd.DataFrame:
+    deny = set(LEAKY_FEATURES) | {target}
+    if extra_leaky:
+        deny |= set(extra_leaky)
+    keep = [c for c in df.columns if c not in deny]
+    return df.loc[:, keep].copy()
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +88,10 @@ class FeatureEngineer:
             out = self._add_semantic_scores(out, report)
 
         report["diagnostics"] = self._diagnose_features(out)
+
+        for col in df.select_dtypes(include="float").columns:
+            df[col] = df[col].astype("float32")
+        
         return out, report
 
     def _add_basic_features(self, df: pd.DataFrame, report: Dict[str, Any]) -> pd.DataFrame:
@@ -141,6 +146,9 @@ class FeatureEngineer:
                     "std": float(np.nanstd(df[PRICE_PER_SQM].to_numpy())),
                 }
 
+        for col in df.select_dtypes(include="float").columns:
+            df[col] = df[col].astype("float32")
+
         return df
 
     def _add_semantic_scores(self, df: pd.DataFrame, report: Dict[str, Any]) -> pd.DataFrame:
@@ -166,11 +174,19 @@ class FeatureEngineer:
             df[Cols.RISK_SCORE] = (age / max_age).fillna(0.0).astype("float32")
 
         report["features_created"] += [Cols.LUXURY_SCORE, Cols.ENV_SCORE, Cols.RISK_SCORE]
+
+        for col in df.select_dtypes(include="float").columns:
+            df[col] = df[col].astype("float32")
+
         return df
 
     def _diagnose_features(self, df: pd.DataFrame) -> Dict[str, Any]:
         required = set(get_all_fields("property"))  # property oggi, multi-asset domani
         present = set(df.columns)
+
+        for col in df.select_dtypes(include="float").columns:
+            df[col] = df[col].astype("float32")
+
         return {
             "missing_required": sorted(list(required - present)),
             "unknown_columns": sorted(list(present - required)),
@@ -205,6 +221,9 @@ def enforce_categorical_domains(
     if ZONE in out.columns:
         zone_order = [Zone.CENTER.value, Zone.SEMI_CENTER.value, Zone.PERIPHERY.value]
         out[ZONE] = pd.Categorical(out[ZONE], categories=zone_order, ordered=True)
+    
+    for col in df.select_dtypes(include="float").columns:
+            df[col] = df[col].astype("float32")
 
     # altre semantiche
     for col in (URBAN_TYPE, REGION, ORIENTATION, VIEW, CONDITION, HEATING):

@@ -96,7 +96,7 @@ SEED: Final[int] = 42  # seed centralizzato
 # ================================ Versioning & On-chain limits ================================
 from typing import Final
 
-SCHEMA_VERSION: Final[str] = "2.0"
+SCHEMA_VERSION: Final[str] = "v2"
 NOTE_MAX_BYTES: Final[int] = 1024          # hard cap Algorand note field
 NOTE_PREFIX: Final[bytes] = b"AXM\x01"     # 4B prefix per indicizzazione explorer/indexer
 NETWORK: Final[str] = "TestNet"            # override via env se serve

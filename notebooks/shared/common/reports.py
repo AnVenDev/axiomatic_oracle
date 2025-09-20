@@ -43,6 +43,8 @@ from notebooks.shared.common.quality import (
 from notebooks.shared.n03_train_model.metrics import location_benchmark, compute_location_drift
 from notebooks.shared.common.sanity_checks import price_benchmark, critical_city_order_check
 
+from notebooks.shared.common.utils import canonical_json_dumps
+
 try:
     from notebooks.shared.n03_train_model.preprocessing import enforce_categorical_domains    # type: ignore
 except Exception:   # pragma: no cover
@@ -63,7 +65,6 @@ __all__ = [
     "build_basic_stats",
     "run_sanity_checks",
 ]
-
 
 # ============================================================================
 # ReportManager: load / merge / save JSON
@@ -96,14 +97,13 @@ class ReportManager:
     def save(self, report: Dict[str, Any], filename: str, use_numpy_encoder: bool = True) -> bool:
         path = self.log_dir / filename
         try:
-            with path.open("w", encoding="utf-8") as f:
-                json.dump(report, f, indent=2, cls=NumpyJSONEncoder if use_numpy_encoder else None)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(canonical_json_dumps(obj))
             logger.info("[REPORT] Salvato report", extra={"path": str(path)})
             return True
         except Exception as e:
             logger.error("[REPORT] Errore salvataggio", extra={"path": str(path), "error": str(e)})
             return False
-
 
 # ============================================================================
 # DistributionAnalyzer: analisi distribuzioni categoriche + benchmark
@@ -213,7 +213,6 @@ def build_basic_stats(df: pd.DataFrame) -> Dict[str, Any]:
     """Re-export della funzione di quality (per retrocompatibilità chiamanti)."""
     return _build_basic_stats(df)
 
-
 def _normalize_weights(raw: Dict[str, float] | Any, locations: List[str]) -> Dict[str, float]:
     if not locations:
         return {}
@@ -231,7 +230,6 @@ def _normalize_weights(raw: Dict[str, float] | Any, locations: List[str]) -> Dic
     if not np.isclose(s, 1.0):
         normalized = {k: v / s for k, v in normalized.items()}
     return normalized
-
 
 def run_sanity_checks(df: pd.DataFrame, config: Dict[str, Any]) -> Tuple[Dict[str, Any], pd.DataFrame]:
     """

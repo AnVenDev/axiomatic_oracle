@@ -146,4 +146,7 @@ def validate_property_asset(asset: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError(f"[VALIDATOR][property] missing required fields: {sorted(missing_required)}")
     if extra_fields:
         logger.info("[VALIDATOR][property] extra fields present: %s", sorted(extra_fields))
+
+    asset = {k: asset[k] for k in sorted(asset.keys())}
+
     return asset

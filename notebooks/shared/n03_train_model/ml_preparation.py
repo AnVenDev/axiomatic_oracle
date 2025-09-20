@@ -37,6 +37,22 @@ ENCODING_STRATEGY_THRESHOLDS = {
     "target_encoding_min": 50
 }
 
+from sklearn.model_selection import GroupKFold # type: ignore
+
+def train_test_split_grouped(X, y, groups, test_size=0.2, random_state=42):
+    gkf = GroupKFold(n_splits=int(1/test_size))
+    # prima split (deterministico con ordinamento gruppi)
+    groups = pd.Series(groups).astype(str)
+    first_group = sorted(groups.unique())[0]
+    for train_idx, test_idx in gkf.split(X, y, groups):
+        return train_idx, test_idx
+
+def stable_feature_order(df: pd.DataFrame) -> list[str]:
+    # ordina con numeriche prima (ord. alfabetico), poi categoriali/one-hot
+    num = sorted(df.select_dtypes(include=[np.number]).columns)
+    oth = sorted([c for c in df.columns if c not in num])
+    return num + oth
+
 def stratify_by_quantiles(y: pd.Series, q: int = 10) -> pd.Series:
     """Ritorna etichette di quantile per stratificare una regressione."""
     y_numeric = pd.to_numeric(y, errors="coerce")
@@ -62,7 +78,6 @@ def train_val_test_split_regression(
         X_tmp, y_tmp, test_size=val_size, random_state=random_state, stratify=strat_tmp
     )
     return (X_train, y_train), (X_val, y_val), (X_test, y_test)
-
 
 class MLPreparationAnalyzer:
     """

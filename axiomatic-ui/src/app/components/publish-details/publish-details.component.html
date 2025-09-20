@@ -1,0 +1,85 @@
+<ng-container *ngIf="res?.publish as p">
+  <div class="card publish">
+    <h3>Publish details</h3>
+
+    <ng-container *ngIf="hasOnChain(); else oracleOnly">
+      <div class="row">
+        <span class="label">status</span>
+        <span
+          class="value"
+          [class.ok]="isOk(p.status)"
+          [class.err]="isErr(p.status)"
+        >
+          {{ p.status }}
+        </span>
+      </div>
+
+      <div class="row" *ngIf="txid">
+        <span class="label">txid</span>
+        <span class="value mono">
+          <a
+            *ngIf="explorerUrl"
+            [href]="explorerUrl"
+            target="_blank"
+            rel="noopener"
+            >{{ txid }}</a
+          >
+          <ng-container *ngIf="!explorerUrl">{{ txid }}</ng-container>
+        </span>
+      </div>
+
+      <div class="row" *ngIf="asa != null">
+        <span class="label">asa</span>
+        <span class="value mono">{{ asa }}</span>
+      </div>
+
+      <div class="row" *ngIf="noteSha">
+        <span class="label">note hash</span>
+        <span class="value mono">{{ noteSha }}</span>
+      </div>
+
+      <div class="row" *ngIf="noteSize != null">
+        <span class="label">note size</span>
+        <span class="value">{{ noteSize }} bytes</span>
+      </div>
+
+      <div class="row" *ngIf="isCompactedDefined">
+        <span class="label">compacted</span>
+        <span class="value">{{ isCompacted ? "yes" : "no" }}</span>
+      </div>
+
+      <div class="row" *ngIf="confirmedRound != null">
+        <span class="label">confirmed round</span>
+        <span class="value">{{ confirmedRound }}</span>
+      </div>
+
+      <div class="row" *ngIf="network">
+        <span class="label">network</span>
+        <span class="value">{{ network }}</span>
+      </div>
+
+      <div class="row err" *ngIf="p.status === 'error' && p.error">
+        <span class="label">error</span>
+        <span class="value">{{ p.error }}</span>
+      </div>
+    </ng-container>
+
+    <ng-template #oracleOnly>
+      <div class="row">
+        <span class="label">status</span>
+        <span
+          class="value"
+          [class.ok]="isOk(p.status)"
+          [class.err]="isErr(p.status)"
+          [class.skip]="isSkipped(p.status)"
+        >
+          {{ p.status }}
+        </span>
+      </div>
+      <div class="row muted">
+        <span class="label">info</span>
+        <span class="value">Not published on-chain yet.</span>
+      </div>
+    </ng-template>
+  </div>
+</ng-container>

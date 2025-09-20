@@ -166,6 +166,10 @@ def generate_dataset_df(
         raise RuntimeError("No assets generated.")
 
     df = pd.concat(dfs, ignore_index=True)
+    for col in ("location", "zone", "region", "urban_type", "energy_class",
+            "orientation", "view", "condition", "heating"):
+        if col in df.columns:
+            df[col] = df[col].astype("category")
 
     # Budget error: fail se superiamo la soglia
     fail_rate = len(failures) / float(n_rows)
@@ -190,8 +194,32 @@ def generate_dataset_df(
         logger.info("[DRIFT] Location distribution within tolerance.")
 
     # Quality report (base + enriched)
-    base_report = generate_base_quality_report(df)
-    full_report = enrich_quality_report(df, base_report, config)
+    try:
+        base_report = generate_base_quality_report(df)
+        full_report = enrich_quality_report(df, base_report, config)
+    except Exception as e:
+        logger.warning("Quality/Drift enrichment skipped: %s", e)
+        full_report = {"status": "degraded", "error": str(e)}
+
+    full_report.setdefault("generation", {})
+
+    # 2) prendi il seed preferendo quello passato via config (se presente)
+    seed_val = None
+    try:
+        if isinstance(config, dict) and "seed" in config:
+            seed_val = int(config["seed"])
+    except Exception:
+        seed_val = None
+    
+    full_report["generation"]["seed"] = seed_val
+    
+    # (opzionale ma utile per telemetria)
+    if reference_time is not None:
+        try:
+            rt_iso = reference_time.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+            full_report["generation"]["reference_time"] = rt_iso
+        except Exception:
+            pass
 
     # Telemetria nel report
     elapsed = time.time() - t0

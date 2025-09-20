@@ -1,0 +1,85 @@
+.wf-card {
+  border: 1px solid #2a2f36;
+  border-radius: 12px;
+  padding: 16px;
+  background: #0f141a;
+  width: 100%;
+}
+.wf-title {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+
+.wf-row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  align-items: center;
+  gap: 12px;
+}
+
+.wf-step {
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  align-items: center;
+  gap: 10px;
+  min-width: 0; /* evita overflow label */
+}
+
+.dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #334155;
+  background: #0b1220;
+  box-shadow: 0 0 0 2px rgba(51, 65, 85, 0.25) inset;
+}
+
+.label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #cbd5e1;
+  font-weight: 600;
+}
+
+.connector {
+  height: 2px;
+  background: #223046;
+  opacity: 0.9;
+}
+
+/* Stati */
+.todo .dot {
+  background: #0b1220;
+  border-color: #334155;
+}
+.pending .dot {
+  background: #f59e0b;
+  border-color: #f59e0b;
+}
+.success .dot {
+  background: #10b981;
+  border-color: #10b981;
+}
+.error .dot {
+  background: #ef4444;
+  border-color: #ef4444;
+}
+.skipped .dot {
+  background: #374151;
+  border-color: #4b5563;
+}
+
+/* Mobile: impila verticalmente */
+@media (max-width: 960px) {
+  .wf-row {
+    grid-auto-flow: row;
+    grid-auto-rows: minmax(24px, auto);
+  }
+  .connector {
+    width: 2px;
+    height: 20px;
+    justify-self: center;
+  }
+}

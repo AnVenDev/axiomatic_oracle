@@ -1,0 +1,61 @@
+:host {
+  display: block;
+}
+
+/* card */
+.card.valuation {
+  border: 1px solid #2a2f36;
+  border-radius: 12px;
+  padding: 16px;
+  background: #14181d;
+}
+
+/* titolo */
+.card.valuation h3 {
+  margin: 0 0 8px 0;
+}
+
+/* righe chiave/valore */
+.row {
+  display: grid;
+  grid-template-columns: 180px 1fr auto; /* l’ultima colonna ospita la nota “(point …)” o “(± …)” */
+  gap: 8px 16px;
+  padding: 6px 0;
+  align-items: baseline;
+}
+
+.label {
+  color: #94a3b8;
+}
+.value {
+  font-weight: 600;
+}
+
+/* prima riga (estimated value) più grande */
+.card.valuation .row:first-of-type .value {
+  font-size: 1.25rem;
+}
+
+.muted {
+  color: #94a3b8;
+  font-weight: 400;
+  margin-left: 8px;
+  white-space: nowrap;
+}
+
+/* stop ai connettori residui */
+.card.valuation::before,
+.card.valuation::after {
+  content: none !important;
+  display: none !important;
+}
+
+/* responsive */
+@media (max-width: 980px) {
+  .row {
+    grid-template-columns: 1fr;
+  }
+  .muted {
+    margin-left: 0;
+  }
+}

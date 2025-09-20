@@ -61,4 +61,10 @@ class PropertyDerivedFeatures(BaseEstimator, TransformerMixin):
         else:
             df["region_index_prior"] = np.nan
 
+        # compattiamo alcune derivate in float32 per coerenza/metrica
+        for col in ["log_size_m2", "sqm_per_room", "baths_per_100sqm", "rooms_per_100sqm",
+                    "city_zone_prior", "region_index_prior"]:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce").astype("float32")
+
         return df

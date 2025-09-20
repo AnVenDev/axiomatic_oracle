@@ -1,6 +1,8 @@
 from __future__ import annotations
 import logging
 
+from notebooks.shared.common.utils import canonical_json_dumps, sha256_hex
+
 """
 Export utilities:
 - Atomic writes for CSV/Parquet
@@ -18,7 +20,7 @@ from typing import Any, Dict, Iterable, Mapping, Optional, Tuple
 
 import pandas as pd # type: ignore
 
-from notebooks.shared.common.constants import Versions
+from notebooks.shared.common.constants import SCHEMA_VERSION, Versions
 from notebooks.shared.common.schema import get_required_fields
 from notebooks.shared.common.quality import get_top_outliers
 
@@ -130,6 +132,10 @@ def export_dataset(
     ordered_cols = required_fields + extras
     df_to_save = df.loc[:, ordered_cols].copy()
 
+    payload_bytes = df_to_save.to_csv(index=index).encode("utf-8") if format=="csv" else b""
+    dataset_sha256 = sha256_hex(payload_bytes) if payload_bytes else None
+
+
     # Paths (accettiamo sia legacy flat che settings tipizzati)
     paths = config.get("paths") or {}
     output_path = Path(paths.get("output_path") or config.get("output_path") or "data/dataset.csv")
@@ -216,8 +222,13 @@ def export_dataset(
     if has_yaml:
         manifest.setdefault("paths", {})["quality_report_yaml"] = str(quality_yaml)
 
+    manifest.update({
+        "schema_version": SCHEMA_VERSION,
+        "checksums": {"dataset_sha256": dataset_sha256},
+    })
+
     # Manifest hash (sul JSON del manifest)
-    manifest_bytes = json.dumps(manifest, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    manifest_bytes = canonical_json_dumps(manifest).encode("utf-8")
     manifest_hash = hashlib.sha256(manifest_bytes).hexdigest()
     manifest["manifest_hash"] = manifest_hash
 

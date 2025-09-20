@@ -16,6 +16,8 @@ from typing import Any, Dict, List, Set, Tuple
 import numpy as np      # type: ignore
 import pandas as pd     # type: ignore
 
+from notebooks.shared.common.constants import LEAKY_FEATURES, EXPECTED_PRED_RANGE
+
 from notebooks.shared.common.schema import get_required_fields
 from notebooks.shared.common.constants import (
     # campi principali
@@ -521,3 +523,12 @@ def critical_city_order_check(
             })
         prev_city, prev_value = city, value
     return alerts
+
+def leakage_gate(columns: list[str]) -> tuple[bool, list[str]]:
+    bad = sorted(set(columns) & LEAKY_FEATURES)
+    return (len(bad) == 0, bad)
+
+def scale_gate(value: float, expected: tuple[float, float] = EXPECTED_PRED_RANGE) -> tuple[bool, str]:
+    lo, hi = expected
+    ok = (value >= lo) and (value <= hi)
+    return ok, ("" if ok else f"prediction {value:.2f} out of expected [{lo},{hi}]")

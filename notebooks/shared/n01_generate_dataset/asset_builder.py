@@ -1,6 +1,8 @@
 # shared/asset_builder.py
 from __future__ import annotations
 
+from notebooks.shared.common.utils import get_utc_now
+
 """
 Asset builder per 'property' (sintetico) con logica hedonic.
 - Tipizzazione completa
@@ -138,7 +140,7 @@ def generate_property(
     zone = assign_zone_from_distance(distance_to_center_km, config.get("zone_thresholds_km", {}))
 
     # --- Timestamp / age
-    last_verified_ts = random_recent_timestamp(reference_time, rng=rng)
+    last_verified_ts = get_utc_now().replace(microsecond=0).isoformat().replace("+00:00", "Z")
     month = (
         int(datetime.fromisoformat(last_verified_ts.replace("Z", "+00:00")).month)
         if last_verified_ts else None
@@ -239,6 +241,12 @@ def generate_property(
         LAST_VERIFIED_TS: last_verified_ts,
         LISTING_MONTH: month,
     }
+
+    # Normalizza tipi per coerenza (aiuta schema/serving)
+    for k in (HAS_ELEVATOR, HAS_GARDEN, HAS_BALCONY, GARAGE, OWNER_OCCUPIED,
+              PUBLIC_TRANSPORT_NEARBY, PARKING_SPOT, CELLAR, ATTIC, CONCIERGE,
+              IS_TOP_FLOOR, IS_GROUND_FLOOR):
+        asset[k] = int(bool(asset[k]))
 
     logger.debug(
         "Generated property #%d @%s/%s | sqm=%s rooms=%s price_sqm=%.2f val_k=%.2f",

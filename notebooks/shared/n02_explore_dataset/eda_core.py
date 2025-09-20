@@ -435,7 +435,7 @@ class OutlierDetector:
             "unit_interval": set(domain_constraints.get("unit_interval", set())) if domain_constraints else set(),
         }
 
-    # API pubblica ------------------------------------------------------------
+    # ---------------- API pubblica ----------------
 
     def detect_outliers(
         self,
@@ -547,7 +547,7 @@ class OutlierDetector:
             "top_multi_source_outliers": top_outliers
         }
 
-    # Metodi privati ----------------------------------------------------------
+    # ---------------- Metodi privati ----------------
 
     def _detect_outliers_iqr(self, df: pd.DataFrame, columns: List[str]) -> Dict[str, Any]:
         results: Dict[str, Any] = {}
@@ -785,7 +785,7 @@ class AnomalyDetector:
                 out["refined"] = ref.copy()
         return out
 
-    # Privati -----------------------------------------------------------------
+    # ---------------- Privati --------------
 
     def _select_features(self, df: pd.DataFrame, candidates: List[str], exclude: Set[str]) -> List[str]:
         chosen: List[str] = []
@@ -878,7 +878,14 @@ class AnomalyDetector:
         high_sev = df["severity_score"] >= cutoff
         multi_contrib = df["n_strong_contributors"] >= 2
         not_only_val = df.get("top_contributor") != "valuation_k_log"
-        base_anom = df["anomaly_flag"].fillna(False).astype(bool)
+        s = df.get("anomaly_flag")
+        if s is None:
+            base_anom = pd.Series(False, index=df.index, dtype="boolean")
+        else:
+            base_anom = pd.Series(s, copy=False)
+            if base_anom.dtype == "object":
+                base_anom = base_anom.astype("boolean")
+            base_anom = base_anom.fillna(False)
 
         df["anomaly_refined"] = (high_sev & (multi_contrib | not_only_val) & base_anom)
         df["anomaly_category"] = np.where(
@@ -1074,47 +1081,68 @@ class StatisticalTester:
         }
         return results
 
+
     def test_normality(self, df: pd.DataFrame, features: Optional[List[str]] = None) -> Dict[str, Any]:
         """Test di normalità (D'Agostino K²) sulle feature indicate."""
         feats = list(features) if features is not None else list(DEFAULT_NORMALITY_FEATURES)
         results: Dict[str, Any] = {}
 
+        def _safe_moments(series: pd.Series) -> tuple[float, float]:
+            """
+            Restituisce (skewness, kurtosis) in modo robusto:
+            - converte a float ignorando non-numerici
+            - evita RuntimeWarning quando la serie è quasi costante/varianza ~0
+            - se SciPy non è disponibile, torna (0.0, 0.0)
+            """
+            vals = pd.to_numeric(series, errors="coerce").astype(float)
+            vals = vals[np.isfinite(vals)]
+            if vals.size < 3 or stats is None:
+                return 0.0, 0.0
+            span = float(np.nanmax(vals) - np.nanmin(vals)) if vals.size else 0.0
+            var = float(np.nanvar(vals))
+            if not np.isfinite(var) or var < 1e-12 or span < 1e-12:
+                return 0.0, 0.0
+            return (
+                float(stats.skew(vals, nan_policy="omit", bias=True)),
+                float(stats.kurtosis(vals, nan_policy="omit", bias=True)),
+            )
+    
         for col in feats:
             if col not in df.columns:
                 results[col] = {"status": "missing"}
-                logger.warning("Column '%s' missing for normality test", col)
+                # meno rumoroso: info invece di warning
+                logger.info("Column '%s' missing for normality test", col)
                 continue
-
+            
             series = pd.to_numeric(df[col], errors="coerce").dropna()
-            n = len(series)
-
+            n = int(series.size)
+    
             if n < MIN_SAMPLES_NORMALITY:
                 results[col] = {"status": "insufficient_data", "n_samples": n, "min_required": MIN_SAMPLES_NORMALITY}
                 logger.info("Skipping normality test for %s (only %d samples)", col, n)
                 continue
-
+            
             if stats is None:
                 results[col] = {"status": "skipped_no_scipy", "n_samples": n}
                 logger.warning("SciPy non disponibile: salto normality test per %s", col)
                 continue
-
+            
             try:
                 stat, p_value = stats.normaltest(series)
                 is_normal = bool(p_value > self.normality_alpha)
-                skewness = float(stats.skew(series))
-                kurtosis = float(stats.kurtosis(series))
-
+                skewness, kurtosis = _safe_moments(series)
+    
                 results[col] = {
                     "status": "tested",
-                    "statistic": float(stat),
-                    "p_value": float(p_value),
+                    "statistic": float(stat) if np.isfinite(stat) else float("nan"),
+                    "p_value": float(p_value) if np.isfinite(p_value) else float("nan"),
                     "is_normal": is_normal,
-                    "skewness": skewness,
-                    "kurtosis": kurtosis,
+                    "skewness": float(skewness),
+                    "kurtosis": float(kurtosis),
                     "n_samples": n,
-                    "interpretation": self._interpret_normality(is_normal, skewness, kurtosis),
+                    "interpretation": self._interpret_normality(is_normal, float(skewness), float(kurtosis)),
                 }
-
+    
                 logger.info(
                     "%s: p=%.4f → %s (skew=%.2f, kurt=%.2f)",
                     col, p_value, "Normal ✅" if is_normal else "Non-normal ❌", skewness, kurtosis,
@@ -1122,7 +1150,7 @@ class StatisticalTester:
             except Exception as e:
                 results[col] = {"status": "error", "error": str(e)}
                 logger.error("Normality test failed for %s: %s", col, e)
-
+    
         return results
 
     def _interpret_normality(self, is_normal: bool, skewness: float, kurtosis: float) -> str:
@@ -1221,6 +1249,27 @@ class StatisticalTester:
         max_numeric_for_stats: int = 20,
     ) -> Dict[str, Any]:
         """Statistiche distribuzionali per variabili numeriche (limitando #colonne)."""
+
+        def _safe_moments(series: pd.Series) -> tuple[float, float]:
+            """
+            Restituisce (skewness, kurtosis) in modo robusto:
+            - converte a float ignorando non-numerici
+            - evita RuntimeWarning quando la serie è quasi costante/varianza ~0
+            - se SciPy non è disponibile, torna (0.0, 0.0)
+            """
+            vals = pd.to_numeric(series, errors="coerce").astype(float)
+            vals = vals[np.isfinite(vals)]
+            if vals.size < 3 or stats is None:
+                return 0.0, 0.0
+            span = float(np.nanmax(vals) - np.nanmin(vals)) if vals.size else 0.0
+            var = float(np.nanvar(vals))
+            if not np.isfinite(var) or var < 1e-12 or span < 1e-12:
+                return 0.0, 0.0
+            return (
+                float(stats.skew(vals, nan_policy="omit", bias=True)),
+                float(stats.kurtosis(vals, nan_policy="omit", bias=True)),
+            )
+    
         numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
         if not numeric_cols:
             return {}
@@ -1244,9 +1293,9 @@ class StatisticalTester:
                 "count": int(series.size),
             }
 
-            if stats is not None:
-                entry["skewness"] = float(stats.skew(series))
-                entry["kurtosis"] = float(stats.kurtosis(series))
+            skewness, kurtosis = _safe_moments(series)
+            entry["skewness"] = float(skewness)
+            entry["kurtosis"] = float(kurtosis)
 
             stats_dict[col] = entry
 

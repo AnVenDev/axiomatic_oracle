@@ -13,6 +13,7 @@ Utility functions:
 import json
 import logging
 import random
+import hashlib
 from datetime import datetime, date, timezone
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -58,6 +59,22 @@ class NumpyJSONEncoder(json.JSONEncoder):
         if isinstance(obj, (datetime, date)):
             return obj.isoformat()
         return super().default(obj)
+
+def canonical_json_dumps(obj: Any) -> str:
+    """
+    Dumps JSON stabile e compatto:
+    - sort_keys=True → hashing riproducibile
+    - separators=(",",":") → minimo overhead (utile per NOTE <= 1KB)
+    - ensure_ascii=False → non gonfiare con escape
+    """
+    return json.dumps(
+        obj, cls=NumpyJSONEncoder, sort_keys=True,
+        separators=(",", ":"), ensure_ascii=False
+    )
+
+def sha256_hex(data: Union[str, bytes]) -> str:
+    b = data.encode("utf-8") if isinstance(data, str) else data
+    return hashlib.sha256(b).hexdigest()
 
 def set_global_seed(seed: int) -> np.random.Generator:
     """

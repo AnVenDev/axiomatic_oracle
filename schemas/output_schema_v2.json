@@ -32,6 +32,19 @@
       "description": "UTC RFC3339 con suffisso 'Z'"
     },
 
+    "attestation": {
+      "type": "object",
+      "properties": {
+        "p1": { "$ref": "poval_v1_compact.schema.json" },
+        "p1_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
+        "p1_size_bytes": { "type": "integer", "minimum": 1 },
+        "canonical_input": { "type": "object" },
+        "input_hash": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" }
+      },
+      "required": ["p1", "p1_sha256", "p1_size_bytes"],
+      "additionalProperties": true
+    },
+
     "metrics": {
       "type": "object",
       "required": [
@@ -41,6 +54,7 @@
         "confidence_high_k",
         "latency_ms"
       ],
+
       "properties": {
         "valuation_k": { "type": "number" },
         "point_pred_k": { "type": "number" },
