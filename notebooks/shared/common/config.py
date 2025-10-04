@@ -36,7 +36,7 @@ from pydantic import (
 )  # type: ignore
 
 # Domain constants (regions/urban types, default mappings)
-from notebooks.shared.common.constants import (
+from shared.common.constants import (
     DEFAULT_REGION_BY_CITY,
     DEFAULT_URBAN_TYPE_BY_CITY,
     # These exist for consumers; we do not mirror them as Pydantic Fields here.

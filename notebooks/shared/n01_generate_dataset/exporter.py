@@ -2,7 +2,7 @@
 from __future__ import annotations
 import logging
 
-from notebooks.shared.common.utils import canonical_json_dumps, sha256_hex
+from shared.common.utils import canonical_json_dumps, sha256_hex
 
 """
 Export utilities:
@@ -21,9 +21,9 @@ from typing import Any, Dict, Iterable, Mapping, Optional, Tuple
 
 import pandas as pd  # type: ignore
 
-from notebooks.shared.common.constants import SCHEMA_VERSION, Versions
-from notebooks.shared.common.schema import get_required_fields
-from notebooks.shared.common.quality import get_top_outliers
+from shared.common.constants import SCHEMA_VERSION, Versions
+from shared.common.schema import get_required_fields
+from shared.common.quality import get_top_outliers
 
 logger = logging.getLogger(__name__)
 

@@ -20,7 +20,7 @@ from typing import List, Mapping, Optional
 import logging
 import numpy as np  # type: ignore
 
-from notebooks.shared.common.constants import (
+from shared.common.constants import (
     DEFAULT_ZONE_THRESHOLDS,
     ZONE_CENTER,
     ZONE_SEMI_CENTER,

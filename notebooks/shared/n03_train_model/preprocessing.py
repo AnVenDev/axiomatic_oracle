@@ -15,7 +15,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 import logging
 
-from notebooks.shared.common.constants import (
+from shared.common.constants import (
     LEAKY_FEATURES,
     PRICE_PER_SQM_CAPPED_VIOLATED,
     Cols,
@@ -24,8 +24,8 @@ from notebooks.shared.common.constants import (
     HAS_GARDEN, HAS_BALCONY, GARAGE,
     Mappings, EnergyClass, Zone
 )
-from notebooks.shared.common.schema import get_all_fields
-from notebooks.shared.common.utils import get_utc_now
+from shared.common.schema import get_all_fields
+from shared.common.utils import get_utc_now
 
 # Additional leaky features that must never be used for model training
 ML_LEAKY_FEATURES: set[str] = {

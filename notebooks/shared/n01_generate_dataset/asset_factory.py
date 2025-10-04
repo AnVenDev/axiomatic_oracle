@@ -15,14 +15,14 @@ from typing import Any, Dict, Mapping, Optional, Protocol, runtime_checkable, Li
 import logging
 from copy import deepcopy
 
-from notebooks.shared.common.schema import (
+from shared.common.schema import (
     get_all_fields,
     get_required_fields,
     normalize_column_order,  # to keep schema-first ordering
 )
-from notebooks.shared.common.config import PricingConfigModel
-from notebooks.shared.common.constants import AssetType
-from notebooks.shared.n01_generate_dataset.asset_builder import generate_property
+from shared.common.config import PricingConfigModel
+from shared.common.constants import AssetType
+from shared.n01_generate_dataset.asset_builder import generate_property
 
 logger = logging.getLogger(__name__)
 

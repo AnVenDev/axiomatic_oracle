@@ -22,16 +22,16 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
-from notebooks.shared.common.constants import (
+from shared.common.constants import (
     LOCATION, REGION, URBAN_TYPE, ZONE,
     ENERGY_CLASS, ENERGY_CLASSES,
     YEAR_BUILT, LAST_VERIFIED_TS,
     ORIENTATION, VIEW, HEATING,
     PRICE_PER_SQM, VALUATION_K,
 )
-from notebooks.shared.common.utils import NumpyJSONEncoder, canonical_json_dumps
+from shared.common.utils import NumpyJSONEncoder, canonical_json_dumps
 
-from notebooks.shared.common.quality import (
+from shared.common.quality import (
     build_basic_stats as _build_basic_stats,
     generate_base_quality_report,
     enrich_quality_report,
@@ -43,17 +43,17 @@ from notebooks.shared.common.quality import (
 )
 
 # Hard dependencies for benchmarks/drift (these are Notebook-side modules)
-from notebooks.shared.n03_train_model.metrics import location_benchmark, compute_location_drift
-from notebooks.shared.common.sanity_checks import price_benchmark, critical_city_order_check
+from shared.n03_train_model.metrics import location_benchmark, compute_location_drift
+from shared.common.sanity_checks import price_benchmark, critical_city_order_check
 
 # Optional: domain enforcement / pricing normalization
 try:
-    from notebooks.shared.n03_train_model.preprocessing import enforce_categorical_domains  # type: ignore
+    from shared.n03_train_model.preprocessing import enforce_categorical_domains  # type: ignore
 except Exception:  # pragma: no cover
     enforce_categorical_domains = None  # type: ignore
 
 try:
-    from notebooks.shared.n01_generate_dataset.asset_factory import normalize_pricing_input  # type: ignore
+    from shared.n01_generate_dataset.asset_factory import normalize_pricing_input  # type: ignore
 except Exception:  # pragma: no cover
     normalize_pricing_input = None  # type: ignore
 

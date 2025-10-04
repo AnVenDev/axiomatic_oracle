@@ -22,7 +22,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 from pandas.api import types as ptypes  # type: ignore
 
-from notebooks.shared.common.constants import (
+from shared.common.constants import (
     ASSET_ID,
     ENERGY_CLASS,
     LOCATION,

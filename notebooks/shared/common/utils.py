@@ -26,7 +26,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
-from notebooks.shared.common.constants import (
+from shared.common.constants import (
     DEFAULT_REGION_BY_CITY,
     DEFAULT_URBAN_TYPE_BY_CITY,
     LOCATION,

@@ -43,8 +43,8 @@ try:  # pragma: no cover - optional dependency
 except Exception:  # pragma: no cover
     sns = None  # type: ignore
 
-from notebooks.shared.common.sanity_checks import validate_dataset
-from notebooks.shared.common.constants import (
+from shared.common.sanity_checks import validate_dataset
+from shared.common.constants import (
     ASSET_ID,
     LOCATION,
     REGION,

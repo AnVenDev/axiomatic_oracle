@@ -20,7 +20,7 @@ import logging
 import pandas as pd                     # type: ignore
 from pydantic import BaseModel, Field   # type: ignore
 
-from notebooks.shared.common.constants import (
+from shared.common.constants import (
     # Enums/namespaces
     EnergyClass, Groups, Mappings, Cols,
     # Columns (retro-compat re-exports)

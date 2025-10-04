@@ -22,9 +22,9 @@ from typing import Any, Dict, List, Set, Tuple
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
-from notebooks.shared.common.constants import LEAKY_FEATURES, EXPECTED_PRED_RANGE
-from notebooks.shared.common.schema import get_required_fields
-from notebooks.shared.common.constants import (
+from shared.common.constants import LEAKY_FEATURES, EXPECTED_PRED_RANGE
+from shared.common.schema import get_required_fields
+from shared.common.constants import (
     # core fields
     ASSET_ID, ASSET_TYPE, VALUATION_K, SIZE_M2, PRICE_PER_SQM,
     BUILDING_FLOORS, FLOOR, IS_TOP_FLOOR, IS_GROUND_FLOOR,

@@ -22,7 +22,7 @@ from os import path
 from typing import Any, Dict, List, Optional, Tuple, Mapping
 
 from pathlib import Path
-from notebooks.shared.common.utils import canonical_json_dumps
+from shared.common.utils import canonical_json_dumps
 import numpy as np                  # type: ignore
 import pandas as pd                 # type: ignore
 
@@ -30,7 +30,7 @@ import matplotlib                   # type: ignore
 import matplotlib.pyplot as plt     # type: ignore
 
 # Import the I/O-free core
-from notebooks.shared.n02_explore_dataset.eda_core import (
+from shared.n02_explore_dataset.eda_core import (
     DescriptiveAnalyzer,
     OutlierDetector,
     AnomalyDetector,
@@ -40,7 +40,7 @@ from notebooks.shared.n02_explore_dataset.eda_core import (
     plot_correlation_heatmap,
 )
 
-from notebooks.shared.common.constants import (
+from shared.common.constants import (
     VALUATION_K,
     SIZE_M2,
     ENERGY_CLASS,
@@ -184,7 +184,7 @@ class InsightsAnalyzer:
     # --- helpers
 
     def _get_top_assets(self, df: pd.DataFrame) -> Dict[str, Any]:
-        from notebooks.shared.common.constants import ASSET_ID, PRICE_PER_SQM, CONDITION_SCORE
+        from shared.common.constants import ASSET_ID, PRICE_PER_SQM, CONDITION_SCORE
         cols = [ASSET_ID, VALUATION_K, SIZE_M2, ENERGY_CLASS, CONDITION_SCORE, "condition_minus_risk"]
         available = [c for c in cols if c in df.columns]
 
@@ -212,7 +212,7 @@ class InsightsAnalyzer:
         return result
 
     def _get_worst_assets(self, df: pd.DataFrame) -> Dict[str, Any]:
-        from notebooks.shared.common.constants import ASSET_ID, CONDITION_SCORE, LUXURY_SCORE
+        from shared.common.constants import ASSET_ID, CONDITION_SCORE, LUXURY_SCORE
         col = CONDITION_SCORE if CONDITION_SCORE in df else (
             "condition_minus_risk" if "condition_minus_risk" in df else None
         )

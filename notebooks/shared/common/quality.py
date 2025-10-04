@@ -18,16 +18,16 @@ from typing import Any, Dict, List, Mapping, Tuple, Optional
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
-from notebooks.shared.common.constants import (
+from shared.common.constants import (
     LOCATION, ZONE, ORIENTATION, VIEW, HEATING, VALUATION_K,
     CONDITION_SCORE, ENV_SCORE, LUXURY_SCORE, PRICE_PER_SQM, Cols,
 )
-from notebooks.shared.common.pricing import (
+from shared.common.pricing import (
     explain_price,
     normalize_priors,
     DEFAULT_BASE_PRICE_FALLBACK,
 )
-from notebooks.shared.common.utils import normalize_location_weights as _normalize_weights
+from shared.common.utils import normalize_location_weights as _normalize_weights
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ __all__ = [
 # -----------------------------------------------------------------------------
 def _lazy_metrics():
     try:
-        from notebooks.shared.n03_train_model.metrics import (  # type: ignore
+        from shared.n03_train_model.metrics import (  # type: ignore
             compute_location_drift,
             location_benchmark,
         )

@@ -19,9 +19,9 @@ import numpy as np                                  # type: ignore
 import pandas as pd                                 # type: ignore
 from numpy.random import Generator as NPGenerator   # type: ignore
 
-from notebooks.shared.n01_generate_dataset.asset_factory import generate_asset
-from notebooks.shared.common.quality import enrich_quality_report, generate_base_quality_report
-from notebooks.shared.n03_train_model.metrics import compute_location_drift
+from shared.n01_generate_dataset.asset_factory import generate_asset
+from shared.common.quality import enrich_quality_report, generate_base_quality_report
+from shared.n03_train_model.metrics import compute_location_drift
 
 logger = logging.getLogger(__name__)
 

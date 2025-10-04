@@ -25,7 +25,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 # Canonical domain/column names
-from notebooks.shared.common.constants import (
+from shared.common.constants import (
     LOCATION,
     ZONE,
     YEAR_BUILT,

@@ -15,7 +15,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 from sklearn.model_selection import train_test_split, GroupKFold  # type: ignore
 
-from notebooks.shared.common.constants import (
+from shared.common.constants import (
     VALUATION_K,
     PRICE_PER_SQM,
     PRICE_PER_SQM_VS_REGION_AVG,

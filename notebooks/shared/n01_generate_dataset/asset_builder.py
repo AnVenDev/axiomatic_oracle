@@ -16,8 +16,8 @@ import logging
 
 import numpy as np  # type: ignore
 
-from notebooks.shared.common.utils import get_utc_now
-from notebooks.shared.common.constants import (
+from shared.common.utils import get_utc_now
+from shared.common.constants import (
     ASSET_ID,
     ASSET_TYPE,
     LOCATION,
@@ -64,8 +64,8 @@ from notebooks.shared.common.constants import (
     Cols,
 )
 
-from notebooks.shared.common.pricing import apply_hedonic_adjustments
-from notebooks.shared.common.generation import (
+from shared.common.pricing import apply_hedonic_adjustments
+from shared.common.generation import (
     assign_zone_from_distance,
     simulate_condition_score,
 )
