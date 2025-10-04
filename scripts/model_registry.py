@@ -16,7 +16,7 @@ NOTE
 - Public functions used by the API layer:
     get_pipeline, get_model_paths, get_model_metadata, health_check_model,
     list_tasks, discover_models_for_asset, refresh_cache, cache_stats,
-    expected_features
+    expected_features, get_feature_order
 """
 
 from __future__ import annotations
@@ -38,7 +38,6 @@ from typing import Any, Dict, List, Optional, Tuple
 # Third-party
 # ===========
 import joblib  # type: ignore
-from sklearn.utils.validation import check_is_fitted  # type: ignore
 
 # =============================================================================
 # Configuration
@@ -62,17 +61,16 @@ def _resolve_models_root() -> Path:
     candidates: List[Path] = []
     env_root = os.getenv("MODELS_ROOT") or os.getenv("AI_ORACLE_MODELS_BASE")
     if env_root and env_root.strip():
-        candidates.append(Path(env_root))
+        p = Path(env_root)
+        if p.exists():
+            return p.resolve()
+        candidates.append(p)
 
     candidates += [
         Path("notebooks/outputs/modeling"),
         Path("./notebooks/outputs/modeling"),
         Path("../notebooks/outputs/modeling"),
         Path("outputs/modeling"),
-        Path("../shared/outputs/models"),
-        Path("./shared/outputs/models"),
-        Path("../models"),
-        Path("./models"),
     ]
 
     for c in candidates:
@@ -136,17 +134,35 @@ def _file_sha256(path: Path, chunk_size: int = 1 << 20) -> Optional[str]:
 
 def _is_fitted_pipeline(pl: Any) -> bool:
     """
-    Best-effort 'is fitted' check. If pipeline has steps, check last estimator;
-    else check the object itself.
+    Robust 'is fitted' check for our serving Pipeline:
+    - If last step is TransformedTargetRegressor → require regressor_ present;
+      if regressor_ is a (forest-like) estimator, accept if it has estimators_ (len>0).
+    - Else, if last step has estimators_, accept.
     """
     try:
-        if hasattr(pl, "steps"):
-            check_is_fitted(pl.steps[-1][1])
-        else:
-            check_is_fitted(pl)
-        return True
+        from sklearn.pipeline import Pipeline
+        last = pl.steps[-1][1] if isinstance(pl, Pipeline) else pl
     except Exception:
-        return False
+        last = pl
+
+    # TransformedTargetRegressor?
+    if getattr(last, "__class__", type("x", (), {})).__name__ == "TransformedTargetRegressor":
+        reg = getattr(last, "regressor_", None)
+        if reg is None:
+            return False
+        ests = getattr(reg, "estimators_", None)
+        if ests is not None:
+            return len(ests) > 0
+        # some regressors don't expose estimators_ but are still trained
+        return True
+
+    # Forest-like or other fitted estimators
+    ests = getattr(last, "estimators_", None)
+    if ests is not None:
+        return len(ests) > 0
+
+    # As a last resort, presence of any learned attribute often set at fit-time
+    return any(hasattr(last, attr) for attr in ("n_features_in_", "feature_names_in_", "tree_", "coef_", "classes_"))
 
 
 def _metadata_path_for(model_path: Path) -> Path:
@@ -175,7 +191,7 @@ def _find_manifest(models_base: Path, asset_type: str) -> Path:
     ]
     for c in candidates:
         if c.exists():
-            return c
+            return c.resolve()
     return candidates[0]
 
 
@@ -184,7 +200,7 @@ def _resolve_registered(asset_type: str, task: str) -> Optional[Path]:
     tk = _normalize_key(task)
     try:
         rel = MODEL_REGISTRY[at][tk]
-        full = MODELS_BASE / rel
+        full = (MODELS_BASE / rel).resolve()
         return full if full.exists() else None
     except KeyError:
         return None
@@ -198,12 +214,12 @@ def _list_version_files(asset_type: str, task: str) -> List[Path]:
       - <MODELS_BASE>/artifacts/*.joblib  (notebooks style)
     Sorted by modification time (newest first).
     """
-    at_dir = MODELS_BASE / _normalize_key(asset_type)
+    at_dir = (MODELS_BASE / _normalize_key(asset_type)).resolve()
     cands: List[Path] = []
     if at_dir.exists():
         cands += list(at_dir.glob(f"{task}_v*{MODEL_EXT}"))
         cands += list(at_dir.glob(f"*{MODEL_EXT}"))
-    art = MODELS_BASE / "artifacts"
+    art = (MODELS_BASE / "artifacts").resolve()
     if art.exists():
         cands += list(art.glob(f"*{MODEL_EXT}"))
 
@@ -231,7 +247,7 @@ def _resolve_path(asset_type: str, task: str, preferred_version: Optional[str] =
 
     # 1) preferred explicit file
     if preferred_version:
-        p = MODELS_BASE / at / f"{tk}_{preferred_version}.joblib"
+        p = (MODELS_BASE / at / f"{tk}_{preferred_version}.joblib").resolve()
         if p.exists():
             return p
         logger.warning("Preferred version not found: %s", p)
@@ -248,7 +264,7 @@ def _resolve_path(asset_type: str, task: str, preferred_version: Optional[str] =
         try:
             pl = joblib.load(cand)
             if _is_fitted_pipeline(pl):
-                return cand
+                return cand.resolve()
         except Exception:
             continue
 
@@ -272,7 +288,7 @@ def get_pipeline(
     """Return a loaded (and TTL-cached) fitted model pipeline."""
     model_path = _resolve_path(asset_type, task, preferred_version=preferred_version)
     now = time.time()
-    cache_key = str(model_path.resolve())
+    cache_key = str(model_path)
     if cache_key in _PIPELINE_TTL_CACHE:
         pipeline, ts = _PIPELINE_TTL_CACHE[cache_key]
         if now - float(ts) < CACHE_TTL_SECONDS:
@@ -280,7 +296,7 @@ def get_pipeline(
 
     pipeline = joblib.load(model_path)
     if not _is_fitted_pipeline(pipeline):
-        # Try fallback among other candidates
+        # Try fallback among other candidates (newest first)
         for cand in _list_version_files(asset_type, task):
             if cand == model_path:
                 continue
@@ -296,7 +312,7 @@ def get_pipeline(
             raise ModelNotFoundError(f"Model at {model_path} is not fitted and no fallback found")
 
     _PIPELINE_TTL_CACHE[cache_key] = (pipeline, now)
-    logger.info("Model loaded: %s", model_path.name)
+    logger.info("Model loaded: %s", model_path)
     return pipeline
 
 
@@ -315,9 +331,13 @@ def get_model_paths(
     manifest_path = _find_manifest(MODELS_BASE, asset_type)
     forder_path = _feature_order_path_for(pipeline_path)
 
-    out: Dict[str, Path] = {"pipeline": pipeline_path, "meta": meta_path, "manifest": manifest_path}
+    out: Dict[str, Path] = {
+        "pipeline": pipeline_path,
+        "meta": meta_path,
+        "manifest": manifest_path,
+    }
     if forder_path.exists():
-        out["feature_order"] = forder_path
+        out["feature_order"] = forder_path.resolve()
     return out
 
 
@@ -379,9 +399,10 @@ def expected_features(
     Returns (categorical, numeric).
     Priority:
       1) shared spec (if available for asset_type)
-      2) training_manifest.json (model.feature_list or model.features)
+      2) training_manifest.json (feature_config.categorical/numeric)
       3) meta.json (features_categorical / features_numeric)
     """
+    # 1) shared spec
     if asset_type:
         shared_spec = _features_from_shared(asset_type)
         if shared_spec:
@@ -391,19 +412,24 @@ def expected_features(
             num = [c for c in num if c not in set(cat)]
             return cat, num
 
-    cat = list(meta.get("features_categorical", []) or [])
-    num = list(meta.get("features_numeric", []) or [])
-
-    if manifest_path.exists():
+    # 2) manifest v2 (feature_config)
+    cat: list[str] = []
+    num: list[str] = []
+    if isinstance(manifest_path, Path) and manifest_path.exists():
         try:
             mf = json.loads(manifest_path.read_text(encoding="utf-8"))
-            feats = mf.get("model", {}).get("feature_list") or mf.get("model", {}).get("features", {})
-            if isinstance(feats, dict):
-                cat = list(feats.get("categorical", cat) or cat)
-                num = list(feats.get("numeric", num) or num)
+            fc = (mf.get("feature_config") or {})
+            cat = list(fc.get("categorical") or [])
+            num = list(fc.get("numeric") or [])
         except Exception:
-            pass
+            cat, num = [], []
 
+    # 3) meta.json fallback
+    if not (cat or num) and isinstance(meta, dict):
+        cat = list(meta.get("features_categorical", []) or [])
+        num = list(meta.get("features_numeric", []) or [])
+
+    # Dedup e coerenza
     seen = set()
     cat = [c for c in cat if not (c in seen or seen.add(c))]
     num = [c for c in num if c not in set(cat)]
@@ -486,17 +512,18 @@ def get_feature_order(
     if manifest_path.exists():
         try:
             mf = json.loads(manifest_path.read_text(encoding="utf-8"))
-            pstr = (mf.get("paths") or {}).get("feature_order_path")
+            pstr = (mf.get("paths") or {}).get("feature_order_path") or (mf.get("paths") or {}).get("feature_order")
             if pstr:
                 cand = Path(pstr)
                 # robust resolution: relative to manifest, models base, or asset dir
-                for base in [manifest_path.parent, MODELS_BASE, MODELS_BASE / _normalize_key(asset_type)]:
-                    p = (base / pstr).resolve() if not cand.is_absolute() else cand
+                bases = [manifest_path.parent, MODELS_BASE, MODELS_BASE / _normalize_key(asset_type)]
+                for base in bases:
+                    p = cand if cand.is_absolute() else (base / pstr)
+                    p = p.resolve()
                     if p.exists():
                         fo = _read_fo_file(p)
                         if fo:
                             return fo
-                # last resort: absolute path
                 if cand.is_absolute() and cand.exists():
                     fo = _read_fo_file(cand)
                     if fo:
@@ -645,11 +672,11 @@ def list_asset_types() -> List[str]:
 
 
 def discover_models_for_asset(asset_type: str) -> List[Path]:
-    at_dir = MODELS_BASE / _normalize_key(asset_type)
+    at_dir = (MODELS_BASE / _normalize_key(asset_type)).resolve()
     res: List[Path] = []
     if at_dir.exists():
         res += list(at_dir.glob(f"*{MODEL_EXT}"))
-    art = MODELS_BASE / "artifacts"
+    art = (MODELS_BASE / "artifacts").resolve()
     if art.exists():
         res += list(art.glob(f"*{MODEL_EXT}"))
     # unique
@@ -701,7 +728,7 @@ def refresh_cache(asset_type: Optional[str] = None, task: Optional[str] = None) 
     if asset_type and task:
         try:
             path = _resolve_path(asset_type, task)
-            _PIPELINE_TTL_CACHE.pop(str(path.resolve()), None)
+            _PIPELINE_TTL_CACHE.pop(str(path), None)
             _METADATA_CACHE.pop(_metadata_path_for(path), None)
         except (RegistryLookupError, ModelNotFoundError):
             pass

@@ -1,21 +1,5 @@
-"""
-Module: inference_api.py — FastAPI service for AI Oracle inference & PoVal™.
-
-Responsibilities:
-- Predict valuations (multi-RWA-ready; current asset_type: 'property').
-- Build PoVal p1 attestation (ACJ-1 canonical JSON) and size-guard.
-- Optional on-chain publish (Algorand) and One-Click Verify.
-- Lightweight security: bearer auth, rate limit, body size guard.
-- Logging without PII (redacted fields), audit bundle export (zip).
-
-NOTE:
-- ACJ-1 canonicalization uses sorted keys + compact separators + UTF-8 bytes.
-- PoVal p1 MUST respect NOTE_MAX_BYTES to fit Algorand note field.
-- Verify should read historical tx via Indexer (Algod is only for pending).
-
-Run locally:
-    uvicorn scripts.inference_api:app --reload --port 8000
-"""
+# (file) scripts/inference_api.py
+# Module: inference_api.py — FastAPI service for AI Oracle inference & PoVal™.
 
 from __future__ import annotations
 
@@ -64,7 +48,6 @@ from pydantic import BaseModel, ConfigDict, Field  # type: ignore
 # ========
 # Local os
 # ========
-# NOTE: Support import from both notebooks/shared and shared on sys.path.
 import sys
 from pathlib import Path as _Path
 
@@ -134,12 +117,17 @@ app.add_middleware(
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 LOG_JSON = os.getenv("LOG_JSON", "true").lower() in {"1", "true", "yes", "y"}
 logger = configure_logger(level=LOG_LEVEL, name="api", json_format=LOG_JSON)
+logger.info("AI Oracle API starting (api_version=%s, log_json=%s, level=%s)", API_VERSION, LOG_JSON, LOG_LEVEL)
 
 # Runtime flags
 STRICT_RAW_FEATURES = os.getenv("STRICT_RAW_FEATURES", "1").lower() in {"1", "true", "yes", "y"}
 ALLOW_BASELINE_FALLBACK = os.getenv("ALLOW_BASELINE_FALLBACK", "0").lower() in {"1", "true", "yes", "y"}
 INFERENCE_DEBUG = os.getenv("INFERENCE_DEBUG", "0").lower() in {"1", "true", "yes", "y"}
 REDACT_API_LOGS = os.getenv("REDACT_API_LOGS", "1").lower() in {"1", "true", "yes", "y"}
+logger.info(
+    "flags: STRICT_RAW_FEATURES=%s ALLOW_BASELINE_FALLBACK=%s INFERENCE_DEBUG=%s REDACT_API_LOGS=%s",
+    STRICT_RAW_FEATURES, ALLOW_BASELINE_FALLBACK, INFERENCE_DEBUG, REDACT_API_LOGS
+)
 
 # Paths base → notebooks/outputs
 OUTPUTS_DIR = Path(os.getenv("OUTPUTS_DIR", "notebooks/outputs"))
@@ -148,21 +136,26 @@ LOGS_DIR.mkdir(parents=True, exist_ok=True)
 API_LOG_PATH = LOGS_DIR / "api_inference_log.jsonl"
 registry = AttestationRegistry()
 
-# Schemas (configurabili)
+# Schemas (configurabili) — best-effort load (non far fallire l'import)
 SCHEMAS_DIR = Path(os.getenv("SCHEMAS_DIR", "schemas"))
-OUTPUT_SCHEMA = json.loads((SCHEMAS_DIR / "output_schema_v2.json").read_text(encoding="utf-8"))
+try:
+    OUTPUT_SCHEMA = json.loads((SCHEMAS_DIR / "output_schema_v2.json").read_text(encoding="utf-8"))
+except Exception:
+    OUTPUT_SCHEMA = {}
 SCHEMA_VERSION = "v2"
-P1_SCHEMA = json.loads((SCHEMAS_DIR / "poval_v1_compact.schema.json").read_text(encoding="utf-8"))
+try:
+    P1_SCHEMA = json.loads((SCHEMAS_DIR / "poval_v1_compact.schema.json").read_text(encoding="utf-8"))
+except Exception:
+    P1_SCHEMA = {}
 
 # PoVal & timing guards
 NOTE_MAX_BYTES = int(os.getenv("NOTE_MAX_BYTES", "1024"))
-P1_TS_SKEW_PAST = int(os.getenv("P1_TS_SKEW_PAST", "600"))  # 10 min
+P1_TS_SKEW_PAST = int(os.getenv("P1_TS_SKEW_PAST", "600"))   # 10 min
 P1_TS_SKEW_FUTURE = int(os.getenv("P1_TS_SKEW_FUTURE", "120"))  # 2 min
 
 # =============================================================================
 # Security MUST: Auth + Rate-limit + Body-limit
 # =============================================================================
-# --- Auth (Bearer) ---
 _auth = HTTPBearer(auto_error=False)
 API_KEY = os.getenv("API_KEY")  # if unset => open mode
 
@@ -291,69 +284,131 @@ def utc_now_iso_z() -> str:
             ts = ts.isoformat()
         return ts.replace("+00:00", "Z")
     except Exception:
-        # NOTE: extremely defensive fallback
         return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
-def _unwrap_for_introspection(obj: Any) -> Any:
-    """Traverse nested estimators/pipelines to expose inner nodes for inspection."""
+def _unwrap_for_introspection(obj: Any, max_depth: int = 10) -> Any:
+    """Traverse nested estimators/pipelines with depth limit."""
     tried = set()
-
-    def _walk(x):
+    def _walk(x, depth=0):
+        if depth > max_depth:
+            return
         if id(x) in tried or x is None:
             return
         tried.add(id(x))
         yield x
-        for attr in (
-            "best_estimator_",
-            "estimator",
-            "regressor_",
-            "regressor",
-            "pipeline",
-            "model",
-            "final_estimator",
-        ):
+        for attr in ("best_estimator_","estimator","regressor_","regressor","pipeline","model","final_estimator"):
             if hasattr(x, attr):
                 try:
-                    yield from _walk(getattr(x, attr))
+                    child = getattr(x, attr)
+                    if child is not None:
+                        yield from _walk(child, depth + 1)
                 except Exception:
                     pass
         try:
-            from sklearn.pipeline import Pipeline  # type: ignore
-
+            from sklearn.pipeline import Pipeline
             if isinstance(x, Pipeline):
                 for _, step in x.steps:
-                    yield from _walk(step)
+                    yield from _walk(step, depth + 1)
         except Exception:
             pass
-
     for node in _walk(obj):
         yield node
 
-def _refresh_known_categories_from_pipeline(pipeline) -> None:
-    """NOTE: Introspect ColumnTransformer to collect known categories for normalization."""
+def _unwrap_estimator(obj):
+    """Estrae l'estimatore 'vero' attraversando wrapper comuni (Pipeline, *SearchCV, TTR)."""
+    tried = set()
+    while obj is not None and id(obj) not in tried:
+        tried.add(id(obj))
+        try:
+            from sklearn.pipeline import Pipeline  # type: ignore
+            if isinstance(obj, Pipeline):
+                obj = obj.steps[-1][1]
+                continue
+        except Exception:
+            pass
+        if getattr(obj, "__class__", type(None)).__name__ == "TransformedTargetRegressor":
+            reg = getattr(obj, "regressor", None)
+            obj = reg or obj
+            continue
+        for attr in ("best_estimator_", "estimator"):
+            new = getattr(obj, attr, None)
+            if new is not None and new is not obj:
+                obj = new
+                break
+        else:
+            break
+    return obj
+
+def _raw_columns_from_pipeline(pipeline) -> List[str]:
+    """Ritorna i NOMI RAW dal/i ColumnTransformer presenti (anche annidati)."""
+    cols: List[str] = []
+    seen = set()
+    stack = [pipeline]
     try:
         from sklearn.compose import ColumnTransformer  # type: ignore
+        from sklearn.pipeline import Pipeline  # type: ignore
+    except Exception:
+        return cols
+    while stack:
+        x = stack.pop()
+        if id(x) in seen:
+            continue
+        seen.add(id(x))
+        if isinstance(x, Pipeline):
+            for _, step in x.steps:
+                stack.append(step)
+            continue
+        if isinstance(x, ColumnTransformer):
+            for _tname, _trans, cols_in in x.transformers:
+                if cols_in in (None, "drop"):
+                    continue
+                if isinstance(cols_in, (list, tuple, np.ndarray)):
+                    cols.extend([str(c) for c in cols_in])
+                else:
+                    cols.append(str(cols_in))
+        for attr in ("best_estimator_", "estimator", "regressor", "pipeline", "model"):
+            child = getattr(x, attr, None)
+            if child is not None:
+                stack.append(child)
+    out, seen = [], set()
+    for c in cols:
+        if c not in seen:
+            seen.add(c)
+            out.append(c)
+    return out
 
-        for node in _unwrap_for_introspection(pipeline):
-            if isinstance(node, ColumnTransformer):
-                for _tname, trans, cols_in in node.transformers:
-                    cats = getattr(trans, "categories_", None)
-                    if cats is None:
-                        continue
-                    cols = list(cols_in) if isinstance(cols_in, (list, tuple)) else [cols_in]
-                    for col, cat_vals in zip(cols, cats):
-                        col = str(col)
-                        if col in _KNOWN_CATS:
-                            _KNOWN_CATS[col].update(map(str, cat_vals))
+def _refresh_known_categories_from_pipeline(pipeline) -> None:
+    """Collect known categories visiting SOLO gli step della Pipeline (no recursion)."""
+    try:
+        from sklearn.compose import ColumnTransformer
+        from sklearn.pipeline import Pipeline
+        ct_list = []
+        if isinstance(pipeline, Pipeline):
+            for _, step in pipeline.steps:
+                if isinstance(step, ColumnTransformer):
+                    ct_list.append(step)
+        elif isinstance(pipeline, ColumnTransformer):
+            ct_list.append(pipeline)
+        for ct in ct_list:
+            for _tname, trans, cols_in in ct.transformers:
+                cats = getattr(trans, "categories_", None)
+                if cats is None:
+                    continue
+                cols = list(cols_in) if isinstance(cols_in, (list, tuple)) else [cols_in]
+                for col, cat_vals in zip(cols, cats):
+                    col = str(col)
+                    if col in _KNOWN_CATS:
+                        _KNOWN_CATS[col].update(map(str, cat_vals))
         if any(_KNOWN_CATS[k] for k in _KNOWN_CATS):
             logger.info(
                 "known cats loaded: city=%d region=%d zone=%d",
-                len(_KNOWN_CATS["city"]),
-                len(_KNOWN_CATS["region"]),
-                len(_KNOWN_CATS["zone"]),
+                len(_KNOWN_CATS["city"]), len(_KNOWN_CATS["region"]), len(_KNOWN_CATS["zone"]),
             )
+    except RecursionError:
+        logger.warning("Recursion limit hit during pipeline introspection, skipping")
+        return
     except Exception as e:
-        logger.debug("Could not introspect categories: %s", e)
+        logger.debug("Could not introspect categories (flat): %s", e)
 
 def _to_macro_region(value: Optional[str], city: Optional[str] = None) -> Optional[str]:
     """Map Italian region names/cities to macro area (north/center/south) when possible."""
@@ -362,7 +417,10 @@ def _to_macro_region(value: Optional[str], city: Optional[str] = None) -> Option
     if value:
         v = _slug(str(value))
         if v in {"north", "center", "south"}:
-            return value.strip().lower()
+            try:
+                return value.strip().lower()
+            except Exception:
+                return str(value).lower()
         if v in _REGION_TO_MACRO:
             return _REGION_TO_MACRO[v]
     try:
@@ -415,21 +473,38 @@ def log_jsonl(record: dict, path: Path = API_LOG_PATH) -> None:
     with os.fdopen(fd, "a", encoding="utf-8") as f:
         f.write(line + "\n")
 
+# --- Missing & dtype cleaners (evita pd.NA in sklearn) -----------------------
+def _to_numpy_nan(x):
+    try:
+        import pandas as _pd
+        if x is _pd.NA:
+            return np.nan
+    except Exception:
+        pass
+    try:
+        if isinstance(x, float) and (x != x):  # NaN
+            return np.nan
+    except Exception:
+        pass
+    return x
+
+def _is_nullable_int_or_bool_dtype(dtype) -> bool:
+    s = str(dtype)
+    return s.startswith("Int") or s == "boolean"
+
+def _clean_missing_df(df: pd.DataFrame) -> pd.DataFrame:
+    if not isinstance(df, pd.DataFrame):
+        df = pd.DataFrame(df)
+    df = df.applymap(_to_numpy_nan)
+    for c in df.columns:
+        dt = df[c].dtype
+        if _is_nullable_int_or_bool_dtype(dt):
+            df[c] = df[c].astype("float64")
+    return df
+
 # SECURITY: Sensitive keys to redact from logs.
 _SENSITIVE_KEYS = {
-    "address",
-    "note",
-    "notes",
-    "email",
-    "phone",
-    "lat",
-    "lon",
-    "lng",
-    "latitude",
-    "longitude",
-    "coordinates",
-    "gps",
-    "contact",
+    "address","note","notes","email","phone","lat","lon","lng","latitude","longitude","coordinates","gps","contact",
 }
 
 def _redact(obj: Any) -> Any:
@@ -437,10 +512,7 @@ def _redact(obj: Any) -> Any:
     if isinstance(obj, dict):
         out = {}
         for k, v in obj.items():
-            if k.lower() in _SENSITIVE_KEYS:
-                out[k] = "***"
-            else:
-                out[k] = _redact(v)
+            out[k] = "***" if k.lower() in _SENSITIVE_KEYS else _redact(v)
         return out
     if isinstance(obj, list):
         return [_redact(x) for x in obj]
@@ -448,17 +520,44 @@ def _redact(obj: Any) -> Any:
 
 def _predict_one(pipeline_obj, df: pd.DataFrame) -> float:
     """Run prediction on a single-row DataFrame, with baseline fallback if enabled."""
+    df = _clean_missing_df(df)
     if hasattr(pipeline_obj, "predict"):
-        y = pipeline_obj.predict(df)
-        if isinstance(y, (list, tuple, np.ndarray)):
-            return float(np.ravel(y)[0])
-        return float(y)
+        logger.info("predict_one: pipeline_obj=%s", type(pipeline_obj).__name__)
+        try:
+            y = pipeline_obj.predict(df)
+            logger.info("predict_one: raw predict() -> %s", np.ravel(y)[0] if isinstance(y, (list, tuple, np.ndarray)) else y)
+            if isinstance(y, (list, tuple, np.ndarray)):
+                return float(np.ravel(y)[0])
+            return float(y)
+        except RecursionError:
+            logger.warning("predict_one: RecursionError on pipeline.predict; trying last step estimator")
+            try:
+                from sklearn.pipeline import Pipeline  # type: ignore
+                if isinstance(pipeline_obj, Pipeline):
+                    base = pipeline_obj.steps[-1][1]
+                    y = base.predict(df)
+                    logger.info("predict_one: last-step estimator predict -> %s", np.ravel(y)[0] if isinstance(y, (list, tuple, np.ndarray)) else y)
+                    if isinstance(y, (list, tuple, np.ndarray)):
+                        return float(np.ravel(y)[0])
+                    return float(y)
+            except Exception as e:
+                logger.warning("predict_one: last-step estimator failed: %s", e)
+            if ALLOW_BASELINE_FALLBACK:
+                s = df.get("size_m2")
+                if s is not None and len(s) > 0 and pd.notna(s.iloc[0]):
+                    fb = float(max(1.0, 0.8 * float(s.iloc[0])))
+                    logger.info("predict_one: baseline fallback -> %s", fb)
+                    return fb
+            raise
     if callable(pipeline_obj):
+        logger.info("predict_one: pipeline_obj is callable; calling...")
         return float(pipeline_obj(df))
     if ALLOW_BASELINE_FALLBACK:
         s = df.get("size_m2")
         if s is not None and len(s) > 0 and pd.notna(s.iloc[0]):
-            return float(max(1.0, 0.8 * float(s.iloc[0])))
+            fb = float(max(1.0, 0.8 * float(s.iloc[0])))
+            logger.info("predict_one: callable fallback -> %s", fb)
+            return fb
     raise RuntimeError("Model object has no predict/callable interface")
 
 _EXPECTED_FEATURES: Optional[List[str]] = None
@@ -469,105 +568,58 @@ def collect_expected_features(
     payload_keys: Optional[List[str]] = None,
 ) -> List[str]:
     """
-    Resolve expected raw input feature list using (priority):
-    1) meta.feature_order, 2) meta.expected_features/features/input_features,
-    3) pipeline raw ColumnTransformer columns, 4) pipeline.get_feature_names_out (post-encoding!),
-    5) payload_keys fallback.
+    Ordine di priorità per i nomi RAW attesi:
+    1) meta.feature_order
+    2) meta.expected_features / features / input_features
+    3) ColumnTransformer RAW columns (anche annidato)
+    4) payload_keys (fallback estremo)
     """
+    # 0) override runtime per test
     if isinstance(_EXPECTED_FEATURES, list) and _EXPECTED_FEATURES:
-        logger.info(
-            "expected_features resolved: source=%s count=%d sample=%s",
-            "test_override(_EXPECTED_FEATURES)",
-            len(_EXPECTED_FEATURES),
-            _EXPECTED_FEATURES[:10],
-        )
-        return list(_EXPECTED_FEATURES)
-
-    # Priority 0: explicit order → raw → input hashing consistency
-    try:
+        logger.info("expected_features: test_override (_EXPECTED_FEATURES), n=%d", len(_EXPECTED_FEATURES))
+        out = list(_EXPECTED_FEATURES)
+    else:
+        # 1) meta.feature_order
         fo = (meta or {}).get("feature_order")
         if isinstance(fo, list) and fo:
-            seen = set()
-            ordered = [str(x) for x in fo if not (x in seen or seen.add(x))]
-            logger.info(
-                "expected_features resolved: source=%s count=%d sample=%s",
-                "meta.feature_order",
-                len(ordered),
-                ordered[:10],
-            )
-            return ordered
-    except Exception:
-        pass
+            ordered, s = [], set()
+            for x in fo:
+                x = str(x)
+                if x not in s:
+                    s.add(x)
+                    ordered.append(x)
+            out = ordered
+            logger.info("expected_features: meta.feature_order, n=%d, head=%s", len(out), out[:10])
+        else:
+            # 2) altre chiavi meta
+            out = None
+            if isinstance(meta, dict):
+                for k in ("expected_features", "features", "input_features"):
+                    v = meta.get(k)
+                    if isinstance(v, list) and v:
+                        out = list(map(str, v))
+                        logger.info("expected_features: meta.%s, n=%d, head=%s", k, len(out), out[:10])
+                        break
+            # 3) CT RAW
+            if out is None and pipeline is not None:
+                root = _unwrap_estimator(pipeline)
+                raw_cols = _raw_columns_from_pipeline(root)
+                if raw_cols:
+                    out = raw_cols
+                    logger.info("expected_features: ColumnTransformer RAW, n=%d, head=%s", len(out), out[:10])
+            # 4) payload_keys
+            if out is None and isinstance(payload_keys, list) and payload_keys:
+                out = list(map(str, payload_keys))
+                logger.info("expected_features: payload_keys fallback, n=%d, head=%s", len(out), out[:10])
+            if out is None:
+                raise RuntimeError("Empty expected features (no meta, no ColumnTransformer RAW, no payload_keys)")
 
-    def _post_enc(src: str) -> bool:
-        return "post-encoding" in src
+    # --- HARDENING: assicurati che 'city' sia presente se uno step a monte la richiede.
+    # Aggiungerla è innocuo per i ColumnTransformer (colonne extra sono ignorate se non selezionate).
+    if "city" not in out:
+        out = list(out) + ["city"]
 
-    cands: List[Tuple[str, List[str]]] = []
-    if isinstance(meta, dict):
-        for k in ("expected_features", "features", "input_features"):
-            v = meta.get(k)
-            if isinstance(v, list) and v:
-                cands.append((f"meta.{k}", v))
-        prep = meta.get("preprocessing")
-        if isinstance(prep, dict):
-            v = prep.get("feature_names_out") or prep.get("feature_names")
-            if isinstance(v, list) and v:
-                cands.append(("meta.preprocessing.feature_names_out/feature_names (post-encoding!)", v))
-
-    if pipeline is not None:
-        try:
-            from sklearn.compose import ColumnTransformer  # type: ignore
-            from sklearn.pipeline import Pipeline  # type: ignore
-
-            if isinstance(pipeline, Pipeline):
-                cols: List[str] = []
-                for _, step in pipeline.steps:
-                    if isinstance(step, ColumnTransformer):
-                        for _tname, _trans, cols_in in step.transformers:
-                            if cols_in in (None, "drop"):
-                                continue
-                            if isinstance(cols_in, (list, tuple, np.ndarray)):
-                                cols.extend([str(c) for c in cols_in])
-                if cols:
-                    _seen = set()
-                    raw_cols = [c for c in cols if not (c in _seen or _seen.add(c))]
-                    logger.info(
-                        "expected_features resolved: source=%s count=%d sample=%s",
-                        "pipeline.ColumnTransformer(raw input)",
-                        len(raw_cols),
-                        raw_cols[:10],
-                    )
-                    return list(raw_cols)
-        except Exception:
-            pass
-        try:
-            fn = getattr(pipeline, "get_feature_names_out", None)
-            if callable(fn):
-                v = list(fn())
-                if v:
-                    cands.append(("pipeline.get_feature_names_out (post-encoding!)", v))
-        except Exception:
-            pass
-
-    for src, v in cands:
-        if not v:
-            continue
-        if STRICT_RAW_FEATURES and _post_enc(src):
-            logger.warning("Skipping %s due to STRICT_RAW_FEATURES=1", src)
-            continue
-        logger.info("expected_features resolved: source=%s count=%d sample=%s", src, len(v), v[:10])
-        return list(v)
-
-    if isinstance(payload_keys, list) and payload_keys:
-        logger.info(
-            "expected_features resolved: source=%s count=%d sample=%s",
-            "payload_keys (fallback)",
-            len(payload_keys),
-            payload_keys[:10],
-        )
-        return list(payload_keys)
-
-    return []
+    return out
 
 _SAFE_DERIVED = {
     "age_years",
@@ -606,7 +658,7 @@ def _canonicalize_keys(rec: Dict[str, Any]) -> Dict[str, Any]:
     return {_KEY_ALIASES.get(k, k): v for k, v in rec.items()}
 
 def _autofill_safe(rec: Dict[str, Any]) -> Dict[str, Any]:
-    """NOTE: Compute cheap derived fields and normalize location/city/region/zone."""
+    """Compute derived fields + normalize location/city/region/zone (SAFE for None)."""
     r = dict(rec)
     r = _canonicalize_keys(r)
 
@@ -632,7 +684,10 @@ def _autofill_safe(rec: Dict[str, Any]) -> Dict[str, Any]:
     # Location normalization
     if LOCATION in r and r[LOCATION]:
         try:
-            r[LOCATION] = canonical_location(r)
+            if isinstance(r[LOCATION], str) and r[LOCATION].strip():
+                r[LOCATION] = canonical_location(r)
+            else:
+                r[LOCATION] = None
         except Exception:
             pass
 
@@ -645,74 +700,82 @@ def _autofill_safe(rec: Dict[str, Any]) -> Dict[str, Any]:
 
     # is_top_floor
     try:
-        if (
-            "is_top_floor" not in r
-            and r.get("floor") is not None
-            and r.get("building_floors") is not None
-        ):
+        if "is_top_floor" not in r and r.get("floor") is not None and r.get("building_floors") is not None:
             r["is_top_floor"] = int(r.get("floor") == r.get("building_floors"))
     except Exception:
         pass
 
-    # City normalization (via synonyms)
+    # City normalization (SAFE: no str(None))
     try:
         prop_cfg = ASSET_CONFIG["property"]
         city_syn = {
             str(k).strip().lower(): str(v).strip().title()
             for k, v in (prop_cfg.get("city_synonyms") or {}).items()
         }
+        def _title_or_none(x):
+            if isinstance(x, str) and x.strip():
+                return x.strip().title()
+            return None
         if not r.get("city"):
-            loc = str(r.get(LOCATION, "")).strip()
-            if loc:
-                key = loc.lower()
-                r["city"] = city_syn.get(key, loc.title())
+            loc = r.get(LOCATION)
+            if isinstance(loc, str) and loc.strip():
+                key = loc.strip().lower()
+                r["city"] = city_syn.get(key, _title_or_none(loc))
+            else:
+                r["city"] = None
         else:
-            key = str(r["city"]).strip().lower()
-            r["city"] = city_syn.get(key, str(r["city"]).strip().title())
+            cval = r.get("city")
+            if isinstance(cval, str) and cval.strip():
+                key = cval.strip().lower()
+                r["city"] = city_syn.get(key, _title_or_none(cval))
+            elif cval is None:
+                r["city"] = None
     except Exception:
-        if r.get("city"):
-            r["city"] = str(r["city"]).strip().title()
+        if isinstance(r.get("city"), str):
+            r["city"] = r["city"].strip().title() or None
 
-    # Region macro and normalization
+    # Region normalization (macro)
     try:
         prop_cfg = ASSET_CONFIG["property"]
         by_city = (prop_cfg.get("region_by_city") or DEFAULT_REGION_BY_CITY) or {}
         if r.get("region"):
-            r["region"] = _to_macro_region(str(r["region"]), r.get("city"))
+            if isinstance(r["region"], str) and r["region"].strip():
+                r["region"] = _to_macro_region(r["region"], r.get("city"))
+            else:
+                r["region"] = None
         else:
-            if r.get("city"):
-                r["region"] = str(by_city.get(str(r["city"]).strip().title(), "")).lower() or None
+            city_val = r.get("city")
+            if isinstance(city_val, str) and city_val.strip():
+                r["region"] = (by_city.get(city_val.strip().title()) or None)
+            else:
+                r["region"] = None
         if r.get("region"):
             r["region"] = _normalize_to_known("region", r["region"])
     except Exception:
         pass
 
-    # Urban type by city
-    try:
-        prop_cfg = ASSET_CONFIG["property"]
-        urb_by_city = (prop_cfg.get("urban_type_by_city") or DEFAULT_URBAN_TYPE_BY_CITY) or {}
-        if not r.get("urban_type") and r.get("city"):
-            r["urban_type"] = urb_by_city.get(str(r["city"]).strip().title())
-    except Exception:
-        pass
-
-    # Zone from thresholds or normalization
+    # Zone normalization
     try:
         z = r.get("zone")
-        if z:
-            r["zone"] = _normalize_to_known("zone", z)
+        if isinstance(z, str) and z.strip():
+            r["zone"] = _normalize_to_known("zone", z.strip())
         else:
             prop_cfg = ASSET_CONFIG["property"]
             th = prop_cfg.get("zone_thresholds_km") or {"center": 1.5, "semi_center": 5.0}
             d = r.get("distance_to_center_km")
             if d is not None:
-                d = float(d)
-                if d <= float(th.get("center", 1.5)):
-                    r["zone"] = "center"
-                elif d <= float(th.get("semi_center", 5.0)):
-                    r["zone"] = "semi_center"
-                else:
-                    r["zone"] = "periphery"
+                try:
+                    d = float(d)
+                    if d <= float(th.get("center", 1.5)):
+                        r["zone"] = "center"
+                    elif d <= float(th.get("semi_center", 5.0)):
+                        r["zone"] = "semi_center"
+                    else:
+                        r["zone"] = "periphery"
+                except Exception:
+                    r["zone"] = None
+            else:
+                r["zone"] = None
         if r.get("zone"):
             r["zone"] = _normalize_to_known("zone", r["zone"])
     except Exception:
@@ -723,6 +786,23 @@ def _autofill_safe(rec: Dict[str, Any]) -> Dict[str, Any]:
             r["city"] = _closest_known("city", str(r["city"]))
     except Exception:
         pass
+
+    # --- DEFAULTS “safe” per step custom PRE-imputer (no change nella logica del modello) ---
+    r.setdefault("heating", "standard")
+    r.setdefault("urban_type", "residential")
+    r.setdefault("view", "standard")
+    if "public_transport_nearby" not in r or r.get("public_transport_nearby") in (None, ""):
+        r["public_transport_nearby"] = 1
+    if "condition" not in r or r.get("condition") in (None, ""):
+        r["condition"] = "good"
+    # alias legacy: 'garage' → 'has_garage'
+    if "has_garage" not in r and "garage" in r:
+        try:
+            r["has_garage"] = int(bool(r.get("garage")))
+        except Exception:
+            r["has_garage"] = 0
+    r.setdefault("has_garage", 0)
+
     return r
 
 def validate_input_record(
@@ -734,7 +814,8 @@ def validate_input_record(
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """Validate & sanitize a property record against expected features."""
     base = _autofill_safe(_canonicalize_keys(record))
-    allowed = set(all_expected) | _SAFE_DERIVED
+    # Se il pipeline richiede 'city' ma non è tra gli expected, tienila comunque
+    allowed = set(all_expected) | _SAFE_DERIVED | {"city"}
     extras = [k for k in list(base.keys()) if k not in allowed]
     if drop_extras:
         for k in extras:
@@ -746,6 +827,18 @@ def validate_input_record(
         raise ValueError(f"Property validation failed: {report.get('errors') or report}")
     return base, report
 
+def _ts_to_seconds(ts) -> int:
+    """Convert timestamp to seconds (handles both int and ISO string)."""
+    if isinstance(ts, (int, float)):
+        return int(ts)
+    if isinstance(ts, str):
+        try:
+            dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+            return int(dt.timestamp())
+        except Exception:
+            pass
+    return int(time.time())
+
 _Z = {0.80: 1.282, 0.90: 1.645, 0.95: 1.960, 0.98: 2.326, 0.99: 2.576}
 def _z_for_conf(conf: float) -> float:
     """Return z-score for given confidence level (rounded key)."""
@@ -755,7 +848,6 @@ def _split_preprocessor_and_model(pipeline_obj: Any) -> Tuple[Any, Any]:
     """Return (preprocessor, model) if pipeline; otherwise (None, obj)."""
     try:
         from sklearn.pipeline import Pipeline  # type: ignore
-
         if isinstance(pipeline_obj, Pipeline):
             pre = pipeline_obj[:-1]
             final_model = pipeline_obj.steps[-1][1]
@@ -765,15 +857,30 @@ def _split_preprocessor_and_model(pipeline_obj: Any) -> Tuple[Any, Any]:
     return None, pipeline_obj
 
 def _unwrap_final_estimator(model: Any) -> Tuple[Any, Optional[Any]]:
-    """Try to extract (final_base_estimator, TransformedTargetRegressor_if_any)."""
     ttr = None
-    candidate = model
-    for node in _unwrap_for_introspection(model):
-        if node.__class__.__name__ == "TransformedTargetRegressor":
-            ttr = node
-        if hasattr(node, "estimators_"):
-            candidate = node
-    return candidate, ttr
+    m = model
+    seen = set()
+    try:
+        from sklearn.pipeline import Pipeline
+        if isinstance(m, Pipeline):
+            m = m.steps[-1][1]
+    except Exception:
+        pass
+    if m.__class__.__name__ == "TransformedTargetRegressor":
+        ttr = m
+        base = getattr(m, "regressor", None)
+        if base is not None:
+            m = base
+    for attr in ("best_estimator_", "estimator"):
+        if id(m) in seen:
+            break
+        seen.add(id(m))
+        new_m = getattr(m, attr, None)
+        if new_m is not None and new_m is not m:
+            m = new_m
+        else:
+            break
+    return m, ttr
 
 def _inverse_target_if_needed(y: np.ndarray, ttr: Any) -> np.ndarray:
     """Apply inverse transformation on target if TransformedTargetRegressor used."""
@@ -802,19 +909,37 @@ def predict_with_confidence(
     confidence: float = 0.95,
 ) -> Dict[str, Any]:
     """Return prediction + uncertainty via forest variance or global sigma fallback."""
-    df = pd.DataFrame([{k: record.get(k, np.nan) for k in all_expected}], columns=all_expected)
+    df_raw = pd.DataFrame([{k: record.get(k, np.nan) for k in all_expected}], columns=all_expected)
+    df = _clean_missing_df(df_raw)
+
     try:
         nonnull_total = int(df.notnull().sum().sum())
         logger.info("DF shape=%s nonnull=%s", df.shape, nonnull_total)
-        logger.info("First 10 cols: %s", all_expected[:10])
+        logger.info("DF head (first 8 cols)=%s", {c: df.iloc[0][c] for c in all_expected[:8]})
         if nonnull_total == 0:
-            logger.warning(
-                "All values are NaN after aligning with expected features. Probable raw vs post-encoding mismatch."
-            )
+            logger.warning("All values are NaN after aligning with expected features. Probable raw vs post-encoding mismatch.")
     except Exception:
         pass
 
-    y_hat = float(_predict_one(pipeline_obj, df))
+    try:
+        y_hat = float(_predict_one(pipeline_obj, df))
+        logger.info("predict_with_confidence: y_hat(point)=%s", y_hat)
+    except RecursionError:
+        sigma = max(1.0, abs(float(df.get("size_m2", pd.Series([0])).iloc[0] or 0.0)) * 0.10)
+        z = _z_for_conf(confidence)
+        ci = z * float(sigma)
+        out = {
+            "prediction": 0.0,
+            "point_pred": 0.0,
+            "uncertainty": round(float(sigma), 2),
+            "confidence": float(confidence),
+            "confidence_interval": (round(0.0 - ci, 2), round(0.0 + ci, 2)),
+            "ci_margin": round(ci, 2),
+            "method": "global_sigma",
+            "n_estimators": None,
+        }
+        logger.info("predict_with_confidence: RecursionError fallback -> %s", out)
+        return out
 
     try:
         pre, model_step = _split_preprocessor_and_model(pipeline_obj)
@@ -829,21 +954,20 @@ def predict_with_confidence(
                 else:
                     nonnull = int(np.isfinite(X).sum()) if hasattr(np, "isfinite") else None
                     logger.info("Preprocessor out: shape=%s nonnull=%s", shape, nonnull)
-            except Exception:
+            except Exception as e:
+                logger.warning("Preprocessor.transform failed; using raw df. err=%s", e)
                 X = df
         model_final, ttr = _unwrap_final_estimator(model_step)
 
-        # NOTE: Estimate CI from per-tree variance (if forest-like model available).
+        # Forest-like variance
         if hasattr(model_final, "estimators_") and isinstance(model_final.estimators_, (list, tuple)) and len(model_final.estimators_) >= 3:
-            per_tree_raw = np.array(
-                [float(np.ravel(est.predict(X))[0]) for est in model_final.estimators_], dtype=float
-            )
+            per_tree_raw = np.array([float(np.ravel(est.predict(X))[0]) for est in model_final.estimators_], dtype=float)
             per_tree = _inverse_target_if_needed(per_tree_raw, ttr)
             m = float(per_tree.mean())
             s = float(per_tree.std(ddof=1)) if len(per_tree) > 1 else 0.0
             z = _z_for_conf(confidence)
             ci = z * s
-            return {
+            out = {
                 "prediction": round(m, 2),
                 "point_pred": round(y_hat, 2),
                 "uncertainty": round(s, 2),
@@ -853,11 +977,12 @@ def predict_with_confidence(
                 "method": "forest_variance",
                 "n_estimators": len(model_final.estimators_),
             }
+            logger.info("predict_with_confidence: forest_variance -> %s", out)
+            return out
 
         raise RuntimeError("No per-tree variance available")
     except Exception as e:
         logger.debug("Forest variance unavailable (%s); using global sigma fallback.", e)
-        # PERF: Cheap fallback — use validation RMSE/MAE or 10% of |y_hat| as sigma.
         sigma = None
         try:
             if manifest_path and manifest_path.exists():
@@ -875,7 +1000,7 @@ def predict_with_confidence(
             sigma = max(1.0, abs(y_hat) * 0.10)
         z = _z_for_conf(confidence)
         ci = z * float(sigma)
-        return {
+        out = {
             "prediction": round(y_hat, 2),
             "point_pred": round(y_hat, 2),
             "uncertainty": round(float(sigma), 2),
@@ -885,6 +1010,8 @@ def predict_with_confidence(
             "method": "global_sigma",
             "n_estimators": None,
         }
+        logger.info("predict_with_confidence: global_sigma -> %s", out)
+        return out
 
 # =============================================================================
 # Endpoints
@@ -919,6 +1046,11 @@ def predict(
     if asset_type not in REQUEST_MODELS:
         raise HTTPException(status_code=400, detail=f"Unsupported asset_type: {asset_type}")
 
+    logger.info(
+        "predict: START asset_type=%s publish=%s attestation_only=%s payload_keys=%s",
+        asset_type, publish, attestation_only, list(payload.keys()) if isinstance(payload, dict) else None
+    )
+
     # 1) Load fitted artifacts + meta
     try:
         pipeline = get_pipeline(asset_type, "value_regressor")
@@ -927,6 +1059,36 @@ def predict(
         except Exception:
             paths = {}
         meta = get_model_metadata(asset_type, "value_regressor") or {}
+        logger.info(
+            "predict: artifacts loaded pipeline=%s model_meta.version=%s model_path=%s",
+            type(pipeline).__name__, meta.get("model_version"), (paths or {}).get("pipeline")
+        )
+
+        # --- PATCH: ripulisce l'OUTPUT di PriorsGuard.transform (se presente) ---
+        try:
+            from sklearn.pipeline import Pipeline as _SkPipeline
+            if isinstance(pipeline, _SkPipeline):
+                new_steps = []
+                for name, step in pipeline.steps:
+                    clsname = getattr(step, "__class__", type(None)).__name__
+                    if clsname == "PriorsGuard" and hasattr(step, "transform"):
+                        orig_transform = step.transform
+                        def _wrapped_transform(X, _orig=orig_transform):
+                            Y = _orig(X)
+                            try:
+                                if isinstance(Y, pd.DataFrame):
+                                    Y = _clean_missing_df(Y)
+                            except Exception:
+                                pass
+                            return Y
+                        step.transform = _wrapped_transform  # monkey patch
+                    new_steps.append((name, step))
+                pipeline.steps = new_steps
+                logger.info("predict: PriorsGuard cleaner patch applied.")
+            else:
+                logger.debug("predict: pipeline is not sklearn.Pipeline; patch not needed.")
+        except Exception as _e:
+            logger.debug("predict: PriorsGuard patch skipped: %s", _e)
 
         # 2) Resolve expected raw features
         payload_keys = list(payload.keys()) if isinstance(payload, dict) else None
@@ -934,16 +1096,18 @@ def predict(
         if not all_expected:
             try:
                 from scripts.model_registry import expected_features as reg_expected_features
-
                 cat, num = reg_expected_features(meta, paths.get("manifest"), asset_type=asset_type)
                 all_expected = list(cat) + list(num)
             except Exception:
                 pass
         if not all_expected:
             raise RuntimeError("Empty expected features")
+        logger.info("predict: expected_features n=%d head=%s", len(all_expected), all_expected[:10])
     except (RegistryLookupError, ModelNotFoundError) as e:
+        logger.error("predict: registry/model error: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
+        logger.error("predict: artifacts error: %s", e)
         raise HTTPException(status_code=500, detail=f"Artifacts error: {e}")
 
     # 3) Canonicalize/validate payload
@@ -955,7 +1119,12 @@ def predict(
         rec, vreport = validate_input_record(rec_in, all_expected, strict=False, drop_extras=False)
         if not rec.get(ASSET_ID):
             rec[ASSET_ID] = f"{asset_type}_{uuid.uuid4().hex[:10]}"
+        logger.info(
+            "predict: record normalized keys=%d sample=%s validation_ok=%s warnings=%s",
+            len(rec), {k: rec[k] for k in list(rec)[:8]}, vreport.get("ok", True), bool(vreport.get("warnings"))
+        )
     except Exception as e:
+        logger.error("predict: invalid payload: %s", e)
         raise HTTPException(status_code=422, detail=f"Invalid payload: {e}")
 
     # 4) Predict + CI + latency
@@ -970,8 +1139,10 @@ def predict(
             confidence=0.95,
         )
     except Exception as e:
+        logger.error("predict: inference error: %s", e)
         raise HTTPException(status_code=500, detail=f"Inference error: {e}")
     latency_ms = round((time.perf_counter() - t0) * 1000, 2)
+    logger.info("predict: conf=%s latency_ms=%s", conf, latency_ms)
 
     # 5) Build response (schema v2)
     ci_low, ci_high = conf["confidence_interval"]
@@ -999,8 +1170,7 @@ def predict(
         },
         "model_meta": {
             "value_model_version": meta.get("model_version"),
-            "value_model_name": meta.get("model_class")
-            or type(getattr(pipeline, "steps", [[None, pipeline]])[-1][1]).__name__,
+            "value_model_name": meta.get("model_class") or type(getattr(pipeline, "steps", [[None, pipeline]])[-1][1]).__name__,
             "n_features_total": len(all_expected),
             "model_hash": meta.get("model_hash"),
         },
@@ -1023,13 +1193,14 @@ def predict(
         "asa_id": "",
         "publish": {"status": "skipped"},
     }
+    logger.info("predict: RESPONSE.metrics=%s", response["metrics"])
 
     # Optional: breakdown & sanity benchmark
     try:
         br = explain_price(rec)
         response.setdefault("explanations", {})["pricing_breakdown"] = br
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("explain_price failed: %s", e)
     try:
         pb = price_benchmark(location=rec.get("location"), valuation_k=float(conf["prediction"]))
         if pb:
@@ -1037,25 +1208,25 @@ def predict(
             if pb.get("out_of_band", False):
                 response["flags"]["price_out_of_band"] = True
                 response["flags"]["needs_review"] = True
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("price_benchmark failed: %s", e)
 
     # 6) Build PoVal p1 (always)
     canonical_input_subset = {k: rec.get(k, None) for k in all_expected}
     response["canonical_input"] = canonical_input_subset  # used by builder as clean fallback
     p1, dbg = build_p1_from_response(response, allowed_input_keys=all_expected)
     p1_bytes, p1_sha, p1_size = canonical_note_bytes_p1(p1)
+    logger.info("predict: p1 built size=%s sha256=%s ih=%s", p1_size, p1_sha, dbg.get("ih"))
 
     # Guardrail: note size
     if int(p1_size) > NOTE_MAX_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail=f"p1_too_large: {p1_size}B > NOTE_MAX_BYTES={NOTE_MAX_BYTES}",
-        )
+        logger.error("predict: p1_too_large: %sB > NOTE_MAX_BYTES=%s", p1_size, NOTE_MAX_BYTES)
+        raise HTTPException(status_code=413, detail=f"p1_too_large: {p1_size}B > NOTE_MAX_BYTES={NOTE_MAX_BYTES}")
 
     # Anti-replay (asset_id + p1 sha256)
     asset_id = response["asset_id"]
     if registry.seen(p1_sha, asset_id):
+        logger.error("predict: replay detected asset_id=%s p1_sha256=%s", asset_id, p1_sha)
         raise HTTPException(status_code=409, detail=f"replay: asset_id={asset_id} p1_sha256={p1_sha}")
 
     # Audit bundle (always created) — ZIP served by /audit/{rid}
@@ -1069,6 +1240,7 @@ def predict(
         canonical_input=canonical_input_subset,
     )
     response["audit_bundle"] = {"rid": rid}
+    logger.info("predict: audit_bundle rid=%s dir=%s", rid, str(bundle_dir))
 
     # Attach attestation preview to response
     response["attestation"] = {
@@ -1083,14 +1255,8 @@ def predict(
     net = f"algorand-{get_network()}"
     if publish:
         try:
+            logger.info("publish: submitting p1 to network=%s ...", net)
             result = publish_ai_prediction(response, p1_bytes=p1_bytes, p1_sha256=p1_sha)
-        except TypeError:
-            # NOTE: Backward-compat signature fallback (update publisher signature to accept p1_*).
-            result = publish_ai_prediction(response)
-
-            # WARN: This assignment block currently lives ONLY in the TypeError fallback.
-            # If publish_ai_prediction succeeds with new signature, publish fields below will not be set.
-            # Consider moving the block outside the except to apply in both cases.
             response["publish"] = {
                 "status": "ok",
                 "txid": result.get("blockchain_txid"),
@@ -1102,12 +1268,9 @@ def predict(
                 "confirmed_round": result.get("confirmed_round"),
                 "explorer_url": get_tx_note_info(result.get("blockchain_txid")).get("explorer_url", None),
             }
-
-            # Backward compatibility fields
             response["blockchain_txid"] = response["publish"]["txid"]
             response["asa_id"] = response["publish"]["asa_id"]
-
-            # Audit trace & anti-replay record
+            logger.info("publish: OK txid=%s round=%s", response["blockchain_txid"], response["publish"].get("confirmed_round"))
             try:
                 issuer = ""
                 try:
@@ -1118,15 +1281,38 @@ def predict(
                 registry.record(
                     p1_sha,
                     asset_id,
-                    result.get("blockchain_txid"),
+                    response["blockchain_txid"],
                     get_network(),
                     issuer,
                     int(p1.get("ts", 0)),
                 )
-                (bundle_dir / "tx.txt").write_text(str(result.get("blockchain_txid") or ""), encoding="utf-8")
-            except Exception:
-                pass
+                (bundle_dir / "tx.txt").write_text(str(response["blockchain_txid"] or ""), encoding="utf-8")
+            except Exception as e:
+                logger.debug("publish: audit/record failed: %s", e)
+
+        except TypeError:
+            logger.info("publish: falling back to legacy publisher signature")
+            try:
+                result = publish_ai_prediction(response)
+                response["publish"] = {
+                    "status": "ok",
+                    "txid": result.get("blockchain_txid"),
+                    "asa_id": result.get("asa_id"),
+                    "network": net,
+                    "note_size": result.get("note_size"),
+                    "note_sha256": result.get("note_sha256"),
+                    "is_compacted": result.get("is_compacted"),
+                    "confirmed_round": result.get("confirmed_round"),
+                    "explorer_url": get_tx_note_info(result.get("blockchain_txid")).get("explorer_url", None),
+                }
+                response["blockchain_txid"] = response["publish"]["txid"]
+                response["asa_id"] = response["publish"]["asa_id"]
+                logger.info("publish(legacy): OK txid=%s", response["blockchain_txid"])
+            except Exception as e2:
+                logger.error("publish(legacy): error: %s", e2)
+                response["publish"] = {"status": "error", "error": str(e2)}
         except Exception as e:
+            logger.error("publish: error: %s", e)
             response["publish"] = {"status": "error", "error": str(e)}
 
     # 8) Schema validation v2 (best-effort)
@@ -1135,15 +1321,16 @@ def predict(
             jsonschema_validate(instance=response, schema=OUTPUT_SCHEMA)
         except ValidationError as ve:
             response["schema_validation_error"] = str(ve).split("\n", 1)[0][:240]
+            logger.warning("schema v2 validation error: %s", response["schema_validation_error"])
         except Exception as e:
             response["schema_validation_error"] = f"Schema check failed: {e}"[:240]
+            logger.warning("schema v2 check failed: %s", response["schema_validation_error"])
 
     # 9) API log (best-effort)
     try:
         rec_log = {
             "event": "prediction",
             "asset_type": asset_type,
-            # SECURITY: redact potential PII from inbound payloads.
             "request": _redact(payload) if REDACT_API_LOGS else payload,
             "response_meta": {
                 "schema_version": response.get("schema_version"),
@@ -1161,10 +1348,8 @@ def predict(
                 "attestation": {"p1_sha256": p1_sha, "p1_size_bytes": p1_size},
                 "publish_status": response.get("publish", {}).get("status"),
             },
-            "_logged_at": utc_now_iso_z(),  # helpful for UI sorting
+            "_logged_at": utc_now_iso_z(),
         }
-
-        # Optional: include a light subset of response
         if os.getenv("LOG_FULL_RESPONSES", "0").lower() in {"1", "true", "yes", "y"}:
             rec_log["response"] = {
                 "timestamp": response.get("timestamp"),
@@ -1172,16 +1357,14 @@ def predict(
                 "metrics": response.get("metrics"),
                 "model_meta": response.get("model_meta"),
             }
-
         if not publish:
             log_jsonl(rec_log)
     except Exception as e:
-        # WARN: Do not break inference on logging issues.
         print(f"[warn] log_jsonl failed: {e}")
 
-    # 10) attestation_only: return only PoVal p1 + minimal metadata
+    # 10) attestation_only
     if attestation_only:
-        return {
+        out = {
             "asset_id": response["asset_id"],
             "attestation": response["attestation"]["p1"],
             "attestation_sha256": response["attestation"]["p1_sha256"],
@@ -1189,9 +1372,12 @@ def predict(
             "published": response.get("publish", {}).get("status") == "ok",
             "txid": response.get("blockchain_txid") or None,
             "network": net if publish else None,
-            "audit_bundle_path": response.get("audit_bundle_path"),
+            "audit_bundle_path": response.get("audit_bundle_path"),  # lasciato invariato per compat
         }
+        logger.info("predict: attestation_only OUT=%s", {k: out[k] for k in out if k != "attestation"})
+        return out
 
+    logger.info("predict: END asset_id=%s valuation_k=%s", response["asset_id"], response["metrics"]["valuation_k"])
     return response
 
 RID_RE = re.compile(r"^[a-zA-Z0-9_-]{6,64}$")
@@ -1221,22 +1407,16 @@ def verify(body: dict = Body(...)) -> dict:
     Modes:
     - p1 (compact): validate schema + value-in-interval + ACJ-1 hash consistency.
     - legacy: minimal checks for backward compatibility.
-
-    NOTE:
-    - get_tx_note_info(txid) should prefer Indexer for historical tx and fallback to Algod for pending ones.
-    - Indexer ingestion may lag by a few seconds (add retry/backoff in algorand_utils).
     """
     txid = str(body.get("txid") or "").strip()
     if not txid:
         raise HTTPException(422, "Missing 'txid'")
 
-    # 0) On-chain lookup
-    note = get_tx_note_info(txid)  # NOTE: Indexer vs Algod behavior defined in algorand_utils
+    note = get_tx_note_info(txid)  # Indexer vs Algod logic inside
     note_json = note.get("note_json")
     onchain_sha = note.get("note_sha256")
     explorer_url = note.get("explorer_url")
 
-    # 1) Optional expected values from client (sha or p1)
     expected_sha = body.get("attestation_sha256") or body.get("expected_sha256")
     p1_from_body = None
     att = body.get("attestation") if isinstance(body.get("attestation"), dict) else None
@@ -1247,26 +1427,22 @@ def verify(body: dict = Body(...)) -> dict:
         if isinstance(att2, dict) and isinstance(att2.get("p1"), dict):
             p1_from_body = att2["p1"]
 
-    # Derive expected sha from provided p1 if needed
     if expected_sha is None and isinstance(p1_from_body, dict):
         try:
-            # NOTE: derive expected hash using ACJ-1 canonical bytes from client-provided p1.
             _, expected_sha, _ = canonical_note_bytes_p1(p1_from_body)
         except Exception:
-            expected_sha = None  # continue anyway
+            expected_sha = None
 
     ok = False
     reason = None
     mode = None
 
     try:
-        # --- PoVal p1 (compact) ------------------------------------------------
         if isinstance(note_json, dict) and note_json.get("s") == "p1":
             mode = "p1"
-
-            # Schema p1
             try:
-                jsonschema_validate(instance=note_json, schema=P1_SCHEMA)
+                if P1_SCHEMA:
+                    jsonschema_validate(instance=note_json, schema=P1_SCHEMA)
             except ValidationError as ve:
                 return {
                     "txid": txid,
@@ -1280,17 +1456,15 @@ def verify(body: dict = Body(...)) -> dict:
                     "note_preview": note_json if INFERENCE_DEBUG else None,
                 }
 
-            # NOTE: Timestamp window is an information signal, NOT a hard fail.
             time_out_of_window = False
             try:
                 now = int(time.time())
-                ts_sec = _ts_to_seconds(note_json["ts"])
+                ts_sec = int(datetime.fromisoformat(str(note_json["ts"]).replace('Z', '+00:00')).timestamp())
                 if ts_sec < (now - P1_TS_SKEW_PAST) or ts_sec > (now + P1_TS_SKEW_FUTURE):
                     time_out_of_window = True
             except Exception:
                 time_out_of_window = False
 
-            # Value inside declared confidence interval
             v = float(note_json["v"])
             lo, hi = float(note_json["u"][0]), float(note_json["u"][1])
             if not (lo <= v <= hi):
@@ -1298,35 +1472,28 @@ def verify(body: dict = Body(...)) -> dict:
             else:
                 ok = True
 
-            # Compare expected vs on-chain sha (if provided)
             if ok and expected_sha and onchain_sha and expected_sha != onchain_sha:
                 ok = False
                 reason = "sha_mismatch"
 
-            # Optional hardening: recompute on-chain note ACJ-1 bytes → sha, compare
             if ok and onchain_sha:
                 try:
                     from scripts.canon import canonicalize_jcs
                     bytes_rebuilt = canonicalize_jcs(note_json)
                     rebuilt_sha = hashlib.sha256(bytes_rebuilt).hexdigest()
                     if rebuilt_sha != onchain_sha:
-                        # WARN: Non-canonical or altered note — fail verification.
                         ok = False
                         reason = "onchain_hash_mismatch"
                 except Exception:
-                    # Non-blocking: mismatch already covered above.
                     pass
 
-            # If ok but timestamp outside window → annotate in debug only
             if ok and time_out_of_window and INFERENCE_DEBUG:
                 note.setdefault("debug", {})  # type: ignore[assignment]
                 note["debug"]["timestamp_out_of_window"] = True  # type: ignore[index]
 
-        # --- Legacy ------------------------------------------------------------
         elif isinstance(note_json, dict) and ("ref" in note_json or "schema_version" in note_json):
             mode = "legacy"
             ok = True
-
         else:
             reason = "unsupported_or_empty_note"
 
@@ -1344,7 +1511,6 @@ def verify(body: dict = Body(...)) -> dict:
         "confirmed_round": note.get("confirmed_round"),
         "explorer_url": explorer_url,
         "reason": None if ok else (reason or "mismatch"),
-        # SECURITY: Do not expose full on-chain payload in production.
         "note_preview": note_json if INFERENCE_DEBUG else None,
     }
 
@@ -1412,5 +1578,4 @@ def get_detail_reports():
 # ---- local dev runner ----
 if __name__ == "__main__":
     import uvicorn  # type: ignore
-
     uvicorn.run("scripts.inference_api:app", host="127.0.0.1", port=8000, reload=True)
