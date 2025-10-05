@@ -1,4 +1,3 @@
-# notebooks/shared/common/exporter.py
 from __future__ import annotations
 import logging
 
@@ -12,7 +11,6 @@ Export utilities:
 """
 
 import io
-import json
 import os
 import hashlib
 from datetime import datetime, timezone
@@ -36,12 +34,14 @@ def _atomic_replace(tmp: Path, dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     os.replace(tmp, dest)
 
+
 def atomic_write_csv(path: Path, df: pd.DataFrame, *, index: bool = False) -> None:
     """Write CSV atomically: write to path.tmp then rename."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     df.to_csv(tmp, index=index)
     _atomic_replace(tmp, path)
+
 
 def atomic_write_parquet(path: Path, df: pd.DataFrame, *, compression: Optional[str] = None) -> None:
     """Write Parquet atomically (optional compression)."""
@@ -50,8 +50,15 @@ def atomic_write_parquet(path: Path, df: pd.DataFrame, *, compression: Optional[
     kwargs: Dict[str, Any] = {}
     if compression:
         kwargs["compression"] = compression
-    df.to_parquet(tmp, index=False, **kwargs)
+    try:
+        df.to_parquet(tmp, index=False, **kwargs)
+    except Exception as e:
+        # Surface a clear hint if an engine is missing
+        raise RuntimeError(
+            f"Failed to write Parquet. Ensure a parquet engine is installed (pyarrow or fastparquet). Details: {e}"
+        ) from e
     _atomic_replace(tmp, path)
+
 
 def write_json(path: Path, obj: Any) -> None:
     """
@@ -64,6 +71,7 @@ def write_json(path: Path, obj: Any) -> None:
     tmp.write_text(canonical_json_dumps(obj), encoding="utf-8")
     _atomic_replace(tmp, path)
 
+
 # --------------------------------------------------------------------------- #
 # Hashing helpers
 # --------------------------------------------------------------------------- #
@@ -75,6 +83,7 @@ def compute_file_hash(path: Path, algo: str = "sha256") -> str:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
             h.update(chunk)
     return h.hexdigest()
+
 
 def compute_dataframe_digest(df: pd.DataFrame, *, algo: str = "sha256") -> str:
     """
@@ -89,6 +98,7 @@ def compute_dataframe_digest(df: pd.DataFrame, *, algo: str = "sha256") -> str:
     h.update(buf.getvalue().encode("utf-8"))
     return h.hexdigest()
 
+
 # --------------------------------------------------------------------------- #
 # Internal helpers
 # --------------------------------------------------------------------------- #
@@ -97,6 +107,7 @@ def _validate_required_fields(df: pd.DataFrame, asset_type: str) -> Tuple[bool, 
     required = get_required_fields(asset_type)
     missing = [f for f in required if f not in df.columns]
     return (len(missing) == 0), missing
+
 
 def _sanitize_config(cfg: Mapping[str, Any]) -> Dict[str, Any]:
     """Make config JSON-serializable (e.g., Path → str), recursively."""
@@ -111,6 +122,7 @@ def _sanitize_config(cfg: Mapping[str, Any]) -> Dict[str, Any]:
         else:
             out[k] = v
     return out
+
 
 # --------------------------------------------------------------------------- #
 # Public API
@@ -154,7 +166,12 @@ def export_dataset(
         kwargs: Dict[str, Any] = {}
         if compression:
             kwargs["compression"] = compression
-        df_to_save.to_parquet(bio, index=False, **kwargs)
+        try:
+            df_to_save.to_parquet(bio, index=False, **kwargs)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to serialize Parquet in-memory. Install a parquet engine (pyarrow/fastparquet). Details: {e}"
+            ) from e
         payload_bytes = bio.getvalue()
     else:
         raise ValueError(f"Unsupported format: {format}")

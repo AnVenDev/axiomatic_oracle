@@ -1,4 +1,3 @@
-# notebooks/shared/n01_generate_dataset/dataset_builder.py
 from __future__ import annotations
 
 """
@@ -21,7 +20,12 @@ from numpy.random import Generator as NPGenerator   # type: ignore
 
 from shared.n01_generate_dataset.asset_factory import generate_asset
 from shared.common.quality import enrich_quality_report, generate_base_quality_report
-from shared.n03_train_model.metrics import compute_location_drift
+
+# Lazy/soft dependency: drift metrics may not be available in some runtimes
+try:
+    from shared.n03_train_model.metrics import compute_location_drift  # type: ignore
+except Exception:  # pragma: no cover
+    compute_location_drift = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -205,17 +209,20 @@ def generate_dataset_df(
 
     # Location drift calculation (uses normalized weights)
     try:
-        drift_info = compute_location_drift(
-            df,
-            target_weights=normalized_location_weights,
-            tolerance=float(config.get("expected_profile", {}).get("location_distribution_tolerance", 0.05)),
-        )
-        df.attrs["location_drift_report"] = drift_info
-        drifted = [loc for loc, info in drift_info.items() if info.get("drifted")]
-        if drifted:
-            logger.warning("[DRIFT] Locations drifted: %s", drifted)
+        if compute_location_drift is not None:
+            drift_info = compute_location_drift(  # type: ignore[misc]
+                df,
+                target_weights=normalized_location_weights,
+                tolerance=float(config.get("expected_profile", {}).get("location_distribution_tolerance", 0.05)),
+            )
+            df.attrs["location_drift_report"] = drift_info
+            drifted = [loc for loc, info in drift_info.items() if info.get("drifted")]
+            if drifted:
+                logger.warning("[DRIFT] Locations drifted: %s", drifted)
+            else:
+                logger.info("[DRIFT] Location distribution within tolerance.")
         else:
-            logger.info("[DRIFT] Location distribution within tolerance.")
+            logger.info("[DRIFT] compute_location_drift unavailable; skipping drift analysis.")
     except Exception as e:
         logger.warning("[DRIFT] compute_location_drift failed: %s", e)
 

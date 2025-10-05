@@ -1,4 +1,3 @@
-# notebooks/shared/common/asset_factory.py
 from __future__ import annotations
 
 """
@@ -18,7 +17,7 @@ from copy import deepcopy
 from shared.common.schema import (
     get_all_fields,
     get_required_fields,
-    normalize_column_order,  # to keep schema-first ordering
+    normalize_column_order,  # keep schema-first ordering
 )
 from shared.common.config import PricingConfigModel
 from shared.common.constants import AssetType
@@ -90,7 +89,7 @@ def normalize_pricing_input(config: Mapping[str, Any] | None) -> Dict[str, Any]:
     Returns:
       A dict that matches PricingConfigModel().model_dump().
     """
-    raw_pricing = {}
+    raw_pricing: Dict[str, Any] = {}
     if isinstance(config, Mapping):
         raw_pricing = dict(config.get("pricing", {}) or {})
 
