@@ -28,7 +28,12 @@ from sklearn.preprocessing import StandardScaler, OrdinalEncoder  # type: ignore
 from sklearn.ensemble import RandomForestRegressor, IsolationForest  # type: ignore
 from sklearn.model_selection import cross_validate  # type: ignore
 from sklearn.inspection import permutation_importance  # type: ignore
-import statsmodels.api as sm  # type: ignore
+try:
+    import statsmodels.api as sm    # type: ignore
+    HAS_STATSMODELS = True
+except Exception:                   # pragma: no cover
+    sm = None                       # type: ignore
+    HAS_STATSMODELS = False
 
 # Optional SciPy (skew/kurtosis/normaltest/chi2)
 try:
