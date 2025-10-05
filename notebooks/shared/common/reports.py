@@ -3,15 +3,15 @@ from __future__ import annotations
 Unified Report toolkit.
 
 Capabilities
-- ReportManager: load/merge/save JSON (numpy-safe, canonical JSON when possible)
-- DistributionAnalyzer: categorical distribution analysis + optional benchmarks
-- run_sanity_checks: orchestration for benchmarks, drift, incoherence, outliers, caps, decomposition
-- build_basic_stats: re-export of shared.quality implementation
+- ReportManager: load/merge/save JSON (NumPy-safe, canonical JSON when desired).
+- DistributionAnalyzer: categorical distribution analysis + optional benchmarks.
+- run_sanity_checks: orchestration for benchmarks, drift, incoherence, outliers, caps, decomposition.
+- build_basic_stats: re-export of shared.quality implementation.
 
-Design principles
+Design
 - Zero I/O in analytics helpers (return dicts/DFs; persistence lives in ReportManager).
 - Stable, JSON-serializable outputs for downstream services.
-- Soft dependencies: lazy/optional imports where appropriate to avoid tight coupling.
+- Soft dependencies: lazy/optional imports to avoid tight coupling to notebook-only code.
 """
 
 import json
@@ -23,11 +23,20 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 from shared.common.constants import (
-    LOCATION, REGION, URBAN_TYPE, ZONE,
-    ENERGY_CLASS, ENERGY_CLASSES,
-    YEAR_BUILT, LAST_VERIFIED_TS,
-    ORIENTATION, VIEW, HEATING,
-    PRICE_PER_SQM, VALUATION_K,
+    LOCATION,
+    REGION,
+    URBAN_TYPE,
+    ZONE,
+    ENERGY_CLASS,
+    ENERGY_CLASSES,
+    YEAR_BUILT,
+    LAST_VERIFIED_TS,
+    ORIENTATION,
+    VIEW,
+    HEATING,
+    PRICE_PER_SQM,
+    VALUATION_K,
+    Cols,
 )
 from shared.common.utils import NumpyJSONEncoder, canonical_json_dumps
 
@@ -42,21 +51,10 @@ from shared.common.quality import (
     get_top_outliers,
 )
 
-# Hard dependencies for benchmarks/drift (these are Notebook-side modules)
-from shared.n03_train_model.metrics import location_benchmark, compute_location_drift
-from shared.common.sanity_checks import price_benchmark, critical_city_order_check
-
-# Optional: domain enforcement / pricing normalization
-try:
-    from shared.n03_train_model.preprocessing import enforce_categorical_domains  # type: ignore
-except Exception:  # pragma: no cover
-    enforce_categorical_domains = None  # type: ignore
-
-try:
-    from shared.n01_generate_dataset.asset_factory import normalize_pricing_input  # type: ignore
-except Exception:  # pragma: no cover
-    normalize_pricing_input = None  # type: ignore
-
+# Optional: helpers from dataset/model notebooks (loaded lazily below)
+# - shared.n03_train_model.metrics: location_benchmark, compute_location_drift
+# - shared.common.sanity_checks: price_benchmark, critical_city_order_check
+# - shared.n01_generate_dataset.asset_factory: normalize_pricing_input
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +64,38 @@ __all__ = [
     "build_basic_stats",
     "run_sanity_checks",
 ]
+
+# -----------------------------------------------------------------------------
+# Lazy imports to avoid hard coupling to notebook-only modules
+# -----------------------------------------------------------------------------
+def _lazy_metrics():
+    try:
+        from shared.n03_train_model.metrics import (  # type: ignore
+            location_benchmark,
+            compute_location_drift,
+        )
+        return location_benchmark, compute_location_drift
+    except Exception:
+        return None, None
+
+
+def _lazy_sanity_checks():
+    try:
+        from shared.common.sanity_checks import (  # type: ignore
+            price_benchmark,
+            critical_city_order_check,
+        )
+        return price_benchmark, critical_city_order_check
+    except Exception:
+        return None, None
+
+
+def _lazy_normalize_pricing_input():
+    try:
+        from shared.n01_generate_dataset.asset_factory import normalize_pricing_input  # type: ignore
+        return normalize_pricing_input
+    except Exception:
+        return None
 
 
 # =============================================================================
@@ -109,16 +139,14 @@ class ReportManager:
         Persist a report to JSON.
 
         Args:
-            report: JSON-serializable dict (numpy types allowed if use_numpy_encoder=True).
+            report: JSON-serializable dict (NumPy types allowed if use_numpy_encoder=True).
             filename: destination filename under log_dir.
-            use_numpy_encoder: if True, use NumpyJSONEncoder when not using canonical dumps.
-            canonical: if True, write canonical JSON (sorted keys, minimal separators, UTF-8).
+            use_numpy_encoder: when not canonical, use NumpyJSONEncoder for NumPy types.
+            canonical: if True, write canonical JSON (sorted keys, compact separators, UTF-8).
         """
         path = self.log_dir / filename
         try:
-            text: str
             if canonical:
-                # Canonical dump (handles numpy types by converting to base Python internally)
                 text = canonical_json_dumps(report)
             else:
                 text = json.dumps(
@@ -171,14 +199,20 @@ class DistributionAnalyzer:
             },
         }
 
+        # Optional benchmark/drift vs target distribution
         if target_weights:
-            tw_sum = sum(target_weights.values())
-            normalized = {k: (v / tw_sum if tw_sum else 0.0) for k, v in target_weights.items()}
-            bench_df = location_benchmark(self.df, target_weights=normalized, tolerance=tolerance)
-            result["benchmark"] = {
-                "data": bench_df.reset_index().to_dict(orient="records"),
-                "drifted": bench_df.index[bench_df["drifted"]].tolist(),
-            }
+            lb, _ = _lazy_metrics()
+            if lb:
+                try:
+                    tw_sum = sum(target_weights.values())
+                    normalized = {k: (v / tw_sum if tw_sum else 0.0) for k, v in target_weights.items()}
+                    bench_df = lb(self.df, target_weights=normalized, tolerance=tolerance)
+                    result["benchmark"] = {
+                        "data": bench_df.reset_index().to_dict(orient="records"),
+                        "drifted": bench_df.index[bench_df["drifted"]].tolist(),
+                    }
+                except Exception as e:
+                    logger.info("location_benchmark skipped: %s", e)
 
         logger.info("[DIST] Location distribution", extra={"counts": counts.to_dict()})
         return result
@@ -281,6 +315,11 @@ def run_sanity_checks(df: pd.DataFrame, config: Dict[str, Any]) -> Tuple[Dict[st
     locations = df[LOCATION].dropna().astype(str).unique().tolist() if LOCATION in df.columns else []
     normalized_location_weights = _normalize_weights(raw_location_weights, locations)
 
+    # Optional domain enforcement (if the notebook helper exists)
+    try:
+        from shared.n03_train_model.preprocessing import enforce_categorical_domains  # type: ignore
+    except Exception:
+        enforce_categorical_domains = None  # type: ignore
     if enforce_categorical_domains:
         try:
             try:
@@ -294,27 +333,33 @@ def run_sanity_checks(df: pd.DataFrame, config: Dict[str, Any]) -> Tuple[Dict[st
     sb: Dict[str, Any] = {}
     location_tol = float(config.get("expected_profile", {}).get("location_distribution_tolerance", 0.05))
 
-    try:
-        bench_df = location_benchmark(df, target_weights=normalized_location_weights, tolerance=location_tol)
-        sb["location_distribution"] = bench_df.reset_index().to_dict(orient="records")
-        logger.info("[BENCH] Location benchmark computed.")
-    except Exception as e:
-        logger.error("location_benchmark failed: %s", e)
+    lb, _ = _lazy_metrics()
+    if lb:
+        try:
+            bench_df = lb(df, target_weights=normalized_location_weights, tolerance=location_tol)
+            sb["location_distribution"] = bench_df.reset_index().to_dict(orient="records")
+            logger.info("[BENCH] Location benchmark computed.")
+        except Exception as e:
+            logger.error("location_benchmark failed: %s", e)
+            sb["location_distribution"] = []
+    else:
         sb["location_distribution"] = []
 
+    price_benchmark, critical_city_order_check = _lazy_sanity_checks()
     city_med = None
-    try:
-        city_med, zone_med = price_benchmark(df)
-        sb["city_price_medians"] = city_med.to_dict()
-        if zone_med is not None:
-            sb["zone_price_medians"] = pd.DataFrame(zone_med).fillna(0).to_dict()
-        logger.info("[BENCH] Price benchmark computed.")
-    except Exception as e:
-        logger.error("price_benchmark failed: %s", e)
+    if price_benchmark:
+        try:
+            city_med, zone_med = price_benchmark(df)
+            sb["city_price_medians"] = city_med.to_dict()
+            if zone_med is not None:
+                sb["zone_price_medians"] = pd.DataFrame(zone_med).fillna(0).to_dict()
+            logger.info("[BENCH] Price benchmark computed.")
+        except Exception as e:
+            logger.error("price_benchmark failed: %s", e)
 
     # Ordering alerts (optional)
-    try:
-        if city_med is not None:
+    if critical_city_order_check and city_med is not None:
+        try:
             city_order_cfg = config.get("city_ordering", {}) or {}
             min_ratio = float(city_order_cfg.get("min_ratio", 1.05))
             min_abs_diff = float(city_order_cfg.get("min_abs_diff", 50.0))
@@ -326,21 +371,23 @@ def run_sanity_checks(df: pd.DataFrame, config: Dict[str, Any]) -> Tuple[Dict[st
             failed_alerts = [a for a in top_city_alerts if not a.get("passes", False)]
             sb["top_city_alerts"] = top_city_alerts
             sb["failed_city_ordering"] = failed_alerts
-        else:
+        except Exception as e:
+            logger.error("critical_city_order_check failed: %s", e)
             sb["top_city_alerts"] = []
             sb["failed_city_ordering"] = []
-    except Exception as e:
-        logger.error("critical_city_order_check failed: %s", e)
+    else:
         sb["top_city_alerts"] = []
         sb["failed_city_ordering"] = []
 
-    # Drift (always best-effort)
-    try:
-        drift_info = compute_location_drift(df, target_weights=normalized_location_weights, tolerance=location_tol)
-        df.attrs["location_drift_report"] = drift_info
-        sb["location_drift"] = drift_info
-    except Exception as e:
-        logger.error("compute_location_drift failed: %s", e)
+    # Drift (best-effort)
+    _, compute_location_drift = _lazy_metrics()
+    if compute_location_drift:
+        try:
+            drift_info = compute_location_drift(df, target_weights=normalized_location_weights, tolerance=location_tol)
+            df.attrs["location_drift_report"] = drift_info
+            sb["location_drift"] = drift_info
+        except Exception as e:
+            logger.error("compute_location_drift failed: %s", e)
 
     # --- quality summary + incoherence -------------------------------------
     incoh_cfg = config.get("incoherence", {}) or {}
@@ -356,7 +403,7 @@ def run_sanity_checks(df: pd.DataFrame, config: Dict[str, Any]) -> Tuple[Dict[st
         val_threshold_quantile=val_q,
         confidence_thresh=conf_thresh,
         w_condition=w_cond,
-        w_luxury=w_lux,
+        w_lux=w_lux,
         w_env=w_env,
     )
     sb.setdefault("valuation_summary", {}).update(summary)
@@ -366,7 +413,7 @@ def run_sanity_checks(df: pd.DataFrame, config: Dict[str, Any]) -> Tuple[Dict[st
         val_threshold_quantile=val_q,
         confidence_thresh=conf_thresh,
         w_condition=w_cond,
-        w_luxury=w_lux,
+        w_lux=w_lux,
         w_env=w_env,
     )
     df["confidence_score"] = confidence_series
@@ -391,9 +438,9 @@ def run_sanity_checks(df: pd.DataFrame, config: Dict[str, Any]) -> Tuple[Dict[st
         price_caps_cfg = config.get("price_caps", {}) or {}
         max_multiplier = float(price_caps_cfg.get("max_multiplier", 3.0))
         df_capped = apply_price_caps(df, config.get("city_base_prices", {}) or {}, max_multiplier=max_multiplier)
-        violations = df_capped[df_capped.get("price_per_sqm_capped_violated", False)]
+        violations = df_capped[df_capped.get(Cols.PRICE_PER_SQM_CAPPED + "_violated", False)]
         sb.setdefault("price_caps", {})["violations_count"] = int(len(violations))
-        example_cols = [LOCATION, ZONE, PRICE_PER_SQM, "price_per_sqm_capped"]
+        example_cols = [LOCATION, ZONE, PRICE_PER_SQM, Cols.PRICE_PER_SQM_CAPPED]
         present_cols = [c for c in example_cols if c in violations.columns]
         sb["price_caps"]["example_violations"] = (
             violations[present_cols].head(10).to_dict(orient="records") if not violations.empty else []
@@ -405,6 +452,7 @@ def run_sanity_checks(df: pd.DataFrame, config: Dict[str, Any]) -> Tuple[Dict[st
 
     # --- decomposition example (if outliers present) ------------------------
     try:
+        normalize_pricing_input = _lazy_normalize_pricing_input()
         if "top_outliers_df" in locals() and not top_outliers_df.empty and normalize_pricing_input:
             ex = top_outliers_df.iloc[0]
             interim = {
@@ -418,10 +466,11 @@ def run_sanity_checks(df: pd.DataFrame, config: Dict[str, Any]) -> Tuple[Dict[st
                 "has_balcony": bool(ex.get("has_balcony", False)),
                 "has_garden": bool(ex.get("has_garden", False)),
                 "has_garage": bool(ex.get("garage", False)),
+                # Prefer month from timestamp if available
                 "month": (pd.to_datetime(ex.get(LAST_VERIFIED_TS)).month if ex.get(LAST_VERIFIED_TS) else None),
-                "view": ex.get("view", ""),
-                "orientation": ex.get("orientation", ""),
-                "heating": ex.get("heating", ""),
+                "view": ex.get(VIEW, ""),
+                "orientation": ex.get(ORIENTATION, ""),
+                "heating": ex.get(HEATING, ""),
             }
             decomp = decompose_price_per_sqm(
                 interim,

@@ -1,15 +1,17 @@
 from __future__ import annotations
 """
-Quality & valuation utilities:
-- Decompose price_per_sqm via pricing.explain_price (transparent multiplier breakdown)
-- Summary statistics and incoherence metrics
-- Top outliers extraction
-- Price caps (city/zone aware)
-- API-compatible reports: generate_base_quality_report / enrich_quality_report
+Quality & valuation utilities.
 
-Design notes:
+Capabilities
+- Decompose `price_per_sqm` via `pricing.explain_price` (transparent multiplier breakdown).
+- Summary statistics for `valuation_k` + incoherence metrics (high value / low confidence).
+- Top outliers extraction.
+- City/zone-aware price caps with violation flags.
+- Report builders: `generate_base_quality_report` and `enrich_quality_report`.
+
+Design
 - Zero I/O: functions return dicts/DataFrames; persistence is handled by callers.
-- Optional integrations (benchmark/drift/decomposition-example) are imported lazily.
+- Optional integrations (benchmarks/drift/decomposition-example) are imported lazily.
 """
 
 import logging
@@ -19,8 +21,17 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 from shared.common.constants import (
-    LOCATION, ZONE, ORIENTATION, VIEW, HEATING, VALUATION_K,
-    CONDITION_SCORE, ENV_SCORE, LUXURY_SCORE, PRICE_PER_SQM, Cols,
+    LOCATION,
+    ZONE,
+    ORIENTATION,
+    VIEW,
+    HEATING,
+    VALUATION_K,
+    CONDITION_SCORE,
+    ENV_SCORE,
+    LUXURY_SCORE,
+    PRICE_PER_SQM,
+    Cols,
 )
 from shared.common.pricing import (
     explain_price,
@@ -40,16 +51,15 @@ __all__ = [
     "summarize_valuation_distribution_with_incoherence",
     "get_top_outliers",
     "apply_price_caps",
-    # report API (compat)
+    # report API
     "build_basic_stats",
     "generate_base_quality_report",
     "enrich_quality_report",
 ]
 
-
-# -----------------------------------------------------------------------------
-# Lazy optional metrics (avoid hard coupling)
-# -----------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Lazy optional metrics (to avoid hard coupling)
+# ---------------------------------------------------------------------------
 def _lazy_metrics():
     try:
         from shared.n03_train_model.metrics import (  # type: ignore
@@ -61,17 +71,17 @@ def _lazy_metrics():
         return None, None
 
 
-# -----------------------------------------------------------------------------
-# Weights / defaults
-# -----------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Default weights
+# ---------------------------------------------------------------------------
 W_CONDITION_DEF: float = 0.5
 W_LUXURY_DEF: float = 0.3
 W_ENV_DEF: float = 0.2
 
 
-# -----------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # Decomposition using pricing.explain_price
-# -----------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 def decompose_price_per_sqm(
     interim: Mapping[str, Any],
     pricing_normalized: Mapping[str, Any],
@@ -79,13 +89,14 @@ def decompose_price_per_sqm(
     city_base_prices: Mapping[str, Mapping[str, float]],
 ) -> Dict[str, Any]:
     """
-    Reconstruct price_per_sqm composition using `common.pricing.explain_price`.
+    Reconstruct price composition using `pricing.explain_price` (NO noise).
 
     Args:
-        interim: minimal row-like mapping; supports legacy 'month' → coerced to Cols.LISTING_MONTH.
-        pricing_normalized: priors (pre-normalized or raw; normalization is idempotent).
-        seasonality: {month → multiplier}.
-        city_base_prices: {city → {zone → base_price}}.
+        interim: minimal row-like mapping; accepts legacy 'month' which is coerced
+                 to Cols.LISTING_MONTH if present.
+        pricing_normalized: priors (raw or pre-normalized; normalization is idempotent).
+        seasonality: {month -> multiplier}.
+        city_base_prices: {city -> {zone -> base_price}}.
 
     Returns:
         dict with keys: base, final_no_noise, multipliers, composed_multiplier.
@@ -119,13 +130,11 @@ def decompose_price_per_sqm(
     return decomp
 
 
-# -----------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # Summaries & incoherence
-# -----------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 def summarize_valuation_distribution(df: pd.DataFrame) -> Dict[str, Any]:
-    """
-    Quantiles and descriptive stats for valuation_k.
-    """
+    """Quantiles and descriptive stats for `valuation_k`."""
     if VALUATION_K not in df.columns:
         raise KeyError(f"{VALUATION_K} missing from dataframe for summary.")
 
@@ -148,10 +157,7 @@ def compute_confidence_score(
     w_luxury: float = W_LUXURY_DEF,
     w_env: float = W_ENV_DEF,
 ) -> pd.Series:
-    """
-    Composite confidence score combining condition, luxury, env.
-    Returns a float32 Series aligned to df.
-    """
+    """Composite confidence score combining condition, luxury, env (float32 Series)."""
     cond = pd.to_numeric(df.get(CONDITION_SCORE, 0.0), errors="coerce").fillna(0.0)
     lux = pd.to_numeric(df.get(LUXURY_SCORE, 0.0), errors="coerce").fillna(0.0)
     env = pd.to_numeric(df.get(ENV_SCORE, 0.0), errors="coerce").fillna(0.0)
@@ -190,9 +196,7 @@ def summarize_valuation_distribution_with_incoherence(
     w_luxury: float = W_LUXURY_DEF,
     w_env: float = W_ENV_DEF,
 ) -> Dict[str, Any]:
-    """
-    Extend summary with strongly-incoherent counts and fractions.
-    """
+    """Extend summary with counts/fraction of strongly incoherent assets."""
     summary = summarize_valuation_distribution(df)
     incoherent_mask, _ = flag_strongly_incoherent(
         df,
@@ -217,9 +221,9 @@ def summarize_valuation_distribution_with_incoherence(
     return summary
 
 
-# -----------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # Outliers
-# -----------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 def get_top_outliers(
     df: pd.DataFrame,
     n: int = 20,
@@ -245,9 +249,9 @@ def get_top_outliers(
     return top.loc[:, available].copy()
 
 
-# -----------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # Price caps
-# -----------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 def apply_price_caps(
     df: pd.DataFrame,
     city_base_prices: Mapping[str, Mapping[str, float]],
@@ -297,13 +301,11 @@ def apply_price_caps(
     return out
 
 
-# -----------------------------------------------------------------------------
-# Report API (backward-compatible)
-# -----------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Report API
+# ---------------------------------------------------------------------------
 def build_basic_stats(df: pd.DataFrame) -> Dict[str, Any]:
-    """
-    Basic stats (shape, dtypes, missing ratios, describe) + target summary (if present).
-    """
+    """Basic stats (shape, dtypes, missing ratios, describe) + target summary (if present)."""
     numeric = df.select_dtypes(include=[np.number])
     categorical = df.select_dtypes(exclude=[np.number])
     out: Dict[str, Any] = {
@@ -327,12 +329,8 @@ def build_basic_stats(df: pd.DataFrame) -> Dict[str, Any]:
 
 
 def generate_base_quality_report(df: pd.DataFrame) -> Dict[str, Any]:
-    """
-    Minimal, stable, JSON-serializable report.
-    """
-    report: Dict[str, Any] = {
-        "basic_stats": build_basic_stats(df),
-    }
+    """Minimal, stable, JSON-serializable report."""
+    report: Dict[str, Any] = {"basic_stats": build_basic_stats(df)}
 
     # Append valuation summary if present
     if VALUATION_K in df.columns:
@@ -342,7 +340,7 @@ def generate_base_quality_report(df: pd.DataFrame) -> Dict[str, Any]:
             logger.warning("Unable to compute valuation summary: %s", e)
             report["valuation_summary"] = {}
 
-    # Duplicates example set (best-effort)
+    # Duplicates (best-effort)
     try:
         dup_mask = df.duplicated()
         dup_count = int(dup_mask.sum())
@@ -366,6 +364,7 @@ def enrich_quality_report(
       - Top outliers
       - Price caps (if city_base_prices provided)
       - Optional benchmarks/drift (lazy imports)
+      - Optional decomposition example (top valuation row)
 
     Non-raising: optional blocks fail with warnings, returning partial data.
     """
@@ -442,10 +441,7 @@ def enrich_quality_report(
         if LOCATION in df.columns and target_weights:
             tol = float(cfg.get("expected_profile", {}).get("location_distribution_tolerance", 0.05))
             compute_location_drift, location_benchmark = _lazy_metrics()
-            if compute_location_drift is None or location_benchmark is None:
-                # Nothing to add; keep report consistent
-                pass
-            else:
+            if compute_location_drift and location_benchmark:
                 try:
                     bench_df = location_benchmark(df, target_weights=_normalize_weights(target_weights), tolerance=tol)
                     rpt.setdefault("sanity_benchmarks", {})["location_distribution"] = (

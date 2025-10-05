@@ -1,19 +1,19 @@
 from __future__ import annotations
 
 """
-Utility functions (notebooks/shared/common/utils.py)
+Utility functions (shared/common/utils.py)
 
 Scope
 - JSON encoding for numpy/pandas types (stable, compact canonical dumps)
-- Deterministic global seeding (numpy + random)
+- Deterministic global seeding (NumPy + random)
 - Robust ISO8601 parsing (UTC-aware)
 - Lightweight dtype optimization for DataFrames
 - Basic dataset diagnostics (log-only)
 - Location canonicalization & city mapping helpers
 
-Notes
-- Pure, side-effect free except for logging and RNG seeding.
-- Safe to import in notebooks and light-weight pipelines.
+Design
+- Pure utilities, side-effect free except for logging and RNG seeding.
+- Safe to import in notebooks and lightweight pipelines.
 """
 
 import hashlib
@@ -54,9 +54,9 @@ __all__ = [
 ]
 
 
-# -----------------------------------------------------------------------------
+# =============================================================================
 # JSON utilities
-# -----------------------------------------------------------------------------
+# =============================================================================
 
 class NumpyJSONEncoder(json.JSONEncoder):
     """JSON encoder with first-class support for numpy, pandas, and datetimes."""
@@ -84,9 +84,9 @@ class NumpyJSONEncoder(json.JSONEncoder):
 def canonical_json_dumps(obj: Any) -> str:
     """
     Produce a stable, compact JSON string:
-    - sort_keys=True to enable reproducible hashing
-    - separators=(',', ':') to minimize size (useful for ≤1KB notes)
-    - ensure_ascii=False to avoid unnecessary escapes
+    - sort_keys=True enables reproducible hashing
+    - separators=(',', ':') minimizes size (useful for ≤1KB on-chain notes)
+    - ensure_ascii=False avoids unnecessary escapes
     """
     return json.dumps(
         obj,
@@ -103,13 +103,13 @@ def sha256_hex(data: Union[str, bytes]) -> str:
     return hashlib.sha256(b).hexdigest()
 
 
-# -----------------------------------------------------------------------------
+# =============================================================================
 # Time / RNG
-# -----------------------------------------------------------------------------
+# =============================================================================
 
 def set_global_seed(seed: int) -> np.random.Generator:
     """
-    Set deterministic global RNG seeds (random + numpy) and return a local Generator.
+    Set deterministic global RNG seeds (random + NumPy) and return a local Generator.
 
     Returns:
         np.random.Generator seeded with `seed`.
@@ -143,68 +143,80 @@ def parse_iso8601(s: Optional[str]) -> Optional[datetime]:
         return None
 
 
-# -----------------------------------------------------------------------------
+# =============================================================================
 # DataFrame helpers
-# -----------------------------------------------------------------------------
+# =============================================================================
 
 def optimize_dtypes(df: pd.DataFrame) -> pd.DataFrame:
     """
     Return a memory-optimized copy of `df`:
-    - float64 → float32
-    - (pandas) Int64/int64 → Int16 or Int32 (nullable)
+    - float64 → float32 (best-effort)
+    - integer-like → pandas nullable Int16/Int32 when safe
+      (only if all non-null values are integral; preserves NaN semantics)
     - leave categories/objects untouched
 
     Notes
-    - Best-effort: does not raise on conversion errors.
-    - Preserves NaN semantics by using pandas nullable integer dtypes.
+    - Best-effort: never raises on conversion errors.
+    - Uses pandas nullable integer dtypes to preserve NaNs.
     """
-    before = df.memory_usage(deep=True).sum()
+    before = int(df.memory_usage(deep=True).sum())
     df_opt = df.copy()
 
-    # Floats
+    # Floats: downcast to float32
     for col in df_opt.select_dtypes(include=["float64"]).columns:
         try:
             df_opt[col] = df_opt[col].astype("float32")
         except Exception:
             logger.debug("Skip float downcast for %s", col)
 
-    # Signed integers (numpy int64) and pandas nullable Int64
-    int_like = list(df_opt.select_dtypes(include=["int64"]).columns)
-    int_like += [c for c in df_opt.columns if str(df_opt[c].dtype) == "Int64"]  # pandas nullable
-    for col in sorted(set(int_like)):
+    # Integers: support both numpy ints and pandas nullable Int* dtypes
+    int_like_cols = list(df_opt.select_dtypes(include=["int64", "Int64"]).columns)
+    # Also consider numeric columns that are floats but actually hold integral values
+    for col in df_opt.columns:
+        if col in int_like_cols:
+            continue
+        if str(df_opt[col].dtype).startswith("float"):
+            s = pd.to_numeric(df_opt[col], errors="coerce")
+            # check integrality on non-null values
+            non_null = s.dropna()
+            if not non_null.empty and np.all(np.isclose(non_null % 1, 0)):
+                int_like_cols.append(col)
+
+    for col in sorted(set(int_like_cols)):
         try:
             s = pd.to_numeric(df_opt[col], errors="coerce")
-            mn, mx = s.min(), s.max()
-            # Choose smallest sufficient nullable int width
-            if pd.notna(mn) and pd.notna(mx):
+            non_null = s.dropna()
+            # require integrality to avoid ValueError when casting floats to Int*
+            if not non_null.empty and np.all(np.isfinite(non_null)) and np.all(np.isclose(non_null % 1, 0)):
+                mn, mx = int(non_null.min()), int(non_null.max())
+                # Choose smallest sufficient nullable int width
                 if -32768 <= mn <= mx <= 32767:
-                    df_opt[col] = s.astype("Int16")
+                    df_opt[col] = s.round().astype("Int16")
                 else:
-                    df_opt[col] = s.astype("Int32")
+                    df_opt[col] = s.round().astype("Int32")
         except Exception:
             logger.debug("Skip int downcast for %s", col)
 
-    after = df_opt.memory_usage(deep=True).sum()
+    after = int(df_opt.memory_usage(deep=True).sum())
     logger.debug(
         "[UTILS] Dtype optimization: %.1f KB → %.1f KB (Δ=%.1f KB)",
-        before / 1024,
-        after / 1024,
-        (before - after) / 1024,
+        before / 1024.0,
+        after / 1024.0,
+        (before - after) / 1024.0,
     )
     return df_opt
 
 
 def log_basic_diagnostics(df: pd.DataFrame, log: logging.Logger = logger) -> None:
-    """
-    Log a few coarse dataset diagnostics (non-intrusive; no exceptions).
-    """
+    """Log a few coarse dataset diagnostics (non-intrusive; no exceptions)."""
     try:
         if LOCATION in df.columns:
             log.info("[UTILS] Distribution by location:\n%s", df[LOCATION].value_counts().to_string())
         if "valuation_k" in df.columns:  # kept literal for portability across callers
-            log.info("[UTILS] Valuation min: %.2fk€", float(pd.to_numeric(df["valuation_k"], errors="coerce").min()))
-            log.info("[UTILS] Valuation max: %.2fk€", float(pd.to_numeric(df["valuation_k"], errors="coerce").max()))
-            log.info("[UTILS] Valuation mean: %.2fk€", float(pd.to_numeric(df["valuation_k"], errors="coerce").mean()))
+            v = pd.to_numeric(df["valuation_k"], errors="coerce")
+            log.info("[UTILS] Valuation min: %.2fk€", float(v.min()))
+            log.info("[UTILS] Valuation max: %.2fk€", float(v.max()))
+            log.info("[UTILS] Valuation mean: %.2fk€", float(v.mean()))
         if {"size_m2", "valuation_k"}.issubset(df.columns):
             corr = (
                 pd.to_numeric(df["size_m2"], errors="coerce")
@@ -216,9 +228,9 @@ def log_basic_diagnostics(df: pd.DataFrame, log: logging.Logger = logger) -> Non
         log.debug("Diagnostics skipped: %s", e)
 
 
-# -----------------------------------------------------------------------------
+# =============================================================================
 # Location helpers
-# -----------------------------------------------------------------------------
+# =============================================================================
 
 def canonical_location(record: Union[Dict[str, Any], pd.Series]) -> str:
     """

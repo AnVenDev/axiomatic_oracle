@@ -1,20 +1,19 @@
 from __future__ import annotations
-
 """
 Pricing utilities (single source of truth).
 
-Provided functions:
+Public API
 - normalize_priors(raw) -> dict
 - calculate_price_per_sqm_base(city, zone, city_base_prices, default_fallback)
-- apply_pricing_pipeline(row, priors, base_price) -> float
+- apply_pricing_pipeline(row, priors, base_price) -> float         # deterministic, no seasonality/noise
 - apply_hedonic_adjustments(row, pricing_input, seasonality, city_base_prices, rng) -> float
-- explain_price(row, priors, seasonality, city_base_prices) -> dict
+- explain_price(row, priors, seasonality, city_base_prices) -> dict # transparent breakdown (no noise)
 
-Design notes:
+Design
 - Pure/deterministic except for the optional, controlled noise in `apply_hedonic_adjustments`
-  (pass a deterministic RNG to disable randomness).
+  (pass a seeded RNG to make it reproducible).
 - Zero I/O. Inputs are plain mappings; callers own schema enforcement.
-- “Priors” are normalized to a fixed internal structure by `normalize_priors`.
+- Priors are normalized to a fixed internal structure by `normalize_priors`.
 """
 
 from typing import Any, Dict, Mapping, Optional, List, Tuple, Union
@@ -24,7 +23,7 @@ import logging
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
-# Canonical domain/column names
+# Canonical column names / values
 from shared.common.constants import (
     LOCATION,
     ZONE,
@@ -40,6 +39,7 @@ from shared.common.constants import (
     VIEW_LANDMARKS,
     ORIENTATION,
     HEATING,
+    CONDITION,          # canonical column; we still accept legacy 'state'
     Cols,
 )
 
@@ -57,17 +57,17 @@ logger = logging.getLogger(__name__)
 # Tunables / heuristics
 # -----------------------------------------------------------------------------
 
-ORIENTATION_BONUS: float = 1.05             # South-like exposure
-HEATING_AUTONOMOUS_BONUS: float = 1.03      # Autonomous heating
+ORIENTATION_BONUS: float = 1.05             # south-ish exposure bonus
+HEATING_AUTONOMOUS_BONUS: float = 1.03      # autonomous heating bonus
 DEFAULT_BASE_PRICE_FALLBACK: float = 3000.0 # €/m² when city/zone missing
 NOISE_RANGE: Tuple[float, float] = (0.95, 1.05)
 
-_SUNNY_ORIENTATIONS = {"South", "South-East", "South-West"}
+_SUNNY_ORIENTATIONS = {"south", "south-east", "south-west", "southeast", "southwest"}
 _HEATING_AUTONOMOUS = "autonomous"
 
 
 # -----------------------------------------------------------------------------
-# Internals
+# Helpers
 # -----------------------------------------------------------------------------
 
 def _get_month(row: Mapping[str, Any]) -> Optional[int]:
@@ -82,8 +82,33 @@ def _get_month(row: Mapping[str, Any]) -> Optional[int]:
         return None
 
 
+def _norm_str(x: Any) -> str:
+    """Lower/strip safe string normalization."""
+    try:
+        s = str(x)
+    except Exception:
+        return ""
+    return s.strip().lower()
+
+
+def _to_bool(x: Any) -> bool:
+    """Best-effort boolean coercion for flags stored as 0/1, 'true'/'false', etc."""
+    if isinstance(x, bool):
+        return x
+    s = _norm_str(x)
+    if s in {"1", "true", "yes", "y", "t"}:
+        return True
+    if s in {"0", "false", "no", "n", "f"}:
+        return False
+    # Fallback: numeric non-zero is True
+    try:
+        return float(x) != 0.0
+    except Exception:
+        return False
+
+
 # -----------------------------------------------------------------------------
-# Base price
+# Base €/m²
 # -----------------------------------------------------------------------------
 
 def calculate_price_per_sqm_base(
@@ -96,15 +121,6 @@ def calculate_price_per_sqm_base(
     Resolve base €/m² from (city, zone). Fallbacks:
       1) City mean over known zones, if city exists.
       2) `default_fallback` otherwise.
-
-    Args:
-        city: canonical city name.
-        zone: {center|semi_center|periphery} (caller ensures normalization).
-        city_base_prices: mapping city -> {zone -> price}.
-        default_fallback: used when city/zone not found.
-
-    Returns:
-        Base price per sqm (float).
     """
     try:
         city_prices = dict(city_base_prices.get(city, {}) or {})
@@ -124,14 +140,14 @@ def calculate_price_per_sqm_base(
 
 def normalize_priors(raw: Mapping[str, Any]) -> Dict[str, Any]:
     """
-    Normalize legacy/partial priors into a unified schema:
+    Normalize priors into a unified schema:
 
       view_multipliers: { "sea":1.xx, "landmarks":1.xx }
-      floor_modifiers:  { "is_top_floor":+Δ, "is_ground_floor":+Δ }
-      build_age:        { "new":+Δ, "recent":+Δ, "old":+Δ }  (Δ are additive to multiplier-1)
-      energy_class_multipliers: { "A":1.xx, ..., "G":0.xx }
-      state_modifiers:  { "new":1.xx, "renovated":1.xx, "good":1.0, "needs_renovation":0.xx }
-      extras:           { "has_balcony":+Δ, "has_garage":+Δ, "has_garden":+Δ }
+      floor_modifiers:  { "is_top_floor":+Δ, "is_ground_floor":+Δ }   # Δ are additive to multiplier-1
+      build_age:        { "new":+Δ, "recent":+Δ, "old":+Δ }           # Δ additive
+      energy_class_multipliers: { "A":1.xx, ..., "G":0.xx }           # multiplicative
+      state_modifiers:  { "new":1.xx, "renovated":1.xx, "good":1.0, "needs_renovation":0.xx } # multiplicative
+      extras:           { "has_balcony":+Δ, "has_garage":+Δ, "has_garden":+Δ }                # Δ additive
 
     Notes:
       - Values under 'build_age' and 'extras' are additive deltas applied as (1 + delta).
@@ -141,8 +157,11 @@ def normalize_priors(raw: Mapping[str, Any]) -> Dict[str, Any]:
     src = dict(raw or {})
     build_age_raw = dict(src.get("build_age", {}) or {})
 
+    # Lowercase keys for view multipliers, to be robust to row normalization
+    vm = { _norm_str(k): float(v) for k, v in dict(src.get("view_multipliers", {VIEW_SEA: 1.0, VIEW_LANDMARKS: 1.0})).items() }
+
     return {
-        "view_multipliers": dict(src.get("view_multipliers", {VIEW_SEA: 1.0, VIEW_LANDMARKS: 1.0})),
+        "view_multipliers": vm,
         "floor_modifiers": dict(src.get("floor_modifiers", {"is_top_floor": 0.0, "is_ground_floor": 0.0})),
         "build_age": {
             "new": float(build_age_raw.get("new", 0.0)),
@@ -156,7 +175,7 @@ def normalize_priors(raw: Mapping[str, Any]) -> Dict[str, Any]:
 
 
 # -----------------------------------------------------------------------------
-# Core pricing pipeline (no heuristics/noise)
+# Core pricing pipeline (deterministic, no seasonality/noise)
 # -----------------------------------------------------------------------------
 
 def apply_pricing_pipeline(row: Mapping[str, Any], priors: Mapping[str, Any], base_price: float) -> float:
@@ -193,36 +212,36 @@ def apply_pricing_pipeline(row: Mapping[str, Any], priors: Mapping[str, Any], ba
             price *= 1.0 + float(pri["build_age"].get("old", 0.0))
 
     # Floor modifiers
-    if bool(row.get(IS_TOP_FLOOR, False)):
+    if _to_bool(row.get(IS_TOP_FLOOR, False)):
         price *= 1.0 + float(pri["floor_modifiers"].get("is_top_floor", 0.0))
-    if bool(row.get(IS_GROUND_FLOOR, False)):
+    if _to_bool(row.get(IS_GROUND_FLOOR, False)):
         price *= 1.0 + float(pri["floor_modifiers"].get("is_ground_floor", 0.0))
 
-    # Energy class multiplier
+    # Energy class multiplier (expects A..G; unknown -> 1.0)
     energy_class = str(row.get(ENERGY_CLASS, "") or "")
     price *= float(pri["energy_class_multipliers"].get(energy_class, 1.0))
 
-    # State multiplier (defaults to "good": 1.0)
-    state = str(row.get("state", "good") or "good")
-    price *= float(pri["state_modifiers"].get(state, 1.0))
+    # Condition/state multiplier (support both canonical CONDITION and legacy 'state')
+    state_val = str(row.get(CONDITION, row.get("state", "good")) or "good")
+    price *= float(pri["state_modifiers"].get(state_val, 1.0))
 
     # Extras
-    if bool(row.get(HAS_BALCONY, False)):
+    if _to_bool(row.get(HAS_BALCONY, False)):
         price *= 1.0 + float(pri["extras"].get("has_balcony", 0.0))
-    if bool(row.get(GARAGE, False)):
+    if _to_bool(row.get(GARAGE, False)):
         price *= 1.0 + float(pri["extras"].get("has_garage", 0.0))
-    if bool(row.get(HAS_GARDEN, False)):
+    if _to_bool(row.get(HAS_GARDEN, False)):
         price *= 1.0 + float(pri["extras"].get("has_garden", 0.0))
 
-    # View multiplier
-    view_val = str(row.get(VIEW, "") or "")
+    # View multiplier (case-insensitive)
+    view_val = _norm_str(row.get(VIEW, ""))
     price *= float(pri["view_multipliers"].get(view_val, 1.0))
 
     return float(price)
 
 
 # -----------------------------------------------------------------------------
-# Full hedonic pipeline (with heuristics/seasonality/noise)
+# Full hedonic pipeline (heuristics + seasonality + noise)
 # -----------------------------------------------------------------------------
 
 def apply_hedonic_adjustments(
@@ -251,12 +270,12 @@ def apply_hedonic_adjustments(
     # 2) Priors (normalized) without local heuristics
     price = apply_pricing_pipeline(row, normalize_priors(pricing_input), base_price)
 
-    # 3) Local heuristics: orientation & heating
-    orientation_val = str(row.get(ORIENTATION, "") or "")
+    # 3) Local heuristics: orientation & heating (case-insensitive)
+    orientation_val = _norm_str(row.get(ORIENTATION, ""))
     if orientation_val in _SUNNY_ORIENTATIONS:
         price *= ORIENTATION_BONUS
 
-    heating_val = str(row.get(HEATING, "") or "")
+    heating_val = _norm_str(row.get(HEATING, ""))
     if heating_val == _HEATING_AUTONOMOUS:
         price *= HEATING_AUTONOMOUS_BONUS
 
@@ -316,7 +335,6 @@ def explain_price(
 
     # Build age
     year = rm.get(YEAR_BUILT)
-    year_int: Optional[int]
     try:
         year_int = int(year) if year is not None else None
     except Exception:
@@ -339,11 +357,11 @@ def explain_price(
                 multipliers.append(("build_age_old", m))
 
     # Floor
-    if bool(rm.get(IS_TOP_FLOOR, False)):
+    if _to_bool(rm.get(IS_TOP_FLOOR, False)):
         m = 1.0 + float(pri["floor_modifiers"].get("is_top_floor", 0.0))
         if m != 1.0:
             multipliers.append(("is_top_floor", m))
-    if bool(rm.get(IS_GROUND_FLOOR, False)):
+    if _to_bool(rm.get(IS_GROUND_FLOOR, False)):
         m = 1.0 + float(pri["floor_modifiers"].get("is_ground_floor", 0.0))
         if m != 1.0:
             multipliers.append(("is_ground_floor", m))
@@ -354,39 +372,39 @@ def explain_price(
     if m != 1.0:
         multipliers.append((f"energy_class_{ec or 'unknown'}", m))
 
-    # State
-    state = str(rm.get("state", "good") or "good")
-    m = float(pri["state_modifiers"].get(state, 1.0))
+    # Condition/state
+    state_val = str(rm.get(CONDITION, rm.get("state", "good")) or "good")
+    m = float(pri["state_modifiers"].get(state_val, 1.0))
     if m != 1.0:
-        multipliers.append((f"state_{state}", m))
+        multipliers.append((f"state_{state_val}", m))
 
     # Extras
-    if bool(rm.get(HAS_BALCONY, False)):
+    if _to_bool(rm.get(HAS_BALCONY, False)):
         m = 1.0 + float(pri["extras"].get("has_balcony", 0.0))
         if m != 1.0:
             multipliers.append(("has_balcony", m))
-    if bool(rm.get(GARAGE, False)):
+    if _to_bool(rm.get(GARAGE, False)):
         m = 1.0 + float(pri["extras"].get("has_garage", 0.0))
         if m != 1.0:
             multipliers.append(("has_garage", m))
-    if bool(rm.get(HAS_GARDEN, False)):
+    if _to_bool(rm.get(HAS_GARDEN, False)):
         m = 1.0 + float(pri["extras"].get("has_garden", 0.0))
         if m != 1.0:
             multipliers.append(("has_garden", m))
 
-    # View
-    v = str(rm.get(VIEW, "") or "")
+    # View (case-insensitive)
+    v = _norm_str(rm.get(VIEW, ""))
     m = float(pri["view_multipliers"].get(v, 1.0))
     if m != 1.0:
         multipliers.append((f"view_{v or 'none'}", m))
 
     # Orientation heuristic
-    orientation_val = str(rm.get(ORIENTATION, "") or "")
+    orientation_val = _norm_str(rm.get(ORIENTATION, ""))
     if orientation_val in _SUNNY_ORIENTATIONS:
         multipliers.append(("orientation_southish", ORIENTATION_BONUS))
 
     # Heating heuristic
-    heating_val = str(rm.get(HEATING, "") or "")
+    heating_val = _norm_str(rm.get(HEATING, ""))
     if heating_val == _HEATING_AUTONOMOUS:
         multipliers.append(("heating_autonomous", HEATING_AUTONOMOUS_BONUS))
 
@@ -395,7 +413,7 @@ def explain_price(
     if m_int in seasonality:
         try:
             sea_m = float(seasonality[m_int])  # type: ignore[index]
-            if sea_m != 1.0:
+            if not np.isclose(sea_m, 1.0):
                 multipliers.append((f"seasonality_{m_int}", sea_m))
         except Exception:
             pass

@@ -1,18 +1,18 @@
 from __future__ import annotations
 
 """
-Configuration primitives for data generation, exploration, and training.
+Configuration primitives for dataset generation, exploration, and training.
 
-Design goals:
+Goals
 - Strongly-typed configuration via Pydantic models.
-- Safe defaults with explicit validation (quantiles, weights, positive values, etc.).
-- Backward-compatible loader helpers returning either dicts or typed models.
-- Paths are normalized (resolve, expanduser) and can be created on demand.
+- Safe defaults with explicit validation (probabilities, weights, bounds).
+- Backward-compatible loaders returning either dicts or typed models.
+- Normalized paths (resolve, expanduser) with optional directory creation.
+- Alignment with `shared.common.constants` for versions, thresholds, and coefficients.
 
-Notes:
-- Constants such as SCHEMA_VERSION, NOTE_MAX_BYTES, NETWORK are sourced from
-  `notebooks.shared.common.constants`. Use them directly if needed; do **not**
-  duplicate them as Pydantic `Field` at module scope (that has no effect).
+Notes
+- Do NOT duplicate constants in this module; import from `shared.common.constants`.
+- This module is dependency-light (only Pydantic + stdlib) and safe to import.
 """
 
 import json
@@ -35,14 +35,16 @@ from pydantic import (
     model_validator,
 )  # type: ignore
 
-# Domain constants (regions/urban types, default mappings)
+# Domain/version constants (single source of truth)
 from shared.common.constants import (
     DEFAULT_REGION_BY_CITY,
     DEFAULT_URBAN_TYPE_BY_CITY,
-    # These exist for consumers; we do not mirror them as Pydantic Fields here.
+    Versions,
+    Thresholds,
     SCHEMA_VERSION,
     NOTE_MAX_BYTES,
     NETWORK,
+    SEED,
 )
 
 __all__ = [
@@ -51,6 +53,7 @@ __all__ = [
     # pricing models
     "ViewMultipliers", "FloorModifiers", "BuildAgeModifiers", "EnergyClassMultipliers",
     "StateModifiers", "ExtrasModifiers", "PricingConfigModel",
+    "ConditionalPricingOverrides",
     "DEFAULT_PRICING_MODEL", "DEFAULT_PRICING",
     # asset config
     "ASSET_CONFIG",
@@ -118,13 +121,13 @@ class StateModifiers(BaseModel):
 class ExtrasModifiers(BaseModel):
     """Additive modifiers for common extras."""
     has_balcony: float = 0.04
-    has_garage: float = 0.06
+    garage: float = 0.06
     has_garden: float = 0.05
 
 
 class PricingConfigModel(BaseModel):
     """
-    Aggregates all pricing knobs.
+    Aggregates all base pricing knobs (city/zone/age/state/extras/etc.).
     Extra keys are forbidden to surface config typos early.
     """
     view_multipliers: ViewMultipliers = Field(default_factory=ViewMultipliers)
@@ -137,36 +140,72 @@ class PricingConfigModel(BaseModel):
     model_config = {"extra": "forbid"}
 
 
+class ConditionalPricingOverrides(BaseModel):
+    """
+    Optional overrides for conditional pricing coefficients.
+    If a field is None, use the constant from `Thresholds`.
+    """
+    elev_bonus_per_floor: Optional[float] = None          # default: Thresholds.ELEV_BONUS_PER_FLOOR
+    no_elev_penalty_per_floor: Optional[float] = None     # default: Thresholds.NO_ELEV_PENALTY_PER_FLOOR
+    garage_centrality_coef: Optional[float] = None        # default: Thresholds.GARAGE_CENTRALITY_COEF
+    attic_per_floor_coef: Optional[float] = None          # default: Thresholds.ATTIC_PER_FLOOR_COEF
+    humidity_penalty_max: Optional[float] = None          # default: Thresholds.HUMIDITY_PENALTY_MAX
+    centrality_eps_km: Optional[float] = None             # default: Thresholds.CENTRALITY_EPS_KM
+
+    min_floors_for_elevator: Optional[int] = None         # default: Thresholds.MIN_FLOORS_FOR_ELEVATOR
+    attic_topfloor_prior: Optional[float] = None          # default: Thresholds.ATTIC_TOPFLOOR_PRIOR
+
+    @model_validator(mode="after")
+    def _validate_ranges(self) -> "ConditionalPricingOverrides":
+        def _nonneg(x: Optional[float]) -> None:
+            if x is not None and x < 0:  # pragma: no cover (defensive)
+                raise ValueError("override coefficients must be non-negative.")
+        _nonneg(self.elev_bonus_per_floor)
+        _nonneg(self.no_elev_penalty_per_floor)
+        _nonneg(self.garage_centrality_coef)
+        _nonneg(self.attic_per_floor_coef)
+        _nonneg(self.humidity_penalty_max)
+        if self.centrality_eps_km is not None and self.centrality_eps_km <= 0:
+            raise ValueError("centrality_eps_km must be > 0.")
+        if self.min_floors_for_elevator is not None and self.min_floors_for_elevator < 0:
+            raise ValueError("min_floors_for_elevator must be >= 0.")
+        if self.attic_topfloor_prior is not None and not (0.0 <= self.attic_topfloor_prior <= 1.0):
+            raise ValueError("attic_topfloor_prior must be in [0, 1].")
+        return self
+
+
 # Defaults (as instance and plain dict for consumers that prefer dicts)
 DEFAULT_PRICING_MODEL = PricingConfigModel()
 DEFAULT_PRICING = DEFAULT_PRICING_MODEL.model_dump()
 
 # =============================================================================
-# Asset configuration (modeling)
+# Asset configuration (feature semantics for modeling)
 # =============================================================================
 
 ASSET_CONFIG: Dict[str, Dict[str, Any]] = {
     "property": {
-        # Raw features by semantic type (used by pipelines/validators)
+        # Raw features by semantic type (used by pipelines/validators).
+        # NOTE: `city` is the primary location key produced by the generator;
+        #       free-form `location` is excluded to avoid duplication.
         "categorical": [
-            "city",  # primary location key
+            "city",
             "region", "zone",
             "energy_class", "condition", "heating", "view",
             "public_transport_nearby",
         ],
         "numeric": [
             "size_m2", "rooms", "bathrooms", "floor", "building_floors",
-            "has_elevator", "has_garden", "has_balcony", "has_garage",
+            "has_elevator", "has_garden", "has_balcony", "garage",
             "year_built", "listing_month",
         ],
-        # Avoid duplicated semantics when both city and free-form location exist
+        # Avoid duplicated semantics when both `city` and free-form `location` exist.
         "exclude": ["location"],
 
-        # Domain normalization / synonyms (start from defaults, allow overrides)
+        # Domain normalization / synonyms (start from constants; allow overrides).
         "region_by_city": {**DEFAULT_REGION_BY_CITY},
         "urban_type_by_city": {**DEFAULT_URBAN_TYPE_BY_CITY},
 
-        # Canonical city names (lowercase -> Title Case)
+        # Canonical city names (lowercase → Title Case).
         "city_synonyms": {
             "milano": "Milan", "firenze": "Florence", "roma": "Rome",
             "torino": "Turin", "napoli": "Naples", "genova": "Genoa",
@@ -182,7 +221,7 @@ ASSET_CONFIG: Dict[str, Dict[str, Any]] = {
 # =============================================================================
 
 class PathsConfig(BaseModel):
-    """Filesystem layout for generated artifacts/logs."""
+    """Filesystem layout for generated artifacts and logs."""
     output_path: Path = Path("../data/property_dataset_v2.csv")
     snapshot_dir: Path = Path("../data/snapshots")
     log_dir: Path = Path("../logs")
@@ -249,12 +288,23 @@ class PriceCaps(BaseModel):
 
 
 class GenerationConfig(BaseModel):
-    """Top-level generation parameters and domain semantics."""
-    # Data sizing & provenance
-    n_rows: int = 15000
+    """
+    Top-level generation parameters and domain semantics.
+
+    Alignment
+    - `seed` and `dataset_version` mirror constants.Versions/SEED for reproducibility.
+    - `zone_thresholds_km` defaults to constants.Thresholds.DEFAULT_ZONE_THRESHOLDS_KM.
+    - `conditional_overrides` can override constants.Thresholds coefficients at runtime.
+    """
+    # Repro & semantics
+    seed: int = SEED
+    dataset_version: str = Versions.DATASET
     asset_type: Literal["property"] = "property"
     generation_version: str = "v1.0"
     source_tag: str = "synthetic_with_priors"
+
+    # Data sizing
+    n_rows: int = 15_000
 
     # Location & pricing priors
     location_weights: Dict[str, float] = Field(default_factory=lambda: {
@@ -280,8 +330,13 @@ class GenerationConfig(BaseModel):
         "Trieste": {"center": 4100, "semi_center": 2900, "periphery": 1900},
         "Cagliari": {"center": 3700, "semi_center": 2600, "periphery": 1700},
     })
-    zone_thresholds_km: Dict[str, float] = Field(default_factory=lambda: {"center": 1.5, "semi_center": 5.0})
+    zone_thresholds_km: Dict[str, float] = Field(
+        default_factory=lambda: dict(Thresholds.DEFAULT_ZONE_THRESHOLDS_KM)
+    )
+
     pricing: PricingConfigModel = Field(default_factory=PricingConfigModel)
+    conditional_overrides: ConditionalPricingOverrides = Field(default_factory=ConditionalPricingOverrides)
+
     seasonality: Dict[int, float] = Field(default_factory=lambda: {
         1: 0.98, 2: 0.98, 3: 1.02, 4: 1.05, 5: 1.05, 6: 1.03,
         7: 1.00, 8: 0.97, 9: 1.02, 10: 1.01, 11: 0.99, 12: 0.97,

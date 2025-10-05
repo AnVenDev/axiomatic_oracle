@@ -36,7 +36,7 @@ __all__ = ["DatasetProfiler", "DtypeOptimizer"]
 logger = logging.getLogger(__name__)
 
 # =============================================================================
-# Tunables (can be lifted to a shared config if needed)
+# Tunables
 # =============================================================================
 
 FLOAT_DOWNCAST_ATOL: float = 1e-6
@@ -46,7 +46,7 @@ FLOAT_DOWNCAST_RTOL: float = 1e-3
 HIGH_SELECTIVITY_MIN: float = 0.10
 HIGH_SELECTIVITY_MAX: float = 0.95
 
-# Integer target ranges (inclusive), used for safe downcast checks.
+# Integer target ranges (inclusive), used for safe downcast checks (value ranges).
 INT_RANGES: Dict[str, Tuple[int, int]] = {
     "uint8": (0, 2**8 - 1),
     "uint16": (0, 2**16 - 1),
@@ -54,6 +54,17 @@ INT_RANGES: Dict[str, Tuple[int, int]] = {
     "int8": (-(2**7), 2**7 - 1),
     "int16": (-(2**15), 2**15 - 1),
     "int32": (-(2**31), 2**31 - 1),
+}
+
+# Mapping numpy -> pandas nullable dtype names
+# (used when NaN are present to preserve missing values)
+_PANDAS_NULLABLE_MAP: Dict[str, str] = {
+    "int8": "Int8",
+    "int16": "Int16",
+    "int32": "Int32",
+    "uint8": "UInt8",
+    "uint16": "UInt16",
+    "uint32": "UInt32",
 }
 
 # =============================================================================
@@ -64,15 +75,14 @@ INT_RANGES: Dict[str, Tuple[int, int]] = {
 def _dtype_itemsize_bytes(dtype: Any) -> int:
     """Best-effort itemsize in bytes for both NumPy and pandas extension dtypes."""
     try:
-        # NumPy dtype or pandas nullable integer has .itemsize
         return int(getattr(dtype, "itemsize"))
     except Exception:
         pass
-    # Heuristic fallback: common pandas extension types
+    # Heuristic fallback for pandas extension & string reprs
     s = str(dtype).lower()
-    if any(tok in s for tok in ("int64", "float64")):
+    if "int64" in s or "float64" in s:
         return 8
-    if any(tok in s for tok in ("int32", "float32")):
+    if "int32" in s or "float32" in s:
         return 4
     if "int16" in s:
         return 2
@@ -90,6 +100,16 @@ def _safe_nunique_ratio(series: pd.Series) -> float:
         return float(series.nunique(dropna=False)) / float(n)
     except Exception:
         return 1.0
+
+
+def _nullable_target_for(series: pd.Series, numpy_target: str) -> str:
+    """
+    Return the appropriate target dtype string, using pandas Nullable ints if the
+    series contains missing values (to preserve NaN/NA).
+    """
+    if series.isna().any():
+        return _PANDAS_NULLABLE_MAP.get(numpy_target, numpy_target)
+    return numpy_target
 
 
 # =============================================================================
@@ -215,7 +235,7 @@ class DatasetProfiler:
             s = df[col]
             dt = s.dtype
 
-            # Integer downcast (supports NumPy ints and pandas nullable Int*Dtype)
+            # Integer downcast (supports NumPy ints and pandas nullable Int* / UInt* dtypes)
             if ptypes.is_integer_dtype(dt):
                 opt = self._optimize_int(s)
                 if opt:
@@ -257,13 +277,15 @@ class DatasetProfiler:
         current_dtype = str(s.dtype)
         current_size = _dtype_itemsize_bytes(s.dtype)
 
-        for target, (lo, hi) in INT_RANGES.items():
-            if lo <= mn <= mx <= hi and current_dtype != target:
-                target_size = _dtype_itemsize_bytes(np.dtype(target))
+        for numpy_target, (lo, hi) in INT_RANGES.items():
+            if lo <= mn <= mx <= hi and current_dtype != numpy_target and current_dtype != _PANDAS_NULLABLE_MAP.get(numpy_target, ""):
+                target_size = _dtype_itemsize_bytes(np.dtype(numpy_target))
                 red = int(round((1 - (target_size / max(current_size, 1))) * 100))
+                # Use pandas Nullable ints if NaN present
+                pandas_target = _nullable_target_for(s, numpy_target)
                 return {
                     "current": current_dtype,
-                    "target": target,
+                    "target": pandas_target,
                     "reason": f"values in [{mn}, {mx}]",
                     "memory_reduction_pct": max(0, min(100, red)),
                 }
@@ -365,6 +387,7 @@ class DtypeOptimizer:
                 continue
 
             try:
+                # Use pandas Nullable ints when the target declares them
                 converted = result[col].astype(target)
                 # Optional precision validation for float downcasts
                 if self.validate_float and target == "float32":

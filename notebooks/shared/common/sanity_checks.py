@@ -1,23 +1,22 @@
+from __future__ import annotations
 """
-Unified sanity-checks module for the Property RWA project.
+Unified sanity-checks module.
 
 Scope
-- Dataset validation (schema, ranges, logical checks, domain checks, consistency, temporal)
-- Schema-only validation
-- Single-record validation & normalization for 'property'
-- Pricing benchmarks (medians by location/zone) and ordering sanity checks
+- Dataset validation (schema, ranges, logical checks, domain checks, consistency, temporal).
+- Schema-only validation.
+- Single-record validation & normalization for 'property'.
+- Pricing benchmarks (medians by location/zone) and ordering sanity checks.
 
 Design
 - Pure utilities: return dicts/DataFrames; no I/O.
-- Defensive logging; never crash on optional checks.
+- Defensive logging; optional checks never crash callers.
 - Backward-compatible public API.
 """
 
-from __future__ import annotations
-
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any, Dict, List, Tuple
 
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
@@ -26,16 +25,36 @@ from shared.common.constants import LEAKY_FEATURES, EXPECTED_PRED_RANGE
 from shared.common.schema import get_required_fields
 from shared.common.constants import (
     # core fields
-    ASSET_ID, ASSET_TYPE, VALUATION_K, SIZE_M2, PRICE_PER_SQM,
-    BUILDING_FLOORS, FLOOR, IS_TOP_FLOOR, IS_GROUND_FLOOR,
-    ENERGY_CLASS, ENERGY_CLASSES,
-    CONDITION, HEATING, ORIENTATION, VIEW,
-    LAST_VERIFIED_TS, PREDICTION_TS, LAG_HOURS,
+    ASSET_ID,
+    ASSET_TYPE,
+    VALUATION_K,
+    SIZE_M2,
+    PRICE_PER_SQM,
+    BUILDING_FLOORS,
+    FLOOR,
+    IS_TOP_FLOOR,
+    IS_GROUND_FLOOR,
+    ENERGY_CLASS,
+    ENERGY_CLASSES,
+    CONDITION,
+    HEATING,
+    ORIENTATION,
+    VIEW,
+    LAST_VERIFIED_TS,
+    PREDICTION_TS,
+    LAG_HOURS,
     # score columns (if present)
-    CONDITION_SCORE, RISK_SCORE, LUXURY_SCORE, ENV_SCORE,
+    CONDITION_SCORE,
+    RISK_SCORE,
+    LUXURY_SCORE,
+    ENV_SCORE,
     # binary columns (if present)
-    HAS_GARDEN, HAS_BALCONY, GARAGE, HAS_ELEVATOR,
-    OWNER_OCCUPIED, PUBLIC_TRANSPORT_NEARBY,
+    HAS_GARDEN,
+    HAS_BALCONY,
+    GARAGE,
+    HAS_ELEVATOR,
+    OWNER_OCCUPIED,
+    PUBLIC_TRANSPORT_NEARBY,
 )
 
 logger = logging.getLogger(__name__)
@@ -58,10 +77,9 @@ __all__ = [
     "scale_gate",
 ]
 
-# ---------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Simple helpers
-# ---------------------------------------------------------------------------
-
+# -----------------------------------------------------------------------------
 def validate_columns(df: pd.DataFrame, required_columns: List[str]) -> bool:
     """Return True if all required columns are present in the DataFrame."""
     missing = [col for col in required_columns if col not in df.columns]
@@ -96,10 +114,9 @@ def validate_nulls(df: pd.DataFrame, allow_nulls: Dict[str, bool]) -> bool:
     return valid
 
 
-# ---------------------------------------------------------------------------
-# Local domains (record-level) — kept intentionally narrow and explicit
-# ---------------------------------------------------------------------------
-
+# -----------------------------------------------------------------------------
+# Local domains (record-level) — intentionally narrow and explicit
+# -----------------------------------------------------------------------------
 VALID_ORIENTATIONS: List[str] = [
     "North", "South", "East", "West",
     "North-East", "North-West", "South-East", "South-West",
@@ -110,8 +127,12 @@ VALID_HEATING: List[str] = ["autonomous", "centralized", "heat pump", "none"]
 
 _SCORE_COLS = [CONDITION_SCORE, RISK_SCORE, LUXURY_SCORE, ENV_SCORE]
 _BINARY_COLS = [
-    HAS_GARDEN, HAS_BALCONY, GARAGE, HAS_ELEVATOR,
-    OWNER_OCCUPIED, PUBLIC_TRANSPORT_NEARBY,
+    HAS_GARDEN,
+    HAS_BALCONY,
+    GARAGE,
+    HAS_ELEVATOR,
+    OWNER_OCCUPIED,
+    PUBLIC_TRANSPORT_NEARBY,
 ]
 _CRITICAL_COLS = [ASSET_ID, ASSET_TYPE, VALUATION_K]
 
@@ -121,16 +142,15 @@ LOCATION_COL: str = "location"
 ZONE_COL: str = "zone"
 
 
-# ---------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Dataset validator
-# ---------------------------------------------------------------------------
-
+# -----------------------------------------------------------------------------
 class DataValidator:
     """End-to-end DataFrame validation against schema and business rules."""
 
     def __init__(self, asset_type: str = "property") -> None:
         self.asset_type = asset_type
-        self.required: Set[str] = set(get_required_fields(asset_type))
+        self.required = set(get_required_fields(asset_type))
 
     def validate(self, df: pd.DataFrame) -> Dict[str, Any]:
         report: Dict[str, Any] = {
@@ -154,7 +174,6 @@ class DataValidator:
         return report
 
     # ---- individual checks -------------------------------------------------
-
     def _check_schema(self, df: pd.DataFrame) -> Dict[str, Any]:
         present = set(df.columns)
         missing = sorted(self.required - present)
@@ -184,7 +203,8 @@ class DataValidator:
             small = int((size < 10).sum())
             large = int((size > 1000).sum())
             out[SIZE_M2] = {
-                "too_small": small, "too_large": large,
+                "too_small": small,
+                "too_large": large,
                 "too_small_pct": (float(small) / len(df) * 100.0) if len(df) else 0.0,
                 "too_large_pct": (float(large) / len(df) * 100.0) if len(df) else 0.0,
             }
@@ -314,10 +334,9 @@ class DataValidator:
         return bool(ok)
 
 
-# ---------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Public wrappers
-# ---------------------------------------------------------------------------
-
+# -----------------------------------------------------------------------------
 def validate_dataset(
     df: pd.DataFrame,
     asset_type: str = "property",
@@ -342,7 +361,7 @@ def validate_schema(df: pd.DataFrame, asset_type: str) -> None:
 
 def validate_property(prop_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Validate & normalize a single 'property' record (in-place best-effort).
+    Validate & normalize a single 'property' record (best-effort, in-place).
     - Normalizes legacy/Italian keys
     - Enforces structural coherence (floors)
     - Clips/repairs score fields to [0,1]
@@ -480,12 +499,17 @@ def validate_property(prop_data: Dict[str, Any]) -> Dict[str, Any]:
     prop_data.setdefault("validation_flags", []).extend(flags)
 
     if errors:
-        diff = {k: (original.get(k), prop_data.get(k)) for k in set(prop_data) | set(original)
-                if original.get(k) != prop_data.get(k)}
+        diff = {
+            k: (original.get(k), prop_data.get(k))
+            for k in set(prop_data) | set(original)
+            if original.get(k) != prop_data.get(k)
+        }
         logger.warning(
             "[VALIDATION] Asset %s normalized. Errors=%s Flags=%s Changes=%s",
             prop_data.get(ASSET_ID, "unknown"),
-            errors, flags, diff,
+            errors,
+            flags,
+            diff,
         )
 
     return prop_data
@@ -503,10 +527,9 @@ def _normalize_legacy_keys(prop_data: Dict[str, Any]) -> None:
         prop_data["heating"] = prop_data.pop("riscaldamento")
 
 
-# ---------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Pricing benchmarks
-# ---------------------------------------------------------------------------
-
+# -----------------------------------------------------------------------------
 def price_benchmark(df: pd.DataFrame) -> Tuple[pd.Series, pd.DataFrame | None]:
     """
     Compute price medians by city and optionally by (city, zone).
@@ -555,31 +578,32 @@ def critical_city_order_check(
             abs_diff = float(prev_value - value)
             alert_condition = (
                 (ratio >= min_ratio) and (abs_diff >= min_abs_diff)
-                if require_both else
-                (ratio >= min_ratio) or (abs_diff >= min_abs_diff)
+                if require_both
+                else (ratio >= min_ratio) or (abs_diff >= min_abs_diff)
             )
-            alerts.append({
-                "city": prev_city,
-                "ratio": float(ratio),
-                "abs_diff": float(abs_diff),
-                "passes": not alert_condition,
-                "detail": f"{prev_city} vs {city}",
-            })
+            alerts.append(
+                {
+                    "city": prev_city,
+                    "ratio": float(ratio),
+                    "abs_diff": float(abs_diff),
+                    "passes": not alert_condition,
+                    "detail": f"{prev_city} vs {city}",
+                }
+            )
         prev_city, prev_value = city, float(value)
     return alerts
 
 
-# ---------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Gates (used in serving/monitoring pipelines)
-# ---------------------------------------------------------------------------
-
-def leakage_gate(columns: list[str]) -> tuple[bool, list[str]]:
+# -----------------------------------------------------------------------------
+def leakage_gate(columns: List[str]) -> Tuple[bool, List[str]]:
     """Reject feature sets that contain leaky columns."""
     bad = sorted(set(columns) & LEAKY_FEATURES)
     return (len(bad) == 0, bad)
 
 
-def scale_gate(value: float, expected: tuple[float, float] = EXPECTED_PRED_RANGE) -> tuple[bool, str]:
+def scale_gate(value: float, expected: Tuple[float, float] = EXPECTED_PRED_RANGE) -> Tuple[bool, str]:
     """Ensure price-per-sqm-like values fall within an expected range."""
     lo, hi = expected
     ok = (value >= lo) and (value <= hi)

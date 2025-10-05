@@ -1,17 +1,16 @@
 from __future__ import annotations
-
 """
-Generation utilities for synthetic assets (Property domain).
+Deterministic helpers for synthetic data generation (Property domain).
 
 Scope
 - Stratified sampling of locations by target weights.
-- Zone assignment from distance-to-center thresholds.
+- Zone assignment from distance-to-center thresholds (single source of truth).
 - Lightweight simulation of a condition_score in [0, 1].
-- Randomized, recent ISO8601 timestamps (UTC).
+- Random recent ISO-8601 timestamps (UTC, suffix 'Z').
 
 Non-goals
-- No pricing logic here (kept in dedicated pricing modules).
-- No heavyweight dependencies; keep import surface small and safe.
+- No pricing logic here (kept in `pricing.py`).
+- No heavyweight dependencies; keep the import surface minimal.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -20,12 +19,7 @@ from typing import List, Mapping, Optional
 import logging
 import numpy as np  # type: ignore
 
-from shared.common.constants import (
-    DEFAULT_ZONE_THRESHOLDS,
-    ZONE_CENTER,
-    ZONE_SEMI_CENTER,
-    ZONE_PERIPHERY,
-)
+from shared.common.constants import Thresholds, Zone
 
 __all__ = [
     "create_stratified_location_distribution",
@@ -47,7 +41,7 @@ def create_stratified_location_distribution(
     rng: Optional[np.random.Generator] = None,
 ) -> List[str]:
     """
-    Return a list of `n_samples` locations distributed according to `location_weights`.
+    Build a list of `n_samples` locations distributed according to `location_weights`.
 
     Args:
         n_samples: Number of samples to generate (<=0 returns []).
@@ -56,7 +50,7 @@ def create_stratified_location_distribution(
 
     Behavior:
         - Normalizes weights to probabilities; if all weights <= 0, uses uniform.
-        - Rounds expected counts, then adjusts with a minimal pass to hit n_samples.
+        - Rounds expected counts, then adjusts with a minimal pass to reach n_samples.
         - Shuffles the final list for decorrelation.
 
     Raises:
@@ -70,11 +64,14 @@ def create_stratified_location_distribution(
     rng = rng or np.random.default_rng()
 
     cities = list(location_weights.keys())
-    probs = np.array([float(location_weights[c]) for c in cities], dtype=float)
+    probs = np.asarray([float(location_weights[c]) for c in cities], dtype="float64")
     total_w = float(probs.sum())
-    probs = (np.ones_like(probs) / len(probs)) if total_w <= 0.0 else (probs / total_w)
+    if total_w <= 0.0:
+        probs[:] = 1.0 / len(probs)
+    else:
+        probs /= total_w
 
-    # Initial integer allocation by rounded expectation
+    # Integer allocation by rounded expectation
     counts = {city: int(round(n_samples * w)) for city, w in zip(cities, probs)}
     total = sum(counts.values())
 
@@ -85,17 +82,18 @@ def create_stratified_location_distribution(
         total += 1
     while total > n_samples:
         for city in cities:
-            if counts[city] > 0 and total > n_samples:
+            if counts[city] > 0:
                 counts[city] -= 1
                 total -= 1
-            if total == n_samples:
-                break
+                if total == n_samples:
+                    break
 
     # Materialize & shuffle
     locations: List[str] = []
     for city, cnt in counts.items():
         if cnt > 0:
             locations.extend([city] * cnt)
+
     rng.shuffle(locations)
     return locations[:n_samples]
 
@@ -105,31 +103,32 @@ def assign_zone_from_distance(
     thresholds: Optional[Mapping[str, float]] = None,
 ) -> str:
     """
-    Assign a zone based on distance-to-center (in km), using configurable thresholds.
+    Assign a zone from distance-to-center (km) using canonical thresholds.
 
     Args:
         distance_km: Non-negative distance from the city center in kilometers.
-        thresholds: Optional override mapping (defaults merged over DEFAULT_ZONE_THRESHOLDS).
+        thresholds: Optional overrides. If provided, keys must match Zone values:
+                    {"center": float, "semi_center": float}. Periphery is the fallback.
 
     Returns:
-        Zone name: one of {ZONE_CENTER, ZONE_SEMI_CENTER, ZONE_PERIPHERY}.
+        Zone name (string): one of {"center", "semi_center", "periphery"}.
     """
     if distance_km < 0:
-        # Defensive: treat negatives as 0 (no raise to keep generation robust).
+        # Defensive: keep generation robust.
         distance_km = 0.0
 
-    thr = dict(DEFAULT_ZONE_THRESHOLDS)
+    thr = dict(Thresholds.DEFAULT_ZONE_THRESHOLDS_KM)
     if thresholds:
         thr.update(thresholds)
 
-    center_thr = float(thr.get(ZONE_CENTER, DEFAULT_ZONE_THRESHOLDS[ZONE_CENTER]))
-    semi_thr = float(thr.get(ZONE_SEMI_CENTER, DEFAULT_ZONE_THRESHOLDS[ZONE_SEMI_CENTER]))
+    center_thr = float(thr[Zone.CENTER.value])
+    semi_thr = float(thr[Zone.SEMI_CENTER.value])
 
     if distance_km < center_thr:
-        return ZONE_CENTER
+        return Zone.CENTER.value
     if distance_km < semi_thr:
-        return ZONE_SEMI_CENTER
-    return ZONE_PERIPHERY
+        return Zone.SEMI_CENTER.value
+    return Zone.PERIPHERY.value
 
 
 # =============================================================================
@@ -149,10 +148,10 @@ def simulate_condition_score(
     Heuristics:
         - Start at base 0.85 and penalize for high humidity and off-comfort temperatures.
         - Adjust by energy class (A best → positive bump; G worst → negative bump).
-        - Add small Gaussian noise (σ ≈ 0.02), then clamp to [0, 1], round to 3 decimals.
+        - Add small Gaussian noise (σ ≈ 0.02), clamp to [0, 1], round to 3 decimals.
 
     Args:
-        humidity: Relative humidity percentage (expected 0..100; values outside are tolerated).
+        humidity: Relative humidity percentage (expected 0..100; tolerant to out-of-range).
         temperature: Average temperature in °C.
         energy_class: One of {"A","B","C","D","E","F","G"}; unknown → 0 adjustment.
         rng: Optional NumPy Generator; if None, uses default_rng().
@@ -190,11 +189,11 @@ def random_recent_timestamp(
     rng: Optional[np.random.Generator] = None,
 ) -> str:
     """
-    Generate an ISO8601 UTC timestamp (suffix 'Z') randomly within the last `days_back` days.
+    Generate an ISO-8601 UTC timestamp randomly within the last `days_back` days.
 
     Args:
         reference_time: Anchor time; if None, uses now (UTC).
-        days_back: Non-negative range (days) to sample uniformly (with random hours/minutes).
+        days_back: Non-negative range (days) to sample uniformly (random hours/minutes).
         rng: Optional NumPy Generator; if None, uses default_rng().
 
     Returns:

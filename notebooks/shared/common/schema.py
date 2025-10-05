@@ -1,29 +1,29 @@
-"""Unified schema & validation utilities for RWA Property.
+"""
+Unified schema & validation utilities for RWA Property.
 
 Scope
 - Canonical field groups (core/structural/amenity/quality/score/derived).
 - Suggested dtypes and column aliases for backward compatibility.
-- DataFrame-level validation (presence, unknowns, dtype coercion, domain checks).
-- Convenience helpers to normalize column order and enforce categoricals.
+- DataFrame-level validation (presence, unknowns, dtype coercion, domain and cross-field checks).
+- Convenience helpers to normalize booleans, column order and enforce categoricals.
 
 Design
 - Pure functions: no I/O, return dicts/DataFrames only.
-- Best-effort conversions — never raise on optional checks.
-- Backward-compatible public API and exports.
+- Best-effort conversions; strict mode available for enterprise workflows.
+- Backward-compatible public API; extensions are opt-in via parameters.
 """
 
 from __future__ import annotations
 
 from typing import Dict, List, Mapping, Iterable, Tuple
 import logging
+import math
 
 import pandas as pd                     # type: ignore
 from pydantic import BaseModel, Field   # type: ignore
 
 from shared.common.constants import (
-    # Enums/namespaces
-    EnergyClass, Groups, Mappings, Cols,
-    # Columns (retro-compat re-exports)
+    EnergyClass,
     ASSET_ID, ASSET_TYPE, LOCATION, REGION, URBAN_TYPE, ZONE,
     SIZE_M2, ROOMS, BATHROOMS, YEAR_BUILT, AGE_YEARS, FLOOR, BUILDING_FLOORS,
     IS_TOP_FLOOR, IS_GROUND_FLOOR,
@@ -46,14 +46,15 @@ __all__ = [
     "CORE_FIELDS", "PROPERTY_STRUCTURAL_FIELDS", "PROPERTY_AMENITY_FIELDS",
     "PROPERTY_QUALITY_FIELDS", "PROPERTY_SCORE_FIELDS", "PROPERTY_ADDITIONAL_FIELDS",
     "PROPERTY_DERIVED_FIELDS", "CATEGORICAL", "BOOLEAN", "NUMERIC", "DATETIME",
-    "SUGGESTED_DTYPES", "COLUMN_ALIASES", "AssetSchema", "SCHEMA",
+    "SUGGESTED_DTYPES", "COLUMN_ALIASES", "AssetSchema", "SCHEMA", "BOOLEAN_FIELDS", "RANGE_BOUNDS",
+    "normalize_booleans", "enforce_cross_field_rules",
     "get_required_fields", "get_all_fields", "apply_aliases", "list_missing",
     "list_unknown", "coerce_dtypes", "enforce_domains", "enforce_categoricals",
     "normalize_column_order", "validate_df", "validate_and_coerce",
 ]
 
 # ============================================================================
-# Logical groups (contract)
+# Logical groups
 # ============================================================================
 
 CORE_FIELDS: List[str] = [
@@ -93,7 +94,7 @@ PROPERTY_DERIVED_FIELDS: List[str] = [
 ]
 
 # ============================================================================
-# Expected macro types (help dtype coercion and validation)
+# Expected macro types
 # ============================================================================
 
 CATEGORICAL: List[str] = [
@@ -123,12 +124,12 @@ DATETIME: List[str] = [
 ]
 
 # ============================================================================
-# Suggested dtypes (pandas dtype strings) — best-effort
+# Suggested dtypes (pandas dtype strings)
 # ============================================================================
 
 SUGGESTED_DTYPES: Mapping[str, str] = {
     ASSET_ID: "object",
-    SIZE_M2: "Int32",           # nullable ints
+    SIZE_M2: "Int32",
     ROOMS: "Int16",
     BATHROOMS: "Int16",
     YEAR_BUILT: "Int16",
@@ -145,15 +146,74 @@ SUGGESTED_DTYPES: Mapping[str, str] = {
 }
 
 # ============================================================================
-# Column aliases (backward compatibility across dataset versions)
+# Booleans normalization & bounds/cross-field rules
 # ============================================================================
 
-COLUMN_ALIASES: Mapping[str, str] = {
-    # Example:
-    # "energy_rating": ENERGY_CLASS,
-    # "price_sq_m": PRICE_PER_SQM,
+# Canonical boolean fields (0/1)
+BOOLEAN_FIELDS: List[str] = [
+    IS_TOP_FLOOR, IS_GROUND_FLOOR, HAS_ELEVATOR, HAS_GARDEN, HAS_BALCONY,
+    GARAGE, PARKING_SPOT, CELLAR, ATTIC, CONCIERGE, ANOMALY_FLAG, OWNER_OCCUPIED, PUBLIC_TRANSPORT_NEARBY,
+]
+
+# Deterministic bounds for numeric columns (inclusive)
+RANGE_BOUNDS: Mapping[str, Tuple[float, float]] = {
+    SIZE_M2: (10.0, 1000.0),
+    ROOMS: (1.0, 12.0),
+    BATHROOMS: (1.0, 6.0),
+    FLOOR: (0.0, 100.0),
+    BUILDING_FLOORS: (1.0, 100.0),
+    DISTANCE_TO_CENTER_KM: (0.05, 50.0),
+    HUMIDITY_LEVEL: (30.0, 70.0),
 }
 
+_TRUE = {"1","true","t","yes","y","si","s"}
+_FALSE = {"0","false","f","no","n"}
+
+def normalize_booleans(df: pd.DataFrame, fields: Iterable[str] = BOOLEAN_FIELDS) -> pd.DataFrame:
+    """Normalize boolean-like columns to 0/1 integers (best-effort, no raise)."""
+    out = df.copy()
+    for col in fields:
+        if col not in out.columns:
+            continue
+        v = out[col]
+        try:
+            if pd.api.types.is_bool_dtype(v) or pd.api.types.is_integer_dtype(v):
+                out[col] = v.astype("Int8")
+                continue
+            s = v.astype("string").str.strip().str.lower()
+            out[col] = s.map(lambda x: 1 if x in _TRUE else (0 if x in _FALSE else None)).astype("Int8")
+        except Exception as e:
+            logger.debug("Boolean normalization skipped for %s: %s", col, e)
+    return out
+
+def enforce_cross_field_rules(df: pd.DataFrame) -> Dict[str, int]:
+    """
+    Cross-field invariant checks. Returns a dict with violation counters.
+    Non-mutating; caller decides how to handle violations.
+    Rules:
+      - 0 <= floor < building_floors
+      - attic==1 -> is_top_floor==1 and building_floors >= 5
+    """
+    v: Dict[str, int] = {}
+    if FLOOR in df.columns and BUILDING_FLOORS in df.columns:
+        try:
+            bad = ((pd.to_numeric(df[FLOOR], errors="coerce") < 0) |
+                   (pd.to_numeric(df[FLOOR], errors="coerce") >= pd.to_numeric(df[BUILDING_FLOORS], errors="coerce")))
+            n = int(bad.fillna(False).sum())
+            if n: v["floor_vs_building_floors"] = n
+        except Exception:
+            pass
+    if ATTIC in df.columns and IS_TOP_FLOOR in df.columns and BUILDING_FLOORS in df.columns:
+        try:
+            attic_1 = pd.to_numeric(df[ATTIC], errors="coerce").fillna(0).astype(int) == 1
+            top_ok = (pd.to_numeric(df[IS_TOP_FLOOR], errors="coerce").fillna(0).astype(int) == 1)
+            bf_ok = (pd.to_numeric(df[BUILDING_FLOORS], errors="coerce").fillna(0) >= 5)
+            bad = attic_1 & ~(top_ok & bf_ok)
+            n = int(bad.fillna(False).sum())
+            if n: v["attic_requires_top_floor_and_5plus"] = n
+        except Exception:
+            pass
+    return v
 # ============================================================================
 # Pydantic schema (formal contract)
 # ============================================================================
@@ -263,6 +323,20 @@ def enforce_domains(df: pd.DataFrame) -> Dict[str, Dict[str, int]]:
         if n_bad:
             violations[ZONE] = {"invalid_values": n_bad}
 
+    # Numeric bounds (best-effort)
+    for col, (lo, hi) in RANGE_BOUNDS.items():
+        if col not in df.columns:
+            continue
+        try:
+            xs = pd.to_numeric(df[col], errors="coerce")
+            bad = xs.notna() & ((xs < lo) | (xs > hi) | ~pd.to_numeric(xs, errors="coerce").map(math.isfinite))
+            n = int(bad.sum())
+            if n:
+                violations[col] = {"out_of_bounds": n, "range": [lo, hi]}
+        except Exception:
+            # Non-fatal: keep best-effort spirit
+            pass
+
     return violations
 
 
@@ -292,16 +366,21 @@ def validate_df(
     asset_type: str = "property",
     *,
     coerce: bool = True,
+    normalize_bools: bool = True,
     check_domains: bool = True,
+    check_cross_fields: bool = True,
+    strict: bool = False,
 ) -> Dict[str, object]:
     """
     Validate a DataFrame against the schema:
       - required columns present
       - unknown columns detected
       - suggested dtype coercion (optional, best-effort)
+      - boolean normalization to 0/1 (optional)
       - canonical domain checks (optional)
-
-    Returns a validation report (df is not mutated).
+      - cross-field rules (optional)
+    Returns a validation report; does not mutate the input df.
+    In strict mode, 'ok' is False if any violation occurs.
     """
     schema = SCHEMA[asset_type]
     dfx = apply_aliases(df)
@@ -314,17 +393,24 @@ def validate_df(
 
     if coerce and schema.dtypes:
         dfx = coerce_dtypes(dfx, schema.dtypes)
+    if normalize_bools:
+        dfx = normalize_booleans(dfx)
+    if coerce:
         dfx = enforce_categoricals(dfx)
 
     domain_violations = enforce_domains(dfx) if check_domains else {}
+    cross_violations = enforce_cross_field_rules(dfx) if check_cross_fields else {}
 
-    ok = (len(missing) == 0) and (not domain_violations)
+    ok = (len(missing) == 0) and (not domain_violations) and (not cross_violations)
+    if strict:
+        ok = ok and (len(unknown) == 0)
 
     report: Dict[str, object] = {
         "ok": ok,
         "missing": missing,
         "unknown": unknown,
         "domain_violations": domain_violations,
+        "cross_field_violations": cross_violations,
         "suggested_dtypes_applied": [c for c in schema.dtypes.keys() if c in df.columns] if coerce else [],
     }
     return report
@@ -335,16 +421,21 @@ def validate_and_coerce(
     asset_type: str = "property",
     *,
     check_domains: bool = True,
+    check_cross_fields: bool = True,
+    normalize_bools: bool = True,
 ) -> Tuple[pd.DataFrame, Dict[str, object]]:
     """
-    Convenience variant: apply aliases/coerce/categoricals/order and return (df_norm, report).
-    The report reflects validation on the *original* df for transparency.
+    Convenience variant: apply aliases/coerce/bools/categoricals/order and return (df_norm, report).
+    The report reflects validation on the *original* df (transparency).
     """
     schema = SCHEMA[asset_type]
     dfx = apply_aliases(df)
     dfx = coerce_dtypes(dfx, schema.dtypes)
+    if normalize_bools:
+        dfx = normalize_booleans(dfx)
     dfx = enforce_categoricals(dfx)
     dfx = normalize_column_order(dfx, asset_type=asset_type)
 
-    report = validate_df(df, asset_type=asset_type, coerce=True, check_domains=check_domains)
+    report = validate_df(df, asset_type=asset_type, coerce=True, normalize_bools=normalize_bools,
+                         check_domains=check_domains, check_cross_fields=check_cross_fields)
     return dfx, report
