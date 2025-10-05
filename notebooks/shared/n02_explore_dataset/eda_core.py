@@ -930,6 +930,14 @@ class AnomalyDetector:
 
 # -------------------------------- Temporal ----------------------------------
 
+from shared.common.constants import (
+    VALUATION_K,
+    LAST_VERIFIED_TS,
+    DAYS_SINCE_VERIFICATION,
+    HOURS_SINCE_VERIFICATION,
+    IS_STALE_30D, IS_STALE_60D, IS_STALE_90D,
+)
+
 class TemporalAnalyzer:
     """Analyze data freshness and temporal trends (no I/O)."""
 
@@ -938,7 +946,7 @@ class TemporalAnalyzer:
         stale_thresholds: Optional[List[int]] = None,
         reference_time: Optional[datetime] = None
     ) -> None:
-        self.stale_thresholds = stale_thresholds or _DEFAULT_THRESHOLDS
+        self.stale_thresholds = list(stale_thresholds) if stale_thresholds else [30, 60, 90]
         self.reference_time = reference_time or datetime.now(timezone.utc)
 
     def analyze(
@@ -950,35 +958,36 @@ class TemporalAnalyzer:
         df = df.copy()
         report: Dict[str, Any] = {"status": "started"}
 
-        # Ensure timestamps
-        if LAST_VERIFIED_TS not in df:
-            df[LAST_VERIFIED_TS] = pd.NaT
-            report["warning"] = "missing LAST_VERIFIED_TS"
+        # Ensure timestamps (best-effort)
+        df[LAST_VERIFIED_TS] = pd.to_datetime(df.get(LAST_VERIFIED_TS, pd.NaT), utc=True, errors="coerce")
 
-        for col in (LAST_VERIFIED_TS, PREDICTION_TS):
-            df[col] = pd.to_datetime(df.get(col, pd.NaT), utc=True, errors="coerce")
-
-        # Compute age in days/hours
+        # Age in days/hours with canonical column names
         age = (self.reference_time - df[LAST_VERIFIED_TS]).dt
-        df["days_since_verification"] = age.days
-        df["hours_since_verification"] = age.total_seconds().div(3600)
+        df[DAYS_SINCE_VERIFICATION] = age.days
+        df[HOURS_SINCE_VERIFICATION] = age.total_seconds().div(3600)
 
         # Staleness flags
+        name_by_threshold = {
+            30: IS_STALE_30D,
+            60: IS_STALE_60D,
+            90: IS_STALE_90D,
+        }
         for th in self.stale_thresholds:
-            df[f"is_stale_{th}d"] = df["days_since_verification"] > th
+            col_name = name_by_threshold.get(th, f"is_stale_{int(th)}d")
+            df[col_name] = df[DAYS_SINCE_VERIFICATION] > th
 
         # Stats
         stats = self._temporal_stats(df)
         report["temporal_stats"] = stats
 
         # Correlation + regression
-        if target in df:
+        if target in df.columns:
             report["correlation"] = self._correlate(df, target)
-            report["regression"] = self._regress(df, target)
-        else:
-            report["warning"] = f"missing target '{target}'"
+            try:
+                report["regression"] = self._regress(df, target)
+            except Exception as e:
+                logger.info("[TEMPORAL] Regression skipped: %s", e)
 
-        report["status"] = "completed"
         logger.info("[TEMPORAL] Analysis completed", extra={"target": target, "stats": stats})
         return df, report
 
@@ -990,10 +999,11 @@ class TemporalAnalyzer:
         axes = np.atleast_1d(axes)
 
         # Histogram
+        series = pd.to_numeric(df[DAYS_SINCE_VERIFICATION], errors="coerce").dropna()
         if sns is not None:
-            sns.histplot(df["days_since_verification"].dropna(), kde=True, ax=axes[0])
+            sns.histplot(series, kde=True, ax=axes[0])
         else:
-            axes[0].hist(df["days_since_verification"].dropna(), bins=30)
+            axes[0].hist(series, bins=30)
         for th in self.stale_thresholds:
             axes[0].axvline(th, linestyle="--", label=f">{th}d")
         axes[0].legend()
@@ -1003,9 +1013,9 @@ class TemporalAnalyzer:
             ax = axes[1]
             sc = ax.scatter(
                 df[LAST_VERIFIED_TS], df[target],
-                c=df["days_since_verification"], cmap="viridis", alpha=0.6
+                c=df[DAYS_SINCE_VERIFICATION], cmap="viridis", alpha=0.6
             )
-            fig.colorbar(sc, ax=ax, label="days_since_verification")
+            fig.colorbar(sc, ax=ax, label=DAYS_SINCE_VERIFICATION.replace("_", " "))
             ax.set_xlabel("Last Verified TS")
             ax.set_ylabel(target)
             for label in ax.get_xticklabels():
@@ -1017,7 +1027,7 @@ class TemporalAnalyzer:
     # Helpers -----------------------------------------------------------------
 
     def _temporal_stats(self, df: pd.DataFrame) -> Dict[str, Any]:
-        days = df["days_since_verification"].dropna()
+        days = pd.to_numeric(df[DAYS_SINCE_VERIFICATION], errors="coerce").dropna()
         if days.empty:
             return {}
         return {
@@ -1028,26 +1038,32 @@ class TemporalAnalyzer:
         }
 
     def _correlate(self, df: pd.DataFrame, target: str) -> Dict[str, Any]:
-        mask = df["days_since_verification"].notna() & df[target].notna()
+        ds = pd.to_numeric(df[DAYS_SINCE_VERIFICATION], errors="coerce")
+        mask = ds.notna() & pd.to_numeric(df[target], errors="coerce").notna()
         if not mask.any():
             return {}
-        subset = df.loc[mask, ["days_since_verification", target]]
+        subset = pd.DataFrame({
+            DAYS_SINCE_VERIFICATION: ds[mask],
+            target: pd.to_numeric(df.loc[mask, target], errors="coerce"),
+        })
         return {
             "pearson": float(subset.corr().iloc[0, 1]),
             "spearman": float(subset.corr(method="spearman").iloc[0, 1]),
         }
 
     def _regress(self, df: pd.DataFrame, target: str) -> Dict[str, Any]:
-        mask = df["days_since_verification"].notna() & df[target].notna()
+        ds = pd.to_numeric(df[DAYS_SINCE_VERIFICATION], errors="coerce")
+        ty = pd.to_numeric(df.get(target), errors="coerce")
+        mask = ds.notna() & ty.notna()
         if mask.sum() < 10:
             return {"status": "insufficient_data"}
-        X = sm.add_constant(df.loc[mask, "days_since_verification"])
-        y = df.loc[mask, target]
+        X = sm.add_constant(ds[mask])
+        y = ty[mask]
         model = sm.OLS(y, X).fit(cov_type="HC3")
-        coef = float(model.params.get("days_since_verification", 0.0))
+        coef = float(model.params.get(DAYS_SINCE_VERIFICATION, 0.0))
         return {
             "coef": coef,
-            "p_value": float(model.pvalues.get("days_since_verification", 1.0)),
+            "p_value": float(model.pvalues.get(DAYS_SINCE_VERIFICATION, 1.0)),
             "r2": float(model.rsquared),
         }
 

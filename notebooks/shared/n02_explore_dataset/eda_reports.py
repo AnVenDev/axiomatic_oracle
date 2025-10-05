@@ -91,8 +91,7 @@ def save_dataframe(
 def save_json(obj: Any, basepath: Path, name: str, *, indent: int = 2) -> str:
     _ensure_dir(basepath)
     p = basepath / f"{name}.json"
-    with p.open("w", encoding="utf-8") as f:
-        json.dump(obj, f, ensure_ascii=False, indent=indent)
+    p.write_text(canonical_json_dumps(obj), encoding="utf-8")
     return str(p)
 
 def save_fig(fig: plt.Figure, basepath: Path, name: str, *, dpi: int = 144, transparent: bool = False) -> str:
