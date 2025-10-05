@@ -253,13 +253,17 @@ def get_all_fields(asset_type: str = "property") -> List[str]:
     return SCHEMA[asset_type].all_fields()
 
 
-def apply_aliases(df: pd.DataFrame, aliases: Mapping[str, str] = COLUMN_ALIASES) -> pd.DataFrame:
-    """Rename legacy columns to canonical names if present (no-op if absent)."""
-    to_rename = {old: new for old, new in aliases.items() if old in df.columns and new not in df.columns}
-    if to_rename:
-        df = df.rename(columns=to_rename)
-        logger.info("Applied column aliases: %s", to_rename)
-    return df
+COLUMN_ALIASES: Mapping[str, str] = {}
+
+def apply_aliases(df: pd.DataFrame, aliases: Mapping[str, str] | None = None) -> pd.DataFrame:
+    """No-op when the mapping is empty."""
+    mapping = COLUMN_ALIASES if aliases is None else aliases
+    to_rename = {
+        old: new
+        for old, new in mapping.items()
+        if (old in df.columns) and (new not in df.columns)
+    }
+    return df.rename(columns=to_rename) if to_rename else df
 
 
 def list_missing(df: pd.DataFrame, required: Iterable[str]) -> List[str]:

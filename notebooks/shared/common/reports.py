@@ -403,7 +403,7 @@ def run_sanity_checks(df: pd.DataFrame, config: Dict[str, Any]) -> Tuple[Dict[st
         val_threshold_quantile=val_q,
         confidence_thresh=conf_thresh,
         w_condition=w_cond,
-        w_lux=w_lux,
+        w_luxury=w_lux,
         w_env=w_env,
     )
     sb.setdefault("valuation_summary", {}).update(summary)
@@ -413,7 +413,7 @@ def run_sanity_checks(df: pd.DataFrame, config: Dict[str, Any]) -> Tuple[Dict[st
         val_threshold_quantile=val_q,
         confidence_thresh=conf_thresh,
         w_condition=w_cond,
-        w_lux=w_lux,
+        w_luxury=w_lux,
         w_env=w_env,
     )
     df["confidence_score"] = confidence_series

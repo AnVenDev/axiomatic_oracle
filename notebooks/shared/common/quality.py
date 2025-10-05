@@ -386,7 +386,7 @@ def enrich_quality_report(
             val_threshold_quantile=val_q,
             confidence_thresh=conf_thresh,
             w_condition=w_cond,
-            w_lux=w_lux,
+            w_luxury=w_lux,
             w_env=w_env,
         )
         rpt.setdefault("valuation_summary", {}).update(summary)
@@ -396,7 +396,7 @@ def enrich_quality_report(
             val_threshold_quantile=val_q,
             confidence_thresh=conf_thresh,
             w_condition=w_cond,
-            w_lux=w_lux,
+            w_luxury=w_lux,
             w_env=w_env,
         )
         rpt.setdefault("incoherence", {})["strongly_incoherent"] = {
