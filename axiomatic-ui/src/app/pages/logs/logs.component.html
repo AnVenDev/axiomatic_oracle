@@ -1,0 +1,548 @@
+<div class="logs-page">
+  <!-- Loading / error -->
+  <mat-spinner *ngIf="loading" diameter="36"></mat-spinner>
+  <p *ngIf="error" class="error-inline">
+    Unexpected error during log load. Please, try later.
+  </p>
+
+  <!-- KPI row -->
+  <div class="kpi-row" *ngIf="!loading && !error">
+    <div class="kpi card">
+      <div class="kpi-head">Inferences (24h)</div>
+      <div class="kpi-value">{{ kpi?.inferences24h || 0 }}</div>
+    </div>
+    <div class="kpi card">
+      <div class="kpi-head">Publications</div>
+      <div class="kpi-value">{{ kpi?.pubs24h || 0 }}</div>
+    </div>
+    <div class="kpi card">
+      <div class="kpi-head">Errors (24h)</div>
+      <div class="kpi-value">{{ kpi?.errors24h || 0 }}</div>
+      aa
+    </div>
+  </div>
+
+  <div class="logs-toolbar card" *ngIf="!loading && !error">
+    <div class="left">
+      <mat-button-toggle-group
+        name="range"
+        [value]="range"
+        (change)="onRangeChange($event.value)"
+        aria-label="Time range"
+      >
+        <mat-button-toggle value="24h">24h</mat-button-toggle>
+        <mat-button-toggle value="7d">7d</mat-button-toggle>
+        <mat-button-toggle value="30d">30d</mat-button-toggle>
+      </mat-button-toggle-group>
+    </div>
+
+    <div class="right">
+      <mat-form-field appearance="outline" class="ff sm">
+        <mat-label>Status</mat-label>
+        <mat-select
+          [value]="status"
+          (selectionChange)="onStatusChange($event.value)"
+        >
+          <mat-option value="">All</mat-option>
+          <mat-option value="success">Success</mat-option>
+          <mat-option value="pending">Pending</mat-option>
+          <mat-option value="error">Error</mat-option>
+        </mat-select>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="ff sm ff-sm-model">
+        <mat-label>Model</mat-label>
+        <mat-select
+          [value]="model"
+          (selectionChange)="onModelChange($event.value)"
+        >
+          <mat-option value="">All</mat-option>
+          <mat-option *ngFor="let m of models" [value]="m">{{ m }}</mat-option>
+        </mat-select>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="ff search">
+        <mat-icon matPrefix>search</mat-icon>
+        <input
+          #q
+          matInput
+          placeholder="Search asset, txid, request id…"
+          [value]="query"
+          (keyup.enter)="onSearch(q.value)"
+          (blur)="onSearch(q.value)"
+        />
+        <button
+          mat-icon-button
+          matSuffix
+          aria-label="Clear"
+          *ngIf="query"
+          (click)="onSearch('')"
+        >
+          <mat-icon>close</mat-icon>
+        </button>
+      </mat-form-field>
+    </div>
+  </div>
+
+  <div class="content-grid" *ngIf="!loading && !error">
+    <div class="table-wrap card">
+      <mat-tab-group>
+        <!-- TAB: Inferences -->
+        <mat-tab label="Inferences">
+          <ng-container *ngIf="logs?.data?.length; else emptyInferences">
+            <table mat-table [dataSource]="logs" class="logs-table">
+              <!-- Asset ID -->
+              <ng-container matColumnDef="asset_id">
+                <th mat-header-cell *matHeaderCellDef>Asset ID</th>
+                <td mat-cell *matCellDef="let row">
+                  <span class="mono">{{ getAssetId(row) }}</span>
+                </td>
+              </ng-container>
+
+              <!-- Date -->
+              <ng-container matColumnDef="timestamp">
+                <th mat-header-cell *matHeaderCellDef>Date</th>
+                <td mat-cell *matCellDef="let row">
+                  {{ rowDate(row) | date : "short" }}
+                </td>
+              </ng-container>
+
+              <!-- Model -->
+              <ng-container matColumnDef="model">
+                <th mat-header-cell *matHeaderCellDef>Model</th>
+                <td mat-cell *matCellDef="let row">
+                  {{ modelName(row) || "—" }}
+                  <span class="muted" *ngIf="modelVersion(row) as mv"
+                    >({{ mv }})</span
+                  >
+                </td>
+              </ng-container>
+
+              <!-- Value -->
+              <ng-container matColumnDef="valuation">
+                <th mat-header-cell *matHeaderCellDef>Value</th>
+                <td mat-cell *matCellDef="let row">
+                  <ng-container *ngIf="valuationK(row) as vk; else noVal">
+                    {{ vk * 1000 | currency : "EUR" }}
+                    <span class="muted" *ngIf="uncertaintyK(row) as s">
+                      · σ {{ s * 1000 | currency : "EUR" }}
+                    </span>
+                  </ng-container>
+                  <ng-template #noVal>—</ng-template>
+                </td>
+              </ng-container>
+
+              <!-- Latency -->
+              <ng-container matColumnDef="latency">
+                <th mat-header-cell *matHeaderCellDef>Latency</th>
+                <td mat-cell *matCellDef="let row">
+                  <ng-container *ngIf="latencyMs(row) as l; else noLat"
+                    >{{ l }} ms</ng-container
+                  >
+                  <ng-template #noLat>— ms</ng-template>
+                </td>
+              </ng-container>
+
+              <!-- Actions -->
+              <ng-container matColumnDef="actions">
+                <th mat-header-cell *matHeaderCellDef>Actions</th>
+                <td mat-cell *matCellDef="let row">
+                  <button
+                    mat-icon-button
+                    (click)="selectLog(row)"
+                    matTooltip="View details"
+                  >
+                    <mat-icon>visibility</mat-icon>
+                  </button>
+                  <button
+                    mat-icon-button
+                    (click)="downloadJSON(row)"
+                    matTooltip="Download JSON"
+                  >
+                    <mat-icon>download</mat-icon>
+                  </button>
+                  <button mat-icon-button matTooltip="Delete row">
+                    <mat-icon>delete</mat-icon>
+                  </button>
+                </td>
+              </ng-container>
+
+              <tr mat-header-row *matHeaderRowDef="logsColumns"></tr>
+              <tr mat-row *matRowDef="let r; columns: logsColumns"></tr>
+            </table>
+
+            <mat-paginator
+              #logsPaginator
+              [pageSize]="5"
+              [pageSizeOptions]="[5, 10, 15]"
+              showFirstLastButtons
+            ></mat-paginator>
+          </ng-container>
+
+          <ng-template #emptyInferences>
+            <div class="empty-state">
+              <mat-icon>hourglass_empty</mat-icon>
+              <div>No inferences for the selected window.</div>
+              <small>Try widening the date range or clearing filters.</small>
+            </div>
+          </ng-template>
+        </mat-tab>
+
+        <!-- TAB: Publications -->
+        <mat-tab label="Publications">
+          <table mat-table [dataSource]="published" class="logs-table">
+            <ng-container matColumnDef="asset_id">
+              <th mat-header-cell *matHeaderCellDef>Asset ID</th>
+              <td mat-cell *matCellDef="let row">
+                <span class="mono">{{ row.asset_id || "unknown" }}</span>
+              </td>
+            </ng-container>
+
+            <ng-container matColumnDef="pub_date">
+              <th mat-header-cell *matHeaderCellDef>Date</th>
+              <td mat-cell *matCellDef="let row">
+                {{ row.logged_at | date : "short" }}
+              </td>
+            </ng-container>
+
+            <ng-container matColumnDef="txid">
+              <th mat-header-cell *matHeaderCellDef>TXID</th>
+              <td mat-cell *matCellDef="let row">
+                <a
+                  *ngIf="row.blockchain_txid"
+                  [href]="getExplorerUrl(row.blockchain_txid, row?.network)"
+                  target="_blank"
+                  rel="noopener"
+                >
+                  {{ row.blockchain_txid | slice : 0 : 6 }}…{{
+                    row.blockchain_txid | slice : -6
+                  }}
+                </a>
+              </td>
+            </ng-container>
+
+            <ng-container matColumnDef="note">
+              <th mat-header-cell *matHeaderCellDef>Note hash</th>
+              <td mat-cell *matCellDef="let row" class="mono">
+                <ng-container
+                  *ngIf="row.note_hash || row.note_sha256 as h; else noNote"
+                >
+                  <span class="hash" [title]="h"
+                    >{{ h | slice : 0 : 12 }}…{{ h | slice : -10 }}</span
+                  >
+                </ng-container>
+                <ng-template #noNote>—</ng-template>
+              </td>
+            </ng-container>
+
+            <ng-container matColumnDef="round">
+              <th mat-header-cell *matHeaderCellDef>Round</th>
+              <td mat-cell *matCellDef="let row">
+                {{ row.confirmed_round || "—" }}
+              </td>
+            </ng-container>
+
+            <!-- <ng-container matColumnDef="status">
+              <th mat-header-cell *matHeaderCellDef>Status</th>
+              <td mat-cell *matCellDef="let row">
+                <span
+                  class="chip"
+                  [class.ok]="row.status === 'success'"
+                  [class.err]="row.status === 'error'"
+                >
+                  {{ row.status || "—" }}
+                </span>
+              </td>
+            </ng-container> -->
+
+            <ng-container matColumnDef="actions">
+              <th mat-header-cell *matHeaderCellDef>Actions</th>
+              <td mat-cell *matCellDef="let row">
+                <button
+                  mat-icon-button
+                  (click)="selectLog(row)"
+                  matTooltip="View details"
+                >
+                  <mat-icon>visibility</mat-icon>
+                </button>
+                <button
+                  mat-icon-button
+                  (click)="verify(row)"
+                  matTooltip="Re-verify"
+                >
+                  <mat-icon>verified</mat-icon>
+                </button>
+                <button
+                  mat-icon-button
+                  (click)="downloadJSON(row)"
+                  matTooltip="Download JSON"
+                >
+                  <mat-icon>download</mat-icon>
+                </button>
+              </td>
+            </ng-container>
+
+            <tr
+              mat-header-row
+              *matHeaderRowDef="[
+                'asset_id',
+                'pub_date',
+                'txid',
+                'note',
+                'round',
+                'actions'
+              ]"
+            ></tr>
+            <tr
+              mat-row
+              *matRowDef="
+                let r;
+                columns: [
+                  'asset_id',
+                  'pub_date',
+                  'txid',
+                  'note',
+                  'round',
+                  'actions'
+                ]
+              "
+            ></tr>
+          </table>
+
+          <mat-paginator
+            #publishedPaginator
+            [pageSize]="5"
+            [pageSizeOptions]="[5, 10, 15]"
+            showFirstLastButtons
+          ></mat-paginator>
+
+          <div class="empty-state" *ngIf="!published?.data?.length">
+            <mat-icon>travel_explore</mat-icon>
+            <div>No publications yet for this period.</div>
+            <small>Publish from the Dashboard to see items here.</small>
+          </div>
+        </mat-tab>
+
+        <!-- TAB: Errors -->
+        <!-- <mat-tab label="Errors">
+          <table mat-table [dataSource]="errors" class="logs-table">
+            <ng-container matColumnDef="err_date">
+              <th mat-header-cell *matHeaderCellDef>Date</th>
+              <td mat-cell *matCellDef="let row">
+                {{ row.logged_at | date : "short" }}
+              </td>
+            </ng-container>
+
+            <ng-container matColumnDef="type">
+              <th mat-header-cell *matHeaderCellDef>Type</th>
+              <td mat-cell *matCellDef="let row">
+                <span class="mono">{{ row.type || "—" }}</span>
+              </td>
+            </ng-container>
+
+            <ng-container matColumnDef="message">
+              <th mat-header-cell *matHeaderCellDef>Message</th>
+              <td mat-cell *matCellDef="let row">
+                <span class="truncate">{{ row.message || "—" }}</span>
+              </td>
+            </ng-container>
+
+            <ng-container matColumnDef="actions">
+              <th mat-header-cell *matHeaderCellDef>Actions</th>
+              <td mat-cell *matCellDef="let row">
+                <button
+                  mat-icon-button
+                  (click)="selectLog(row)"
+                  matTooltip="View details"
+                >
+                  <mat-icon>visibility</mat-icon>
+                </button>
+                <button
+                  mat-icon-button
+                  (click)="downloadJSON(row)"
+                  matTooltip="Download JSON"
+                >
+                  <mat-icon>download</mat-icon>
+                </button>
+              </td>
+            </ng-container>
+
+            <tr
+              mat-header-row
+              *matHeaderRowDef="['err_date', 'type', 'message', 'actions']"
+            ></tr>
+            <tr
+              mat-row
+              *matRowDef="
+                let r;
+                columns: ['err_date', 'type', 'message', 'actions']
+              "
+            ></tr>
+          </table>
+
+          <mat-paginator
+            #errorsPaginator
+            [pageSize]="5"
+            [pageSizeOptions]="[5, 10, 15]"
+            showFirstLastButtons
+          ></mat-paginator>
+
+          <div class="empty-state" *ngIf="!errors?.data?.length">
+            <mat-icon>task_alt</mat-icon>
+            <div>All clear — no failed runs in this window.</div>
+          </div>
+        </mat-tab> -->
+      </mat-tab-group>
+    </div>
+
+    <!-- Details drawer -->
+    <aside class="details card" *ngIf="selectedLog">
+      <div class="details-head">
+        <h3>Details</h3>
+        <button mat-icon-button (click)="selectedLog = null" aria-label="Close">
+          <mat-icon>close</mat-icon>
+        </button>
+      </div>
+
+      <div class="details-meta">
+        <div>
+          <span class="muted">Date</span><br />
+          {{ selectedTimestamp() | date : "dd/MM/yyyy" }}
+        </div>
+        <div>
+          <span class="muted">Asset</span><br />
+          <span class="mono">{{ selectedAssetId() }}</span>
+        </div>
+        <!-- <div *ngIf="selectedTxid() as tx">
+          <span class="muted">TXID</span><br />
+          <span class="mono">{{ tx }}</span>
+        </div> -->
+      </div>
+
+      <mat-tab-group>
+        <mat-tab label="Overview">
+          <div class="overview">
+            <!-- Status: sempre -->
+            <div class="row" *ngIf="selectedStatus() as st">
+              <div class="label">Status</div>
+              <div>
+                <span
+                  class="chip"
+                  [class.ok]="st === 'success'"
+                  [class.err]="st === 'error'"
+                >
+                  {{ st }}
+                </span>
+              </div>
+            </div>
+
+            <!-- Inference: model/value/latency/publish/p1 -->
+            <ng-container *ngIf="isSelApi()">
+              <div class="row" *ngIf="ovModelName() as mn">
+                <div class="label">Model</div>
+                <div>
+                  {{ mn }}
+                  <span class="muted" *ngIf="ovModelVersion() as mv"
+                    >({{ mv }})</span
+                  >
+                </div>
+              </div>
+
+              <div class="row" *ngIf="ovValuationK() as v">
+                <div class="label">Value</div>
+                <div>
+                  {{ v * 1000 | currency : "EUR" }}
+                  <span class="muted" *ngIf="ovUncertaintyK() as s">
+                    · σ {{ s * 1000 | currency : "EUR" }}</span
+                  >
+                </div>
+              </div>
+
+              <div class="row" *ngIf="ovLatencyMs() as l">
+                <div class="label">Latency</div>
+                <div>{{ l }} ms</div>
+              </div>
+
+              <div class="row" *ngIf="ovPublishStatus() as ps">
+                <div class="label">Publish</div>
+                <div>{{ ps }}</div>
+              </div>
+
+              <div class="row" *ngIf="ovP1Sha() as h">
+                <div class="label">P1 SHA256</div>
+                <div class="mono">
+                  <span class="hash" [title]="h"
+                    >{{ h | slice : 0 : 12 }}…{{ h | slice : -10 }}</span
+                  >
+                </div>
+              </div>
+            </ng-container>
+
+            <!-- Publication: note/round/txid -->
+            <ng-container *ngIf="isSelPub()">
+              <div class="row" *ngIf="selectedTxid() as tx">
+                <div class="label">TXID</div>
+                <div class="mono">
+                  <span class="hash" [title]="tx"
+                    >{{ tx | slice : 0 : 12 }}…{{ tx | slice : -10 }}</span
+                  >
+                </div>
+              </div>
+              <div class="row" *ngIf="selectedNote() as note">
+                <div class="label">Note hash</div>
+                <div class="mono">
+                  <span class="hash" [title]="note"
+                    >{{ note | slice : 0 : 12 }}…{{ note | slice : -10 }}</span
+                  >
+                </div>
+              </div>
+              <div class="row" *ngIf="selectedRound() as round">
+                <div class="label">Confirmed round</div>
+                <div>{{ round }}</div>
+              </div>
+            </ng-container>
+
+            <!-- Error: type/message -->
+            <!-- <ng-container *ngIf="isSelErr()">
+              <div class="row">
+                <div class="label">Type</div>
+                <div class="mono">{{ (selectedLog as any).type || '—' }}</div>
+              </div>
+              <div class="row">
+                <div class="label">Message</div>
+                <div class="mono">
+                  {{ (selectedLog as any).message || '—' }}
+                </div>
+              </div>
+            </ng-container> -->
+          </div>
+        </mat-tab>
+
+        <mat-tab label="Request" *ngIf="selectedRequest() as req">
+          <pre class="json">{{ req | json }}</pre>
+        </mat-tab>
+
+        <mat-tab label="Response" *ngIf="selectedResponse() as resp">
+          <pre class="json">{{ resp | json }}</pre>
+        </mat-tab>
+
+        <mat-tab label="Raw JSON" *ngIf="!selectedResponse()">
+          <pre class="json">{{ selectedLog | json }}</pre>
+        </mat-tab>
+      </mat-tab-group>
+
+      <div class="details-actions">
+        <button mat-stroked-button (click)="downloadJSON(selectedLog!)">
+          Download JSON
+        </button>
+        <button
+          mat-stroked-button
+          *ngIf="selectedTxid()"
+          (click)="verify(selectedLog!)"
+        >
+          Pera Explorer
+        </button>
+      </div>
+    </aside>
+  </div>
+</div>
