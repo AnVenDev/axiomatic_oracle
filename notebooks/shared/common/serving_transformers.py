@@ -215,3 +215,56 @@ class PriorsGuard(BaseEstimator, TransformerMixin):
         df["region_index_prior"] = pd.to_numeric(df["region_index_prior"], errors="coerce").astype("float64")
 
         return df
+    
+# -----------------------------------------------------------------------------
+# EnsureDerivedFeatures
+# -----------------------------------------------------------------------------
+class EnsureDerivedFeatures(BaseEstimator, TransformerMixin):
+    """
+    Serving-time guard that (re)computes **only** the missing derived columns
+    using PropertyDerivedFeatures. Idempotente: se una colonna esiste, non la tocca.
+
+    Use it when the saved pipeline does NOT embed feature engineering,
+    or as a safety net if you cannot guarantee upstream derivations.
+    """
+
+    def __init__(
+        self,
+        city_base: Optional[Dict[str, Dict[str, float]]] = None,
+        region_index: Optional[Dict[str, float]] = None,
+        required_cols: Optional[list[str]] = None,
+    ) -> None:
+        self.city_base = city_base or {}
+        self.region_index = region_index or {}
+        # If None, we compute the full set produced by PropertyDerivedFeatures
+        self.required_cols = required_cols
+
+        if PropertyDerivedFeatures is None:
+            logger.warning("EnsureDerivedFeatures: PropertyDerivedFeatures not available at import time.")
+
+    def fit(self, X: Any, y: Optional[pd.Series] = None) -> "EnsureDerivedFeatures":
+        return self
+
+    def transform(self, X: Any) -> pd.DataFrame:
+        df = _to_dataframe(X).copy()
+
+        if PropertyDerivedFeatures is None:
+            # Best-effort: nothing to add
+            return df
+
+        # Compute full derived set once
+        pdf = PropertyDerivedFeatures(city_base=self.city_base, region_index=self.region_index)
+        derived = pdf.transform(df)
+
+        # Decide which columns to enforce
+        cols = self.required_cols or [c for c in derived.columns if c not in df.columns]
+
+        # Add only missing ones (idempotent)
+        for c in cols:
+            if c not in df.columns and c in derived.columns:
+                try:
+                    df[c] = derived[c]
+                except Exception as e:
+                    logger.debug("EnsureDerivedFeatures: failed to add %s: %s", c, e)
+
+        return df
