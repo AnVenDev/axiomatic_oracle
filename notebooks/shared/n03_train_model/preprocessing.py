@@ -10,9 +10,9 @@ Preprocessing and feature preparation for training.
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Iterable, Optional, Tuple, Dict, Any, Mapping
-
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
+import re
+import numpy as np      # type: ignore
+import pandas as pd     # type: ignore
 import logging
 
 from shared.common.constants import (
@@ -41,15 +41,37 @@ ML_LEAKY_FEATURES: set[str] = {
     "is_top_valuation",
 }
 
+# Pattern-based leakage
+LEAKY_REGEXES: tuple[re.Pattern, ...] = tuple(
+    re.compile(p, re.IGNORECASE)
+    for p in (
+        r"^(y|label|target)$",          # target alias
+        r"^valuation(_|$)",             # valuation*, valuation_* (€ or k€)
+        r"^valuation_k(_|$)",           # valuation_k*
+        r"^price_per_sqm(_|$)",         # price_per_sqm*
+        r"_vs_region_avg$",             # *_vs_region_avg
+        r"decile",                      # *decile*
+        r"rank",                        # *rank*
+    )
+)
+
+def _is_leaky(name: str, target: str) -> bool:
+    if name == target:
+        return True
+    if name in LEAKY_FEATURES or name in ML_LEAKY_FEATURES:
+        return True
+    return any(rx.search(name) for rx in LEAKY_REGEXES)
+
+
 def drop_leaky_and_target(df: pd.DataFrame, target: str, extra_leaky: Iterable[str] | None = None) -> pd.DataFrame:
     """
     Return a copy of `df` keeping only columns that are neither the target
     nor in the leaky-feature lists.
     """
-    deny = set(LEAKY_FEATURES) | {target}
+    deny_set = set(LEAKY_FEATURES) | set(ML_LEAKY_FEATURES) | {target}
     if extra_leaky:
-        deny |= set(extra_leaky)
-    keep = [c for c in df.columns if c not in deny]
+        deny_set |= set(extra_leaky)
+    keep = [c for c in df.columns if (c not in deny_set) and (not _is_leaky(c, target))]
     return df.loc[:, keep].copy()
 
 logger = logging.getLogger(__name__)
@@ -241,3 +263,21 @@ def enforce_categorical_domains(
             out[col] = out[col].astype("category")
 
     return out
+
+# ---------------------------------------------------------------------------
+# Derivate richieste in serving (train == serve)
+# ---------------------------------------------------------------------------
+REQUIRED_DERIVED_FOR_SERVING: Tuple[str, ...] = (
+    "log_size_m2", "rooms_per_100sqm", "baths_per_100sqm",
+    "elev_x_floor", "no_elev_high_floor", "floor_ratio", "elev_needed_no_elev",
+    "balcony_vs_floor", "garden_vs_urban", "parking_vs_central",
+    "city_zone_prior", "region_index_prior",
+    "humidity_x_ground", "noise_x_lower",
+    "energy_rank", "energy_x_size",
+    "pt_x_periphery", "pt_x_semi_center", "pt_x_center", "pt_importance",
+    "garage_vs_central", "attic_vs_floors",
+)
+
+def list_required_serving_derivatives() -> list[str]:
+    """Elenco canonico delle colonne derivate che il serving deve garantire."""
+    return list(REQUIRED_DERIVED_FOR_SERVING)

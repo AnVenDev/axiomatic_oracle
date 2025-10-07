@@ -10,6 +10,7 @@ ML Preparation:
 
 import logging
 from typing import Any, Dict, Optional, Set, Tuple
+import re
 
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
@@ -33,6 +34,24 @@ ML_LEAKY_FEATURES: Set[str] = {
     PRICE_PER_SQM_VS_REGION_AVG,
     "_viz_price_per_sqm",
 }
+
+LEAKY_REGEXES = tuple(
+    re.compile(p, re.IGNORECASE)
+    for p in (
+        r"^(y|label|target)$",
+        r"^valuation(_|$)",
+        r"^valuation_k(_|$)",
+        r"^price_per_sqm(_|$)",
+        r"_vs_region_avg$",
+        r"decile",
+        r"rank",
+    )
+)
+
+def _not_leaky(col: str, target: str) -> bool:
+    if col == target or col in ML_LEAKY_FEATURES:
+        return False
+    return not any(rx.search(col) for rx in LEAKY_REGEXES)
 
 # Thresholds that choose the encoding strategy per categorical column
 ENCODING_STRATEGY_THRESHOLDS = {
@@ -143,7 +162,7 @@ class MLPreparationAnalyzer:
             return pd.DataFrame(), {"status": "target_missing"}
 
         numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-        clean_cols = [c for c in numeric_cols if c not in self.leaky_features]
+        clean_cols = [c for c in numeric_cols if (c not in self.leaky_features) and _not_leaky(c, self.target_column)]
 
         if self.target_column not in clean_cols:
             logger.warning("[MLPrep] Target '%s' is not numeric or was excluded", self.target_column)
