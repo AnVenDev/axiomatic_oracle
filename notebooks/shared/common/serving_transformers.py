@@ -1,21 +1,23 @@
 from __future__ import annotations
 
-from notebooks.shared.common.constants import EXPECTED_PRICE_PER_SQM_EUR_RANGE
 """
 Lightweight sklearn-compatible transformers for serving-time preprocessing.
 
 Components
 - GeoCanonizer: canonicalizes minimal geo columns ({city, zone, region}) with safe defaults.
 - PriorsGuard: fills/repairs 'city_zone_prior' and 'region_index_prior' with robust fallbacks.
+- EnsureDerivedFeatures: recomputes ONLY missing simple derived features, idempotently.
 
-Design
-- Side-effect free, clone-safe: all mutable inputs are copied/normalized in __init__.
+Design goals
+- Zero side-effects, clone-safe, no recursion.
+- No dependency on training-time feature builders (no PropertyDerivedFeatures).
 - Best-effort conversions; never raise for optional enrichments.
 - Compatible with pandas DataFrame and array/dict-like inputs per sklearn contract.
 """
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, List
 import logging
+from datetime import datetime
 
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
@@ -25,11 +27,11 @@ __all__ = ["GeoCanonizer", "PriorsGuard", "EnsureDerivedFeatures"]
 
 logger = logging.getLogger(__name__)
 
-# Compute-once import to avoid circulars at module import time
+# Robust constants import (modern first, legacy fallback)
 try:  # pragma: no cover
-    from shared.common.transformers import PropertyDerivedFeatures
+    from shared.common.constants import EXPECTED_PRICE_PER_SQM_EUR_RANGE
 except Exception:  # pragma: no cover
-    PropertyDerivedFeatures = None  # type: ignore
+    from notebooks.shared.common.constants import EXPECTED_PRICE_PER_SQM_EUR_RANGE
 
 
 # ----------------------------------------------------------------------------- 
@@ -45,6 +47,14 @@ def _to_dataframe(X: Any) -> pd.DataFrame:
 def _lower_strip_safe(s: pd.Series) -> pd.Series:
     """Lower/strip strings while preserving NA semantics (avoid 'nan' literals)."""
     return s.astype("string").str.strip().str.lower().astype("object")
+
+
+def _coerce_bool01(series: pd.Series) -> pd.Series:
+    """Map truthy to {0,1} robustly, preserving NaNs."""
+    try:
+        return series.apply(lambda v: np.nan if pd.isna(v) else int(bool(v))).astype("float64")
+    except Exception:
+        return pd.to_numeric(series, errors="coerce").astype("float64")
 
 
 # ----------------------------------------------------------------------------- 
@@ -141,12 +151,10 @@ class PriorsGuard(BaseEstimator, TransformerMixin):
     def _lookup_city_zone_prior(self, city: Any, zone: Any) -> float:
         # Respect NaNs
         if pd.isna(city) or pd.isna(zone):
-            # cannot resolve city; try zone median then global
             key = zone if isinstance(zone, str) else str(zone)
             return float(self.zone_medians.get(str(key).strip().lower(), self.global_cityzone_median))
         c = str(city).strip().lower()
         z = str(zone).strip().lower()
-        # city-specific price if present
         val = self.city_base.get(c, {}).get(z, np.nan)
         if pd.isna(val):
             return float(self.zone_medians.get(z, self.global_cityzone_median))
@@ -215,56 +223,126 @@ class PriorsGuard(BaseEstimator, TransformerMixin):
         df["region_index_prior"] = pd.to_numeric(df["region_index_prior"], errors="coerce").astype("float64")
 
         return df
-    
-# -----------------------------------------------------------------------------
-# EnsureDerivedFeatures
+
+
+# ----------------------------------------------------------------------------- 
+# EnsureDerivedFeatures (SAFE, autonomous, idempotent)
 # -----------------------------------------------------------------------------
 class EnsureDerivedFeatures(BaseEstimator, TransformerMixin):
     """
-    Serving-time guard that (re)computes **only** the missing derived columns
-    using PropertyDerivedFeatures. Idempotente: se una colonna esiste, non la tocca.
+    Serving-time guard that (re)computes ONLY the missing simple derived columns.
+    Idempotent: if a column already exists, it is left untouched.
 
-    Use it when the saved pipeline does NOT embed feature engineering,
-    or as a safety net if you cannot guarantee upstream derivations.
+    NOTE: This implementation is **self-contained** and does NOT import or call
+    PropertyDerivedFeatures to avoid recursion/loops in saved pipelines.
     """
 
     def __init__(
         self,
-        city_base: Optional[Dict[str, Dict[str, float]]] = None,
-        region_index: Optional[Dict[str, float]] = None,
-        required_cols: Optional[list[str]] = None,
+        required_cols: Optional[List[str]] = None,
+        zone_thresholds_km: Optional[Dict[str, float]] = None,  # optional helper for zone by distance
     ) -> None:
-        self.city_base = city_base or {}
-        self.region_index = region_index or {}
-        # If None, we compute the full set produced by PropertyDerivedFeatures
+        # if None -> compute a standard minimal set
         self.required_cols = required_cols
-
-        if PropertyDerivedFeatures is None:
-            logger.warning("EnsureDerivedFeatures: PropertyDerivedFeatures not available at import time.")
+        self.zone_thresholds_km = zone_thresholds_km or {"center": 1.5, "semi_center": 5.0}
 
     def fit(self, X: Any, y: Optional[pd.Series] = None) -> "EnsureDerivedFeatures":
         return self
 
+    def _derive_minimal(self, df: pd.DataFrame) -> pd.DataFrame:
+        out = df.copy()
+
+        # ---- geo conveniences (do NOT lowercase here; GeoCanonizer already does)
+        if "city" not in out.columns and "location" in out.columns:
+            out["city"] = out["location"]
+
+        if "zone" not in out.columns:
+            # try distance-based if available, else semi_center
+            if "distance_to_center_km" in out.columns:
+                try:
+                    th = self.zone_thresholds_km
+                    d = pd.to_numeric(out["distance_to_center_km"], errors="coerce")
+                    zone = pd.Series("periphery", index=out.index, dtype="object")
+                    zone = np.where(d <= float(th.get("center", 1.5)), "center", zone)
+                    zone = np.where((d > float(th.get("center", 1.5))) & (d <= float(th.get("semi_center", 5.0))), "semi_center", zone)
+                    out["zone"] = pd.Series(zone, index=out.index, dtype="object")
+                except Exception:
+                    out["zone"] = "semi_center"
+            else:
+                out["zone"] = "semi_center"
+
+        if "region" not in out.columns:
+            out["region"] = pd.Series(pd.NA, index=out.index, dtype="object")
+
+        # ---- simple derived (no validators, no externals)
+        # age_years
+        if "age_years" not in out.columns:
+            try:
+                yb = pd.to_numeric(out.get("year_built", pd.Series(np.nan, index=out.index)), errors="coerce")
+                out["age_years"] = (datetime.utcnow().year - yb).clip(lower=0)
+            except Exception:
+                out["age_years"] = np.nan
+
+        # luxury_score = mean(has_garden, has_balcony, garage/has_garage)
+        if "luxury_score" not in out.columns:
+            g = _coerce_bool01(out.get("has_garden", pd.Series(np.nan, index=out.index)))
+            b = _coerce_bool01(out.get("has_balcony", pd.Series(np.nan, index=out.index)))
+            # prefer canonical 'garage' if present; else 'has_garage'
+            if "garage" in out.columns:
+                ga = _coerce_bool01(out["garage"])
+            else:
+                ga = _coerce_bool01(out.get("has_garage", pd.Series(np.nan, index=out.index)))
+            out["luxury_score"] = (g.fillna(0) + b.fillna(0) + ga.fillna(0)) / 3.0
+
+        # env_score = (aq/100) * (1 - noise/100), clipped [0,1]
+        if "env_score" not in out.columns:
+            try:
+                aq = pd.to_numeric(out.get("air_quality_index", pd.Series(0, index=out.index)), errors="coerce").clip(lower=0)
+                nz = pd.to_numeric(out.get("noise_level", pd.Series(0, index=out.index)), errors="coerce").clip(lower=0)
+                out["env_score"] = np.clip((aq / 100.0) * (1.0 - nz / 100.0), 0.0, 1.0)
+            except Exception:
+                out["env_score"] = np.nan
+
+        # is_top_floor
+        if "is_top_floor" not in out.columns:
+            try:
+                fl = pd.to_numeric(out.get("floor", pd.Series(np.nan, index=out.index)), errors="coerce")
+                bf = pd.to_numeric(out.get("building_floors", pd.Series(np.nan, index=out.index)), errors="coerce")
+                out["is_top_floor"] = (fl == bf).astype("float64")
+            except Exception:
+                out["is_top_floor"] = np.nan
+
+        # listing_month
+        if "listing_month" not in out.columns:
+            try:
+                out["listing_month"] = int(datetime.utcnow().month)
+            except Exception:
+                out["listing_month"] = np.nan
+
+        # normalize a few boolean-ish commonly used downstream
+        for k in ("public_transport_nearby", "has_elevator", "has_garden", "has_balcony", "has_garage", "garage"):
+            if k in out.columns:
+                out[k] = _coerce_bool01(out[k])
+
+        return out
+
     def transform(self, X: Any) -> pd.DataFrame:
         df = _to_dataframe(X).copy()
 
-        if PropertyDerivedFeatures is None:
-            # Best-effort: nothing to add
-            return df
-
-        # Compute full derived set once
-        pdf = PropertyDerivedFeatures(city_base=self.city_base, region_index=self.region_index)
-        derived = pdf.transform(df)
+        # compute minimal derived set once
+        derived = self._derive_minimal(df)
 
         # Decide which columns to enforce
-        cols = self.required_cols or [c for c in derived.columns if c not in df.columns]
+        if self.required_cols is None:
+            # enforce only the new columns (idempotent add)
+            cols_to_add = [c for c in derived.columns if c not in df.columns]
+        else:
+            cols_to_add = [c for c in self.required_cols if c in derived.columns and c not in df.columns]
 
-        # Add only missing ones (idempotent)
-        for c in cols:
-            if c not in df.columns and c in derived.columns:
-                try:
-                    df[c] = derived[c]
-                except Exception as e:
-                    logger.debug("EnsureDerivedFeatures: failed to add %s: %s", c, e)
+        for c in cols_to_add:
+            try:
+                df[c] = derived[c]
+            except Exception as e:
+                logger.debug("EnsureDerivedFeatures: failed to add %s: %s", c, e)
 
         return df
