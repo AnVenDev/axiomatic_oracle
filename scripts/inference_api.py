@@ -3,6 +3,45 @@
 
 from __future__ import annotations
 
+# =============================================================================
+# Import bootstrap (paths + legacy aliases)
+# =============================================================================
+import sys, types, importlib
+from pathlib import Path as _Path
+
+ROOT = _Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+NB_DIR = ROOT / "notebooks"
+if NB_DIR.exists() and str(NB_DIR) not in sys.path:
+    sys.path.insert(0, str(NB_DIR))
+
+def _install_legacy_aliases():
+    """
+    Map legacy modules used inside pickles to modern modules.
+    Ensures joblib can import classes like notebooks.shared.common.serving_transformers.*
+    """
+    # create parent packages if missing
+    for name in ("notebooks", "notebooks.shared", "notebooks.shared.common"):
+        if name not in sys.modules:
+            sys.modules[name] = types.ModuleType(name)
+
+    # map constants (modern -> legacy alias)
+    try:
+        new_const = importlib.import_module("shared.common.constants")
+        sys.modules["notebooks.shared.common.constants"] = new_const
+    except Exception:
+        pass
+
+    # map serving_transformers (modern -> legacy alias)
+    try:
+        new_st = importlib.import_module("shared.common.serving_transformers")
+        sys.modules["notebooks.shared.common.serving_transformers"] = new_st
+    except Exception:
+        pass
+
+_install_legacy_aliases()
+
 # =========================
 # Standard library imports
 # =========================

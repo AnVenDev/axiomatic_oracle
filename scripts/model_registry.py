@@ -33,11 +33,29 @@ import time
 from importlib import import_module
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-
-# ===========
-# Third-party
-# ===========
 import joblib  # type: ignore
+import sys, types, importlib
+
+def _install_legacy_aliases_for_pickles():
+    for name in ("notebooks", "notebooks.shared", "notebooks.shared.common"):
+        if name not in sys.modules:
+            sys.modules[name] = types.ModuleType(name)
+    try:
+        sys.modules["notebooks.shared.common.constants"] = importlib.import_module("shared.common.constants")
+    except Exception:
+        pass
+    try:
+        sys.modules["notebooks.shared.common.serving_transformers"] = importlib.import_module("shared.common.serving_transformers")
+    except Exception:
+        pass
+
+def _safe_joblib_load(path):
+    try:
+        return joblib.load(path)
+    except ModuleNotFoundError:
+        _install_legacy_aliases_for_pickles()
+        return joblib.load(path)
+
 
 # =============================================================================
 # Configuration
@@ -262,7 +280,7 @@ def _resolve_path(asset_type: str, task: str, preferred_version: Optional[str] =
     # 3) discovery → pick first that is fitted
     for cand in _list_version_files(at, tk):
         try:
-            pl = joblib.load(cand)
+            pl = _safe_joblib_load(cand)
             if _is_fitted_pipeline(pl):
                 return cand.resolve()
         except Exception:
@@ -294,14 +312,14 @@ def get_pipeline(
         if now - float(ts) < CACHE_TTL_SECONDS:
             return pipeline
 
-    pipeline = joblib.load(model_path)
+    pipeline = _safe_joblib_load(model_path)
     if not _is_fitted_pipeline(pipeline):
         # Try fallback among other candidates (newest first)
         for cand in _list_version_files(asset_type, task):
             if cand == model_path:
                 continue
             try:
-                pl2 = joblib.load(cand)
+                pl2 = _safe_joblib_load(cand)
                 if _is_fitted_pipeline(pl2):
                     pipeline = pl2
                     model_path = cand
