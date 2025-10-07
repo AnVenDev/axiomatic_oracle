@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+from notebooks.shared.common.constants import EXPECTED_PRICE_PER_SQM_EUR_RANGE
 """
 Lightweight sklearn-compatible transformers for serving-time preprocessing.
 
@@ -12,16 +14,22 @@ Design
 - Compatible with pandas DataFrame and array/dict-like inputs per sklearn contract.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 import logging
 
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 from sklearn.base import BaseEstimator, TransformerMixin  # type: ignore
 
-__all__ = ["GeoCanonizer", "PriorsGuard"]
+__all__ = ["GeoCanonizer", "PriorsGuard", "EnsureDerivedFeatures"]
 
 logger = logging.getLogger(__name__)
+
+# Compute-once import to avoid circulars at module import time
+try:  # pragma: no cover
+    from shared.common.transformers import PropertyDerivedFeatures
+except Exception:  # pragma: no cover
+    PropertyDerivedFeatures = None  # type: ignore
 
 
 # ----------------------------------------------------------------------------- 
@@ -105,6 +113,8 @@ class PriorsGuard(BaseEstimator, TransformerMixin):
         region_index: Optional[Dict[str, float]] = None,
         zone_medians: Optional[Dict[str, float]] = None,
         global_cityzone_median: float = 0.0,
+        repair_out_of_range: bool = True,
+        cz_range: Tuple[float, float] = EXPECTED_PRICE_PER_SQM_EUR_RANGE,
     ) -> None:
         # Normalize dictionaries once (keys lower/strip, values -> float)
         def _norm_nested(d: Optional[Dict[str, Dict[str, float]]]) -> Dict[str, Dict[str, float]]:
@@ -118,10 +128,11 @@ class PriorsGuard(BaseEstimator, TransformerMixin):
             return {str(k).strip().lower(): float(v) for k, v in (d or {}).items()}
 
         self.city_base = _norm_nested(city_base)
-        # sensible default if none provided
         self.region_index = _norm_flat(region_index) or {"north": 1.05, "center": 1.00, "south": 0.92}
         self.zone_medians = _norm_flat(zone_medians)
         self.global_cityzone_median = float(global_cityzone_median)
+        self.repair_out_of_range = bool(repair_out_of_range)
+        self.cz_range: Tuple[float, float] = (float(cz_range[0]), float(cz_range[1]))
 
     def fit(self, X: Any, y: Optional[pd.Series] = None) -> "PriorsGuard":
         return self
@@ -163,10 +174,18 @@ class PriorsGuard(BaseEstimator, TransformerMixin):
 
         # --- city_zone_prior ------------------------------------------------
         existing_cz = pd.to_numeric(df.get("city_zone_prior", np.nan), errors="coerce")
+
         if "city_zone_prior" not in df.columns:
             df["city_zone_prior"] = existing_cz  # initialize column
 
         need_cz = existing_cz.isna()
+        if self.repair_out_of_range:
+            lo, hi = self.cz_range
+            bad = ~(existing_cz.between(lo, hi))  # False for NaN already
+            if bad.any():
+                need_cz = need_cz | bad
+                df.loc[bad, "city_zone_prior"] = np.nan
+
         if need_cz.any():
             try:
                 filled = np.fromiter(

@@ -47,7 +47,8 @@ __all__ = [
     "PROPERTY_QUALITY_FIELDS", "PROPERTY_SCORE_FIELDS", "PROPERTY_ADDITIONAL_FIELDS",
     "PROPERTY_DERIVED_FIELDS", "CATEGORICAL", "BOOLEAN", "NUMERIC", "DATETIME",
     "SUGGESTED_DTYPES", "COLUMN_ALIASES", "AssetSchema", "SCHEMA", "BOOLEAN_FIELDS", "RANGE_BOUNDS",
-    "normalize_booleans", "enforce_cross_field_rules",
+    # metric units
+    "PER_SQM_FIELDS", "TOTAL_VALUE_FIELDS", "get_metric_unit",    "normalize_booleans", "enforce_cross_field_rules",
     "get_required_fields", "get_all_fields", "apply_aliases", "list_missing",
     "list_unknown", "coerce_dtypes", "enforce_domains", "enforce_categoricals",
     "normalize_column_order", "validate_df", "validate_and_coerce",
@@ -92,6 +93,29 @@ PROPERTY_DERIVED_FIELDS: List[str] = [
     SEVERITY_SCORE, CONFIDENCE_SCORE,
     VALUE_SEGMENT, LUXURY_CATEGORY,
 ]
+
+# ============================================================================
+# Metric groups by unit (explicit)
+# ============================================================================
+# €/m²-like metrics
+PER_SQM_FIELDS: List[str] = [
+    PRICE_PER_SQM,
+    PRICE_PER_SQM_CAPPED,
+]
+
+# k€ totals
+TOTAL_VALUE_FIELDS: List[str] = [
+    VALUATION_K,
+]
+
+def get_metric_unit(field: str) -> str:
+    """Return the canonical unit for a metric field ('eur_per_sqm' | 'keur_total' | 'unknown')."""
+    if field in PER_SQM_FIELDS:
+        return "eur_per_sqm"
+    if field in TOTAL_VALUE_FIELDS:
+        return "keur_total"
+    return "unknown"
+
 
 # ============================================================================
 # Expected macro types

@@ -21,8 +21,12 @@ from typing import Any, Dict, List, Tuple
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
-from shared.common.constants import LEAKY_FEATURES, EXPECTED_PRED_RANGE
-from shared.common.schema import get_required_fields
+from shared.common.constants import (
+    LEAKY_FEATURES,
+    EXPECTED_PRICE_PER_SQM_EUR_RANGE,
+    EXPECTED_VALUATION_TOTAL_KEUR_RANGE,
+)
+from shared.common.schema import get_required_fields, PER_SQM_FIELDS, TOTAL_VALUE_FIELDS
 from shared.common.constants import (
     # core fields
     ASSET_ID,
@@ -74,7 +78,10 @@ __all__ = [
     "critical_city_order_check",
     # Gates
     "leakage_gate",
-    "scale_gate",
+    "scale_gate_per_sqm",
+    "scale_gate_valuation_k",
+    "scale_gate_for_column",
+    "scale_gate",  # deprecated alias
 ]
 
 # -----------------------------------------------------------------------------
@@ -602,9 +609,37 @@ def leakage_gate(columns: List[str]) -> Tuple[bool, List[str]]:
     bad = sorted(set(columns) & LEAKY_FEATURES)
     return (len(bad) == 0, bad)
 
-
-def scale_gate(value: float, expected: Tuple[float, float] = EXPECTED_PRED_RANGE) -> Tuple[bool, str]:
-    """Ensure price-per-sqm-like values fall within an expected range."""
+def scale_gate_per_sqm(
+    value: float,
+    expected: Tuple[float, float] = EXPECTED_PRICE_PER_SQM_EUR_RANGE,
+) -> Tuple[bool, str]:
+    """Ensure €/m²-like values fall within an expected range."""
     lo, hi = expected
     ok = (value >= lo) and (value <= hi)
-    return ok, ("" if ok else f"prediction {value:.2f} out of expected [{lo},{hi}]")
+    return ok, ("" if ok else f"€/m² {value:.2f} out of expected [{lo},{hi}]")
+
+def scale_gate_valuation_k(
+    value_k: float,
+    expected: Tuple[float, float] = EXPECTED_VALUATION_TOTAL_KEUR_RANGE,
+) -> Tuple[bool, str]:
+    """Ensure total valuation in k€ falls within an expected range."""
+    lo, hi = expected
+    ok = (value_k >= lo) and (value_k <= hi)
+    return ok, ("" if ok else f"k€ {value_k:.2f} out of expected [{lo},{hi}]")
+
+def scale_gate_for_column(colname: str, value: float) -> Tuple[bool, str]:
+    """
+    Route to the correct scale-gate based on column unit:
+    - PRICE_PER_SQM* → €/m² gate
+    - VALUATION_K    → k€ gate
+    Unknown columns pass-through (True, "").
+    """
+    if colname in PER_SQM_FIELDS:
+        return scale_gate_per_sqm(value)
+    if colname in TOTAL_VALUE_FIELDS:
+        return scale_gate_valuation_k(value)
+    return True, ""
+
+# DEPRECATED: kept for backward-compat; assumes €/m² semantics.
+def scale_gate(value: float, expected: Tuple[float, float] = EXPECTED_PRICE_PER_SQM_EUR_RANGE) -> Tuple[bool, str]:
+    return scale_gate_per_sqm(value, expected)

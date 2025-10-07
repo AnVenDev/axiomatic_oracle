@@ -128,8 +128,15 @@ LEAKY_FEATURES: Final[set[str]] = {
     "target", "y", "label",
 }
 
-# Expected prediction range (sanity checks; unit depends on the downstream metric).
-EXPECTED_PRED_RANGE: Final[tuple[float, float]] = (20.0, 20_000.0)  # €/m² (demo-safe)
+# Prediction ranges with explicit units (for sanity checks).
+# Use these explicitly by unit/type to avoid scale confusion.
+# €/m² — demo-safe wide bounds (tunable by city/segment downstream)
+EXPECTED_PRICE_PER_SQM_EUR_RANGE: Final[Tuple[float, float]] = (20.0, 20_000.0)
+# k€ (thousands of euros) — total property valuation; wide demo-safe bounds
+EXPECTED_VALUATION_TOTAL_KEUR_RANGE: Final[Tuple[float, float]] = (10.0, 10_000.0)
+
+# DEPRECATED (back-compat): previously used for €/m² checks. Prefer the unit-explicit names above.
+EXPECTED_PRED_RANGE: Final[Tuple[float, float]] = EXPECTED_PRICE_PER_SQM_EUR_RANGE
 
 
 # =============================================================================
@@ -490,7 +497,10 @@ __all__ = [
     "AssetType", "Zone", "UrbanType", "EnergyClass", "ViewType",
     # versions/seed/constants
     "Versions", "SEED", "SCHEMA_VERSION", "NOTE_MAX_BYTES", "NOTE_PREFIX", "NETWORK",
-    "LEAKY_FEATURES", "EXPECTED_PRED_RANGE",
+    "LEAKY_FEATURES",
+    "EXPECTED_PRICE_PER_SQM_EUR_RANGE",
+    "EXPECTED_VALUATION_TOTAL_KEUR_RANGE",
+    "EXPECTED_PRED_RANGE",  # deprecated alias (€/m²)
     # namespaces / groups / thresholds / mappings
     "Cols", "Groups", "Thresholds", "Defaults", "Mappings",
     # retro-compat column names & groups

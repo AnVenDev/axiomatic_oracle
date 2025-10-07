@@ -26,6 +26,9 @@ New high-impact interactions
 - energy_rank            : A..G → 7..1
 - energy_x_size          : energy_rank * log_size_m2
 - pt_x_periphery         : public_transport_nearby * 1[zone == 'periphery']
+- pt_x_semi_center       : public_transport_nearby * 1[zone == 'semi_center']
+- pt_x_center            : public_transport_nearby * 1[zone == 'center']
+- pt_importance          : public_transport_nearby * (1 + α * 1[zone == 'periphery'])   # α≈0.5 default
 
 Design
 - Stateless and side-effect free (sklearn-compatible Transformer).
@@ -145,8 +148,23 @@ class PropertyDerivedFeatures(BaseEstimator, TransformerMixin):
         parking = _as_float(df.get(PARKING_SPOT, np.nan))
         attic = _as_float(df.get(ATTIC, np.nan))
 
-        is_top = _as_float(df.get(IS_TOP_FLOOR, np.nan))
-        is_ground = _as_float(df.get(IS_GROUND_FLOOR, np.nan))
+        # If top/ground flags are missing, derive them (best-effort) from floor/building_floors.
+        if IS_TOP_FLOOR in df.columns:
+            is_top = _as_float(df.get(IS_TOP_FLOOR, np.nan))
+        else:
+            is_top = np.where(
+                (FLOOR in df.columns) & (BUILDING_FLOORS in df.columns),
+                (_as_float(df[FLOOR]) == (_as_float(df[BUILDING_FLOORS]) - 1)).astype("float64"),
+                np.nan,
+            )
+            df[IS_TOP_FLOOR] = is_top
+
+        if IS_GROUND_FLOOR in df.columns:
+            is_ground = _as_float(df.get(IS_GROUND_FLOOR, np.nan))
+        else:
+            is_ground = np.where(FLOOR in df.columns, (_as_float(df[FLOOR]) == 0).astype("float64"), np.nan)
+            df[IS_GROUND_FLOOR] = is_ground
+        
         dist_center = _as_float(df.get(DISTANCE_TO_CENTER_KM, np.nan))
         pt_near = _as_float(df.get(PUBLIC_TRANSPORT_NEARBY, np.nan))
 
@@ -259,9 +277,19 @@ class PropertyDerivedFeatures(BaseEstimator, TransformerMixin):
         if zone is not None:
             z_norm = _lower_strip_safe(zone)
             periph = (z_norm == Zone.PERIPHERY.value).astype("float64")
-            df["pt_x_periphery"] = pt_near.fillna(0) * periph
+            semi   = (z_norm == Zone.SEMI_CENTER.value).astype("float64")
+            center = (z_norm == Zone.CENTER.value).astype("float64")
+            df["pt_x_periphery"]   = pt_near.fillna(0) * periph
+            df["pt_x_semi_center"] = pt_near.fillna(0) * semi
+            df["pt_x_center"]      = pt_near.fillna(0) * center
+            # Importance: più peso in periferia (α ~ 0.5 di default; usa Thresholds se presente)
+            alpha = float(getattr(Thresholds, "PT_PERIPHERY_ALPHA", 0.5))
+            df["pt_importance"] = pt_near.fillna(0) * (1.0 + alpha * periph)
         else:
             df["pt_x_periphery"] = np.nan
+            df["pt_x_semi_center"] = np.nan
+            df["pt_x_center"] = np.nan
+            df["pt_importance"] = np.nan
 
         # ---- dtype compaction (float32 where appropriate) -------------------
         to_f32 = [
@@ -285,7 +313,11 @@ class PropertyDerivedFeatures(BaseEstimator, TransformerMixin):
             "energy_rank",
             "energy_x_size",
             "pt_x_periphery",
+            "pt_x_semi_center",
+            "pt_x_center",
+            "pt_importance",
         ]
+        
         for col in to_f32:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors="coerce").astype("float32")
