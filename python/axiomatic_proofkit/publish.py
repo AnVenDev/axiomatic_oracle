@@ -4,22 +4,20 @@ axiomatic_proofkit.publish — pubblicazione p1 come nota Algorand.
 
 API simmetrica a TS:
 - from_addr  ≈ "from"
-- sign(unsigned: bytes-like) -> bytes  ≈ sign(unsigned: Uint8Array) -> Uint8Array
+- sign(unsigned) -> (bytes | base64 str)
 
 Dipendenze runtime: opzionale `algosdk` (installare con `pip install py-algorand-sdk`)
 """
-
+import base64
 from typing import Any, Dict, Optional, Callable, Union
-
 from .build import assert_note_size_ok, canonical_note_bytes_p1
-
 
 class PublishError(RuntimeError):
     pass
 
-
-# Bytes-like type (compat con Uint8Array lato TS)
+# Tipi accettati dallo signer
 BytesLike = Union[bytes, bytearray, memoryview]
+SignedLike = Union[BytesLike, str]
 
 
 def _require_algosdk():
@@ -55,18 +53,17 @@ def publish_p1(
     *,
     network: str = "testnet",
     algod: Any | None = None,
-    from_addr: Optional[str] = None,                  # ≈ "from" (TS)
-    sign: Optional[Callable[[BytesLike], BytesLike]] = None,  # ≈ sign(unsigned: Uint8Array) -> Uint8Array
+    from_addr: Optional[str] = None,                                  # ≈ "from" (TS)
+    sign: Optional[Callable[[bytes], SignedLike]] = None,             # unsigned msgpack bytes -> (signed bytes | base64 str)
     wait_rounds: int = 4,
 ) -> Dict[str, Any]:
     """
     Pubblica p1 come nota (0 ALGO to self).
 
     Parametri:
-      - from_addr: indirizzo mittente (obbligatorio se non si fornisce un client con wallet integrato)
+      - from_addr: indirizzo mittente
       - sign: funzione che accetta i BYTES della transazione NON firmata (msgpack)
-              e ritorna i BYTES della transazione FIRMATA.
-              (Compat con Uint8Array lato TS: qui usi bytes/bytearray/memoryview)
+              e ritorna *o* i BYTES della transazione firmata *o* la stringa base64.
       - algod: client Algod opzionale già configurato
       - network: "testnet" | "mainnet"
       - wait_rounds: round di attesa per la conferma
@@ -86,7 +83,7 @@ def publish_p1(
     if not from_addr:
         raise PublishError("from_addr is required")
     if not callable(sign):
-        raise PublishError("sign function is required (sign(unsigned_tx_bytes)->signed_tx_bytes)")
+        raise PublishError("sign function is required (sign(unsigned_tx_bytes)->signed_tx)")
 
     # Costruisci tx: 0 ALGO a se stessi con nota p1
     txn = transaction.PaymentTxn(
@@ -97,19 +94,63 @@ def publish_p1(
         note=note_bytes,
     )
 
-    # Encode unsigned txn -> msgpack bytes
-    unsigned_b64 = algosdk.encoding.msgpack_encode(txn)  # base64 str
+    # Encode unsigned txn -> msgpack bytes (lo passeremo allo signer)
+    unsigned_b64 = algosdk.encoding.msgpack_encode(txn)      # base64 str dell'UNSIGNED
     unsigned_bytes = algosdk.encoding.base64.b64decode(unsigned_b64)
 
-    # Firma esterna (bytes-like in / bytes out)
-    signed_bytes_like = sign(unsigned_bytes)
-    signed_bytes = _as_bytes(signed_bytes_like)
-    if not isinstance(signed_bytes, (bytes, bytearray)):
-        raise PublishError("sign must return signed transaction bytes")
+    # Firma esterna: può restituire bytes-like *oppure* base64 str
+    signed_like: SignedLike = sign(unsigned_bytes)
 
-    # Invia & attendi conferma
-    txid = client.send_raw_transaction(signed_bytes)["txid"]
-    algosdk.v2client.algod.wait_for_confirmation(client, txid, wait_rounds)
+    # Normalizza sempre a base64 str per compatibilità con send_raw_transaction
+    if isinstance(signed_like, str):
+        signed_b64 = signed_like
+    elif isinstance(signed_like, (bytes, bytearray, memoryview)):
+        signed_b64 = base64.b64encode(_as_bytes(signed_like)).decode("ascii")
+    else:
+        raise PublishError("sign must return base64 str or bytes-like")
+
+    # Invia (SDK può ritornare str oppure dict)
+    try:
+        send_res = client.send_raw_transaction(signed_b64)
+        if isinstance(send_res, str):
+            txid = send_res
+        elif isinstance(send_res, dict):
+            txid = send_res.get("txId") or send_res.get("txid") or send_res.get("txID")
+            if not txid:
+                for v in send_res.values():
+                    if isinstance(v, str):
+                        txid = v
+                        break
+            if not txid:
+                raise PublishError(f"Unexpected send_raw_transaction response: {send_res!r}")
+        else:
+            raise PublishError(f"Unexpected send_raw_transaction response type: {type(send_res)}")
+    except Exception as e:
+        # Se è "already in ledger", calcola il txid dall'UNSIGNED e prosegui
+        msg = str(e)
+        if "already in ledger" in msg or "already in ledger" in getattr(e, "message", ""):
+            # Il txid su Algorand dipende dall'UNSIGNED (non dalla firma)
+            txid = txn.get_txid()
+        else:
+            raise
+
+    # --- Attesa conferma (compat SDK) ---
+    try:
+        from algosdk import transaction as _txn
+        _txn.wait_for_confirmation(client, txid, wait_rounds)
+    except Exception:
+        # fallback: poll manuale
+        status = client.status()
+        last = status.get("last-round") or status.get("lastRound") or 0
+        deadline = last + int(wait_rounds)
+        while last <= deadline:
+            info = client.pending_transaction_info(txid)
+            confirmed = info.get("confirmed-round") or info.get("confirmedRound") or 0
+            if confirmed and confirmed > 0:
+                break
+            last += 1
+            client.status_after_block(last)
+
 
     explorer = f"https://{'' if network=='mainnet' else 'testnet.'}algoexplorer.io/tx/{txid}"
     return {

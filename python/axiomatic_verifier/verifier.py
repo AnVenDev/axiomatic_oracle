@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional
 import base64, json, time, os
 
 # JCS
-from jcs import to_jcs_bytes, sha256_hex  # type: ignore
+from .jcs import to_jcs_bytes, sha256_hex  # type: ignore
 
 
 DEFAULT_SKEW_PAST_SEC = int(os.getenv("P1_TS_SKEW_PAST", "600"))   # 10 min

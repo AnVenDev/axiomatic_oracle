@@ -6,8 +6,7 @@ axiomatic_proofkit.build — costruzione p1 + util ACJ-1 (JCS) allineati a scrip
 from typing import Any, Dict, Iterable, Tuple
 import time
 
-# Preferisci modulo JCS comune; fallback ai locali
-from axiomatic_verifier.jcs import to_jcs_bytes, sha256_hex
+from .jcs import to_jcs_bytes, sha256_hex # type: ignore
 
 NOTE_MAX_BYTES = 1024
 DEFAULT_ASSET_TAG = "re:EUR"
