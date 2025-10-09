@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "algosdk": "^3.5.2",
     "tree-cli": "^0.6.7"
   }
 }
