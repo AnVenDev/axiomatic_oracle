@@ -1,0 +1,15 @@
+[project]
+name = "axiomatic_proofkit"
+version = "0.0.1"
+requires-python = ">=3.10"
+dependencies = ["py-algorand-sdk>=2.6"]
+
+[tool.setuptools]
+packages = ["axiomatic_proofkit"]
+
+[tool.setuptools.package-dir]
+axiomatic_proofkit = "."
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
