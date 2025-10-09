@@ -132,6 +132,32 @@
           ></app-quick-verify>
         </div>
       </ng-container>
+
+      <ng-container *ngIf="!response">
+         <div class="card verify-card-2" id="verify-card-2">
+          <div class="qv-head">
+            <span class="qv-title">Verify</span>
+            <span class="qv-muted">
+              · paste TXID or pick from last publish</span
+            >
+          </div>
+          <!-- <p class="verify-hint" *ngIf="!response?.publish">
+            You can paste any Algorand txid to check confirmations. After you
+            publish, we’ll prefill this with your latest <strong>txid</strong>.
+          </p> -->
+          <p class="verify-hint">
+            Latest publish:
+            <strong>{{
+              txId ?? "No TXID has been sent in this session."
+            }}</strong>
+          </p>
+
+          <app-quick-verify
+            [defaultTxid]="txId || ''"
+            (submitTxid)="onVerifyTx($event)"
+          ></app-quick-verify>
+        </div>
+      </ng-container>
     </div>
   </div>
 

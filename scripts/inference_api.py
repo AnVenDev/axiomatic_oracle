@@ -6,8 +6,11 @@ from __future__ import annotations
 # =============================================================================
 # Import bootstrap (paths + legacy aliases)
 # =============================================================================
+import logging
 import sys, types, importlib
 from pathlib import Path as _Path
+
+from scripts.common import NumpyJSONEncoder, canonical_location, explain_price, get_utc_now, price_benchmark, validate_property
 
 ROOT = _Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -16,31 +19,31 @@ NB_DIR = ROOT / "notebooks"
 if NB_DIR.exists() and str(NB_DIR) not in sys.path:
     sys.path.insert(0, str(NB_DIR))
 
-def _install_legacy_aliases():
-    """
-    Map legacy modules used inside pickles to modern modules.
-    Ensures joblib can import classes like notebooks.shared.common.serving_transformers.*
-    """
-    # create parent packages if missing
-    for name in ("notebooks", "notebooks.shared", "notebooks.shared.common"):
-        if name not in sys.modules:
-            sys.modules[name] = types.ModuleType(name)
+# def _install_legacy_aliases():
+#     """
+#     Map legacy modules used inside pickles to modern modules.
+#     Ensures joblib can import classes like shared.common.serving_transformers.*
+#     """
+#     # create parent packages if missing
+#     for name in ("notebooks", "shared", "shared.common"):
+#         if name not in sys.modules:
+#             sys.modules[name] = types.ModuleType(name)
 
-    # map constants (modern -> legacy alias)
-    try:
-        new_const = importlib.import_module("shared.common.constants")
-        sys.modules["notebooks.shared.common.constants"] = new_const
-    except Exception:
-        pass
+#     # map constants (modern -> legacy alias)
+#     try:
+#         new_const = importlib.import_module("shared.common.constants")
+#         sys.modules["shared.common.constants"] = new_const
+#     except Exception:
+#         pass
 
-    # map serving_transformers (modern -> legacy alias)
-    try:
-        new_st = importlib.import_module("shared.common.serving_transformers")
-        sys.modules["notebooks.shared.common.serving_transformers"] = new_st
-    except Exception:
-        pass
+#     # map serving_transformers (modern -> legacy alias)
+#     try:
+#         new_st = importlib.import_module("shared.common.serving_transformers")
+#         sys.modules["shared.common.serving_transformers"] = new_st
+#     except Exception:
+#         pass
 
-_install_legacy_aliases()
+# _install_legacy_aliases()
 
 # =========================
 # Standard library imports
@@ -55,7 +58,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Final, List, Mapping, Optional, Tuple, Union
 import difflib
 from unicodedata import normalize as _u_norm
 
@@ -90,16 +93,129 @@ from pydantic import BaseModel, ConfigDict, Field  # type: ignore
 import sys
 from pathlib import Path as _Path
 
-from notebooks.shared.common.config import ASSET_CONFIG, configure_logger
-from notebooks.shared.common.constants import (
-    ASSET_ID,
-    DEFAULT_REGION_BY_CITY,
-    DEFAULT_URBAN_TYPE_BY_CITY,
-    LOCATION,
-)
-from notebooks.shared.common.pricing import explain_price
-from notebooks.shared.common.sanity_checks import price_benchmark, validate_property
-from notebooks.shared.common.utils import NumpyJSONEncoder, canonical_location, get_utc_now
+ASSET_ID = "asset_id"
+DEFAULT_REGION_BY_CITY: Final[Dict[str, str]] = {
+    "Milan": "north",
+    "Rome": "center",
+    "Turin": "north",
+    "Naples": "south",
+    "Bologna": "north",
+    "Florence": "center",
+    "Genoa": "north",
+    "Palermo": "south",
+    "Venice": "north",
+    "Verona": "north",
+    "Bari": "south",
+    "Padua": "north",
+    "Catania": "south",
+    "Trieste": "north",
+    "Cagliari": "south",
+}
+
+DEFAULT_URBAN_TYPE_BY_CITY: Final[Dict[str, str]] = {
+    "Milan": "urban",
+    "Rome": "urban",
+    "Turin": "urban",
+    "Naples": "urban",
+    "Bologna": "urban",
+    "Florence": "urban",
+    "Genoa": "urban",
+    "Palermo": "urban",
+    "Venice": "urban",
+    "Verona": "semiurban",
+    "Bari": "urban",
+    "Padua": "semiurban",
+    "Catania": "urban",
+    "Trieste": "semiurban",
+    "Cagliari": "urban",
+}
+
+LOCATION = "location"
+
+ASSET_CONFIG: Dict[str, Dict[str, Any]] = {
+    "property": {
+        # Raw features by semantic type (used by pipelines/validators).
+        # NOTE: `city` is the primary location key produced by the generator;
+        #       free-form `location` is excluded to avoid duplication.
+        "categorical": [
+            "city",
+            "region", "zone",
+            "energy_class", "condition", "heating", "view",
+            "public_transport_nearby",
+        ],
+        "numeric": [
+            "size_m2", "rooms", "bathrooms", "floor", "building_floors",
+            "has_elevator", "has_garden", "has_balcony", "garage",
+            "year_built", "listing_month",
+        ],
+        # Avoid duplicated semantics when both `city` and free-form `location` exist.
+        "exclude": ["location"],
+
+        # Domain normalization / synonyms (start from constants; allow overrides).
+        "region_by_city": {**DEFAULT_REGION_BY_CITY},
+        "urban_type_by_city": {**DEFAULT_URBAN_TYPE_BY_CITY},
+
+        # Canonical city names (lowercase → Title Case).
+        "city_synonyms": {
+            "milano": "Milan", "firenze": "Florence", "roma": "Rome",
+            "torino": "Turin", "napoli": "Naples", "genova": "Genoa",
+            "venezia": "Venice", "cagliari": "Cagliari", "verona": "Verona",
+            "trieste": "Trieste", "padova": "Padua", "bari": "Bari",
+            "catania": "Catania", "palermo": "Palermo",
+        },
+    }
+}
+
+_LEVEL_MAP: Mapping[str, int] = {
+    "CRITICAL": logging.CRITICAL,
+    "ERROR": logging.ERROR,
+    "WARNING": logging.WARNING,
+    "INFO": logging.INFO,
+    "DEBUG": logging.DEBUG,
+}
+
+def _level_from_any(level: Union[int, str]) -> int:
+    if isinstance(level, int):
+        return level
+    return _LEVEL_MAP.get(level.upper(), logging.INFO)
+
+def configure_logger(
+    level: Union[int, str] = logging.INFO,
+    name: Optional[str] = None,
+    json_format: Optional[bool] = None,
+) -> logging.Logger:
+    """
+    Create or return a configured logger.
+
+    Args:
+        level: numeric or string level (e.g., "INFO").
+        name: logger name; None → root logger.
+        json_format: force JSON formatting; if None, honor env LOG_FORMAT=json|text.
+    """
+    lvl = _level_from_any(level)
+    lg = logging.getLogger(name) if name else logging.getLogger()
+    lg.setLevel(lvl)
+
+    # Avoid duplicate stream handlers
+    have_stream = any(isinstance(h, logging.StreamHandler) for h in lg.handlers)
+    if not have_stream:
+        handler = logging.StreamHandler()
+        fmt = os.getenv("LOG_FORMAT", "").lower() if json_format is None else ("json" if json_format else "text")
+        if fmt == "json":
+            formatter = logging.Formatter(
+                '{"time":"%(asctime)s","level":"%(levelname)s","logger":"%(name)s",'
+                '"msg":"%(message)s","module":"%(module)s","line":%(lineno)d}'
+            )
+        else:
+            formatter = logging.Formatter("[%(asctime)s] %(levelname)s %(name)s: %(message)s")
+        handler.setFormatter(formatter)
+        lg.addHandler(handler)
+
+    # If not root, prevent propagation to avoid duplicate logs
+    if name:
+        lg.propagate = False
+
+    return lg
 
 from scripts.algorand_utils import get_tx_note_info  # used by /verify
 from scripts.attestation_registry import AttestationRegistry
@@ -1511,24 +1627,24 @@ def verify(body: dict = Body(...)) -> dict:
             else:
                 ok = True
 
-            if ok and expected_sha and onchain_sha and expected_sha != onchain_sha:
-                ok = False
-                reason = "sha_mismatch"
+            rebuilt_sha = None
+            try:
+                from scripts.canon import canonicalize_jcs
+                bytes_rebuilt = canonicalize_jcs(note_json)
+                rebuilt_sha = hashlib.sha256(bytes_rebuilt).hexdigest()
+            except Exception:
+                rebuilt_sha = None
 
-            if ok and onchain_sha:
-                try:
-                    from scripts.canon import canonicalize_jcs
-                    bytes_rebuilt = canonicalize_jcs(note_json)
-                    rebuilt_sha = hashlib.sha256(bytes_rebuilt).hexdigest()
-                    if rebuilt_sha != onchain_sha:
-                        ok = False
-                        reason = "onchain_hash_mismatch"
-                except Exception:
-                    pass
+            if onchain_sha and rebuilt_sha and rebuilt_sha != onchain_sha:
+                ok = False
+                reason = "onchain_hash_mismatch"
+
+            if ok and expected_sha and onchain_sha and expected_sha != onchain_sha:
+                reason = reason or "client_expected_sha_mismatch"
 
             if ok and time_out_of_window and INFERENCE_DEBUG:
-                note.setdefault("debug", {})  # type: ignore[assignment]
-                note["debug"]["timestamp_out_of_window"] = True  # type: ignore[index]
+                note.setdefault("debug", {})                        # type: ignore[assignment]
+                note["debug"]["timestamp_out_of_window"] = True     # type: ignore[index]
 
         elif isinstance(note_json, dict) and ("ref" in note_json or "schema_version" in note_json):
             mode = "legacy"
@@ -1545,6 +1661,7 @@ def verify(body: dict = Body(...)) -> dict:
         "verified": bool(ok),
         "mode": mode,
         "note_sha256": onchain_sha,
+        "rebuilt_sha256": rebuilt_sha,
         "expected_sha256": expected_sha,
         "note_size": note.get("note_size"),
         "confirmed_round": note.get("confirmed_round"),

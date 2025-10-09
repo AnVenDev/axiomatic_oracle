@@ -58,3 +58,5 @@ notebooks/tree.txt
 scripts/tree.txt
 /node_modules
 /notebooks/outputs
+/packages/proofkit/node_modules
+/packages/verifier/node_modules
