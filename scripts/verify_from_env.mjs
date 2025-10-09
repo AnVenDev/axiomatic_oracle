@@ -20,10 +20,8 @@ const indexerUrl = env.INDEXER_URL || ""; // es: https://testnet-idx.algonode.cl
 const txid = process.argv[2];
 if (!txid) { console.error("Usage: node scripts/verify_from_env.mjs <TXID>"); process.exit(1); }
 
-const verifierEntry = path.join(
-  repoRoot,
-  "packages/verifier/dist/packages/verifier/src/index.js"
-);
+const verifierEntry = path.join(repoRoot, "packages/verifier/dist/index.js");
+
 const { verifyTx } = await import(pathToFileURL(verifierEntry).href);
 
 const opts = { txid, network };

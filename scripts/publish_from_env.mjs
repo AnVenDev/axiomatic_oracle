@@ -22,7 +22,7 @@ const mnemonic = (env.ALGORAND_MNEMONIC || "").trim();
 if (!mnemonic) { console.error("❌ Missing ALGORAND_MNEMONIC in .env"); process.exit(1); }
 
 // ---- proofkit (solo build & bytes della nota)
-const proofkitEntry = path.join(repoRoot, "packages/proofkit/dist/packages/proofkit/src/index.js");
+const proofkitEntry = path.join(repoRoot, "packages/proofkit/dist/index.js");
 const { buildP1, canonicalNoteBytesP1 } = await import(pathToFileURL(proofkitEntry).href);
 
 // ---- algosdk
