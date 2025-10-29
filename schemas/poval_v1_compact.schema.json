@@ -5,11 +5,11 @@
   "type": "object",
   "required": ["s", "a", "mv", "mh", "ih", "v", "u", "ts"],
   "properties": {
+    "mv": { "type": "string", "minLength": 1, "maxLength": 32, "pattern": "^[a-z0-9._-]+$" },
+    "mh": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+    "ih": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "s": { "type": "string", "const": "p1" },
     "a": { "type": "string", "enum": ["re:EUR"] },
-    "mv": { "type": "string", "minLength": 1, "maxLength": 16 },
-    "mh": { "type": "string", "pattern": "^([a-f0-9]{64})?$" },
-    "ih": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "v": { "type": "number", "minimum": 0 },
     "u": {
       "type": "array",

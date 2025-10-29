@@ -8,25 +8,19 @@
     "compact": { "$ref": "poval_v1_compact.schema.json" },
     "evidence": {
       "type": "object",
-      "required": [
-        "model_hash",
-        "model_version",
-        "input_sha256",
-        "created_utc"
-      ],
+      "required": ["model_hash", "model_version", "input_sha256", "created_utc"],
       "properties": {
-        "model_hash": { "type": "string", "pattern": "^([a-f0-9]{64})?$" },
-        "model_version": { "type": "string" },
+        "model_hash": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "model_version": { "type": "string", "minLength": 1, "maxLength": 32, "pattern": "^[a-z0-9._-]+$" },
         "input_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-        "created_utc": {
-          "type": "string",
-          "format": "date-time",
-          "pattern": "Z$"
-        },
-        "manifest_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "created_utc": { "type": "string", "format": "date-time", "pattern": "Z$" },
+        "manifest_sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
         "feature_order": { "type": "array", "items": { "type": "string" } }
       },
-      "additionalProperties": true
+      "additionalProperties": false,
+      "patternProperties": {
+        "^x-": {}
+      }
     }
   },
   "additionalProperties": false

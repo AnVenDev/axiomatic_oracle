@@ -19,8 +19,8 @@
     "schema_version": { "type": "string", "const": "v2" },
 
     "trace_id": { "type": "string" },
-    "input_hash": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
-    "model_hash": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
+    "input_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "model_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
 
     "asset_id": { "type": "string" },
     "asset_type": { "type": "string" },
@@ -36,12 +36,12 @@
       "type": "object",
       "properties": {
         "p1": { "$ref": "poval_v1_compact.schema.json" },
-        "p1_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
+        "p1_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
         "p1_size_bytes": { "type": "integer", "minimum": 1 },
         "canonical_input": { "type": "object" },
-        "input_hash": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" }
+        "input_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
       },
-      "required": ["p1", "p1_sha256", "p1_size_bytes"],
+      "required": ["p1", "p1_sha256", "p1_size_bytes", "input_hash"],
       "additionalProperties": true
     },
 
@@ -54,7 +54,6 @@
         "confidence_high_k",
         "latency_ms"
       ],
-
       "properties": {
         "valuation_k": { "type": "number" },
         "point_pred_k": { "type": "number" },
@@ -84,11 +83,7 @@
 
     "model_meta": {
       "type": "object",
-      "required": [
-        "value_model_version",
-        "value_model_name",
-        "n_features_total"
-      ],
+      "required": ["value_model_version", "value_model_name", "n_features_total"],
       "properties": {
         "value_model_version": { "type": ["string", "null"] },
         "value_model_name": { "type": ["string", "null"] },
@@ -149,10 +144,7 @@
       "properties": {
         "detail_report_hash": { "type": ["string", "null"] },
         "sensor_batch_hash": { "type": ["string", "null"] },
-        "artifact_hash": {
-          "type": ["string", "null"],
-          "pattern": "^[A-Fa-f0-9]{64}$"
-        }
+        "artifact_hash": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" }
       },
       "additionalProperties": true
     },
@@ -168,21 +160,12 @@
         "error": { "type": ["string", "null"] },
         "network": {
           "type": ["string", "null"],
-          "enum": [
-            "algorand-mainnet",
-            "algorand-testnet",
-            "algorand-betanet",
-            "algorand-sandbox",
-            null
-          ]
+          "enum": ["algorand-mainnet", "algorand-testnet", "algorand-betanet", "algorand-sandbox", null]
         },
         "txid": { "type": ["string", "null"] },
         "asa_id": { "type": ["string", "integer", "null"] },
         "note_size": { "type": ["integer", "null"], "minimum": 0 },
-        "note_sha256": {
-          "type": ["string", "null"],
-          "pattern": "^[A-Fa-f0-9]{64}$"
-        },
+        "note_sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
         "is_compacted": { "type": ["boolean", "null"] },
         "fallback_url_used": { "type": ["boolean", "null"] },
         "fallback_uri": { "type": ["string", "null"], "format": "uri" }
@@ -203,16 +186,10 @@
     "iot": {
       "type": "object",
       "properties": {
-        "source": {
-          "type": ["string", "null"],
-          "enum": ["helium", "xyo", "other", null]
-        },
+        "source": { "type": ["string", "null"], "enum": ["helium", "xyo", "other", null] },
         "device_id": { "type": ["string", "null"] },
         "frame_counter": { "type": ["integer", "null"], "minimum": 0 },
-        "sensor_payload_sha256": {
-          "type": ["string", "null"],
-          "pattern": "^[A-Fa-f0-9]{64}$"
-        },
+        "sensor_payload_sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
         "verified": { "type": ["boolean", "null"] }
       },
       "additionalProperties": true
@@ -221,10 +198,7 @@
     "xchain": {
       "type": "object",
       "properties": {
-        "bridge": {
-          "type": ["string", "null"],
-          "enum": ["wormhole", "axelar", "ccip", "layerzero", "other", null]
-        },
+        "bridge": { "type": ["string", "null"], "enum": ["wormhole", "axelar", "ccip", "layerzero", "other", null] },
         "vaa_id": { "type": ["string", "null"] },
         "targets": { "type": ["array", "null"], "items": { "type": "string" } },
         "status": { "type": ["string", "null"] }
