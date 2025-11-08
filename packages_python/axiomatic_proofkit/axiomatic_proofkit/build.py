@@ -1,12 +1,8 @@
 from __future__ import annotations
-"""
-axiomatic_proofkit.build — costruzione p1 + util ACJ-1 (JCS) allineati a scripts/canon.py.
-"""
-
 from typing import Any, Dict, Iterable, Tuple
 import time
 
-from .jcs import to_jcs_bytes, sha256_hex # type: ignore
+from .jcs import to_jcs_bytes, sha256_hex   # type: ignore
 
 NOTE_MAX_BYTES = 1024
 DEFAULT_ASSET_TAG = "re:EUR"
@@ -26,9 +22,6 @@ def build_p1(
     uncertainty_high_eur: float,
     timestamp_epoch: int | None = None,
 ) -> Dict[str, Any]:
-    """
-    Replica di scripts.canon.build_p1 (campi compatti p1).
-    """
     if uncertainty_low_eur > uncertainty_high_eur:
         raise ValueError("uncertainty_low_eur > uncertainty_high_eur")
     _assert_finite(value_eur, "value_eur")
@@ -51,12 +44,11 @@ def build_p1(
         "u": [float(uncertainty_low_eur), float(uncertainty_high_eur)],
         "ts": int(timestamp_epoch if timestamp_epoch is not None else time.time()),
     }
-    # ACJ-1 sanity (eccezione se non JSON-safe)
+
     _ = to_jcs_bytes(p1)
     return p1
 
 def canonical_note_bytes_p1(p1: Dict[str, Any]) -> Tuple[bytes, str, int]:
-    """(bytes canonici, sha256 hex, size) per nota p1."""
     if not (isinstance(p1, dict) and p1.get("s") == "p1"):
         raise ValueError("Invalid p1 object")
     b = to_jcs_bytes(p1)
@@ -73,7 +65,6 @@ def build_canonical_input(
     allowed_keys: Iterable[str],
     strip_none: bool = True,
 ) -> Dict[str, Any]:
-    """Subset deterministico delle raw features (vedi canon.build_canonical_input)."""
     allowed = set(map(str, allowed_keys))
     out: Dict[str, Any] = {}
     for k, v in rec.items():
@@ -86,6 +77,5 @@ def build_canonical_input(
     return out
 
 def compute_input_hash(rec: Dict[str, Any], *, allowed_keys: Iterable[str]) -> str:
-    """SHA-256 hex dei bytes ACJ-1 del canonical input."""
     cin = build_canonical_input(rec, allowed_keys=allowed_keys)
     return sha256_hex(to_jcs_bytes(cin))

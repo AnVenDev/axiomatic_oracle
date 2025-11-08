@@ -60,3 +60,5 @@ scripts/tree.txt
 /notebooks/outputs
 /packages/proofkit/node_modules
 /packages/verifier/node_modules
+/packages_node/proofkit/node_modules
+/packages_node/verifier/node_modules

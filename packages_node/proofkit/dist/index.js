@@ -49,52 +49,95 @@ export async function publishP1(opts) {
     const algosdkMod = await import("algosdk");
     const algosdk = algosdkMod.default ?? algosdkMod;
     await assertNoteSizeOK(p1);
-    const { bytes } = await canonicalNoteBytesP1(p1);
+    const { bytes: noteBytes } = await canonicalNoteBytesP1(p1);
+    // Algod client: usa Algonode di default se non viene passato dall'esterno
     const client = algod ??
-        new algosdk.Algodv2("", `https://node.${network === "mainnet" ? "" : "testnet."}algoexplorerapi.io`, "");
-    // 1) Suggested params (cast sicuro per evitare mismatch di tipi in TS)
+        new algosdk.Algodv2("", network === "mainnet"
+            ? "https://mainnet-api.algonode.cloud"
+            : "https://testnet-api.algonode.cloud", "");
     const sp = await client.getTransactionParams().do();
-    const suggestedParams = {
-        fee: sp.fee,
-        flatFee: sp.flatFee,
-        firstRound: sp.firstRound,
-        lastRound: sp.lastRound,
-        genesisID: sp.genesisID,
-        genesisHash: sp.genesisHash,
-    };
-    // 2) mittente
+    // Mittente
     let sender = from;
     if (!sender && pera) {
         const accounts = await pera.connect();
         sender = accounts?.[0]?.address;
     }
-    if (!sender)
+    if (!sender) {
         throw new Error("Missing `from` or Pera wallet connection");
-    // 3) Tx: usa *FromObject* (compat con la tua versione di algosdk)
-    let txn;
-    try {
-        txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
-            sender,
-            receiver: sender,
-            amount: 0,
-            note: bytes,
-            suggestedParams: suggestedParams,
-        });
     }
-    catch (e1) {
-        txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
-            from: sender,
-            to: sender,
-            amount: 0,
-            note: bytes,
-            suggestedParams: suggestedParams,
-        });
+    if (!algosdk.isValidAddress(sender)) {
+        throw new Error(`Invalid from address: ${sender}`);
     }
-    // 4) Firma
+    // Proviamo varianti compatibili con diverse versioni di algosdk
+    const variants = [
+        "senderReceiverString",
+        "fromToString",
+        "senderReceiverAddress",
+        "fromToAddress",
+    ];
+    let txn = null;
+    let lastErr = null;
+    for (const v of variants) {
+        try {
+            switch (v) {
+                case "senderReceiverString":
+                    txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+                        sender,
+                        receiver: sender,
+                        amount: 0,
+                        note: noteBytes,
+                        suggestedParams: sp,
+                    });
+                    break;
+                case "fromToString":
+                    txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+                        from: sender,
+                        to: sender,
+                        amount: 0,
+                        note: noteBytes,
+                        suggestedParams: sp,
+                    });
+                    break;
+                case "senderReceiverAddress": {
+                    const A = algosdk.decodeAddress(sender);
+                    txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+                        sender: A,
+                        receiver: A,
+                        amount: 0,
+                        note: noteBytes,
+                        suggestedParams: sp,
+                    });
+                    break;
+                }
+                case "fromToAddress": {
+                    const A = algosdk.decodeAddress(sender);
+                    txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+                        from: A,
+                        to: A,
+                        amount: 0,
+                        note: noteBytes,
+                        suggestedParams: sp,
+                    });
+                    break;
+                }
+            }
+            if (txn) {
+                // variante ok, usciamo dal loop
+                break;
+            }
+        }
+        catch (e) {
+            lastErr = e;
+            txn = null;
+        }
+    }
+    if (!txn) {
+        throw new Error(`Unable to construct payment txn for this algosdk version. Last error: ${lastErr?.message || String(lastErr || "unknown")}`);
+    }
+    // Firma
     const unsignedBytes = algosdk.encodeUnsignedTransaction(txn);
     let signed;
     if (pera) {
-        // ✅ Pera: API corretta (niente 'signers')
         const signedBlobs = await pera.signTransactions([unsignedBytes]);
         signed = signedBlobs[0];
     }
@@ -104,12 +147,15 @@ export async function publishP1(opts) {
     else {
         throw new Error("Provide `pera` or a custom `sign` function to sign the transaction");
     }
-    // 5) Invio & conferma
+    // Invio & conferma
     const sendRes = await client.sendRawTransaction(signed).do();
-    const txId = sendRes.txId;
-    await algosdk.waitForConfirmation(client, txId, waitRounds);
-    const explorerUrl = `https://${network === "mainnet" ? "" : "testnet."}algoexplorer.io/tx/${txId}`;
-    return { txid: txId, explorerUrl };
+    const txid = sendRes.txId || sendRes.txid;
+    await algosdk.waitForConfirmation(client, txid, waitRounds);
+    // URL explorer (usiamo Pera, come da fix)
+    const explorerUrl = network === "mainnet"
+        ? `https://explorer.perawallet.app/tx/${txid}`
+        : `https://testnet.explorer.perawallet.app/tx/${txid}`;
+    return { txid, explorerUrl };
 }
 export function buildCanonicalInput(rec, allowedKeys, stripNone = true) {
     const allowed = new Set(allowedKeys.map(String));
