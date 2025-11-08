@@ -60,6 +60,8 @@ def _ensure_json_safe(value: Any) -> Any:
     if isinstance(value, float):
         if not math.isfinite(value):
             raise ValueError("Non-finite float not allowed in canonical JSON (NaN/Inf).")
+        if value.is_integer():
+            return int(value)
         return float(value)
 
     # Pass-through simple types
