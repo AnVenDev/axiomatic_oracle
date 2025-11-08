@@ -1,4 +1,3 @@
-// scripts/verify_from_env.mjs
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -15,17 +14,19 @@ const env = Object.fromEntries(
     .map((l) => { const i = l.indexOf("="); return [l.slice(0,i).trim(), l.slice(i+1).trim()]; })
 );
 const network = env.ALGORAND_NETWORK || "testnet";
-const indexerUrl = env.INDEXER_URL || ""; // es: https://testnet-idx.algonode.cloud
+const indexerUrl =
+  env.INDEXER_URL ||
+  (network === "mainnet"
+    ? "https://mainnet-idx.algonode.cloud"
+    : "https://testnet-idx.algonode.cloud");
 
 const txid = process.argv[2];
 if (!txid) { console.error("Usage: node scripts/verify_from_env.mjs <TXID>"); process.exit(1); }
 
-const verifierEntry = path.join(repoRoot, "packages/verifier/dist/index.js");
+const verifierEntry = path.join(repoRoot, "packages_node/verifier/dist/index.js");
 
 const { verifyTx } = await import(pathToFileURL(verifierEntry).href);
 
-const opts = { txid, network };
-if (indexerUrl) opts.indexerUrl = indexerUrl;
-
+const opts = { txid, network, indexerUrl };
 const res = await verifyTx(opts);
 console.log(res);
