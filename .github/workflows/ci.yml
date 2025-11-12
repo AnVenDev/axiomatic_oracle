@@ -11,7 +11,7 @@ env:
   AWS_REGION: us-east-1
   ECR_REPO: 035754837020.dkr.ecr.us-east-1.amazonaws.com/ai-oracle-api
   IMAGE_TAG: latest
-  DATA_PATH: data/df_cleaned_no_outliers.csv
+  DATA_PATH: notebooks/outputs/dataset_generated.csv
 
 jobs:
   generate-dataset:
@@ -41,14 +41,14 @@ jobs:
 
       - name: Check data output
         run: |
-          ls -l data/
+          ls -l notebooks/outputs/dataset_generated.csv
           test -f ${{env.DATA_PATH}}
 
       - name: Upload cleaned dataset
         uses: actions/upload-artifact@v4
         with:
           name: cleaned-dataset
-          path: data/**
+          path: notebooks/outputs/dataset_generated.csv/**
 
       - name: Upload data quality report
         uses: actions/upload-artifact@v4
@@ -79,7 +79,7 @@ jobs:
       - name: Ensure expected CSV is present
         run: |
           echo "Listing dataset contents:"
-          ls -lh data/
+          ls -lh notebooks/outputs/dataset_generated.csv
           test -f ${{env.DATA_PATH}}
 
       - name: Set up Python
