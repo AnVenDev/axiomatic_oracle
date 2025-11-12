@@ -47,14 +47,12 @@ async function main() {
     process.exit(1);
   }
 
-  // Chiavi dal mnemonic
   const { sk, addr } = algosdk.mnemonicToSecretKey(mnemonic);
   const from = addr && addr.toString ? addr.toString() : String(addr);
 
   console.log("Network:", network);
   console.log("From:", from);
 
-  // Costruisci p1 di test
   const p1 = buildP1({
     modelVersion: "v2",
     modelHashHex: "",
@@ -64,14 +62,12 @@ async function main() {
     uncertaintyHighEUR: 580000,
   });
 
-  // Funzione di firma: prende unsigned txn bytes e restituisce signed bytes
   const sign = async (unsignedBytes) => {
     const tx = algosdk.decodeUnsignedTransaction(unsignedBytes);
     const { blob } = algosdk.signTransaction(tx, sk);
     return blob;
   };
 
-  // Publish on-chain
   const res = await publishP1({
     p1,
     from,

@@ -21,12 +21,13 @@ const indexerUrl =
     : "https://testnet-idx.algonode.cloud");
 
 const txid = process.argv[2];
-if (!txid) { console.error("Usage: node scripts/verify_from_env.mjs <TXID>"); process.exit(1); }
+if (!txid) { console.error("Usage: node tests/verify_from_env.mjs <TXID>"); process.exit(1); }
 
 const verifierEntry = path.join(repoRoot, "packages_node/verifier/dist/index.js");
 
 const { verifyTx } = await import(pathToFileURL(verifierEntry).href);
 
-const opts = { txid, network, indexerUrl };
+const opts = { txid, network, indexerUrl, maxSkewPastSec: 3600, maxSkewFutureSec: 300 };
 const res = await verifyTx(opts);
+
 console.log(res);
