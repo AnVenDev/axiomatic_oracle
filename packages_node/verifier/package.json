@@ -1,6 +1,6 @@
 {
-  "name": "@axiomatic/verifier",
-  "version": "1.0.0",
+  "name": "@axiomatic_oracle/verifier",
+  "version": "1.0.1",
   "description": "Verifier SDK for Axiomatic PoVal p1",
   "type": "module",
   "main": "dist/index.js",
@@ -15,6 +15,9 @@
   "sideEffects": false,
   "scripts": {
     "build": "tsc -p tsconfig.json"
+  },
+  "engines": {
+  "node": ">=18"
   },
   "keywords": [],
   "author": "",

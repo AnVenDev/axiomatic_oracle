@@ -1,7 +1,6 @@
 import { toJcsBytes, sha256Hex, jcsSha256 } from "./jcs.js";
 function defaultIndexerBase(network) {
     const net = (network || "testnet").toLowerCase();
-    // Default: Algonode indexer
     if (net === "mainnet")
         return "https://mainnet-idx.algonode.cloud";
     if (net === "betanet")
@@ -66,7 +65,6 @@ export async function verifyTx(opts) {
             explorerUrl,
         };
     }
-    // Mode detection (p1 / legacy / unknown)
     const mode = p1?.s === "p1"
         ? "p1"
         : (p1 && (p1.ref || p1.schema_version)) ? "legacy" : "unknown";
@@ -79,7 +77,6 @@ export async function verifyTx(opts) {
             note: p1,
         };
     }
-    // == Hash parity (JCS) ==
     const rebuilt = await jcsSha256(p1);
     const onchain = (p1 && p1.note_sha256) ||
         (p1 && p1.sha256) ||
@@ -95,7 +92,6 @@ export async function verifyTx(opts) {
             note: p1,
         };
     }
-    // == Time-window (ts epoch seconds) ==
     const nowSec = Math.floor(Date.now() / 1000);
     const ts = Number.isFinite(p1?.ts) ? Number(p1.ts) : NaN;
     if (Number.isFinite(ts)) {
@@ -122,5 +118,4 @@ export async function verifyTx(opts) {
         note: p1,
     };
 }
-// re-export util
 export { toJcsBytes, sha256Hex, jcsSha256 };

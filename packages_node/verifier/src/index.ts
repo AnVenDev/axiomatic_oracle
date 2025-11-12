@@ -15,7 +15,6 @@ export interface VerifyResult {
 
 function defaultIndexerBase(network: Network): string {
   const net = (network || "testnet").toLowerCase();
-  // Default: Algonode indexer
   if (net === "mainnet") return "https://mainnet-idx.algonode.cloud";
   if (net === "betanet") return "https://betanet-idx.algonode.cloud";
   return "https://testnet-idx.algonode.cloud";
@@ -29,7 +28,6 @@ function explorerUrlFor(txid: string, network: Network): string {
   return `https://testnet.explorer.perawallet.app/tx/${txid}`;
 }
 
-// base64 → bytes (Node + browser safe-ish)
 declare const Buffer: any;
 function base64ToBytes(b64: string): Uint8Array {
   if (typeof atob === "function") {
@@ -99,7 +97,6 @@ export async function verifyTx(opts: {
     };
   }
 
-  // Mode detection (p1 / legacy / unknown)
   const mode: VerifyResult["mode"] =
     p1?.s === "p1"
       ? "p1"
@@ -115,7 +112,6 @@ export async function verifyTx(opts: {
     };
   }
 
-  // == Hash parity (JCS) ==
   const rebuilt = await jcsSha256(p1);
   const onchain =
     (p1 && (p1.note_sha256 as string)) ||
@@ -134,7 +130,6 @@ export async function verifyTx(opts: {
     };
   }
 
-  // == Time-window (ts epoch seconds) ==
   const nowSec = Math.floor(Date.now() / 1000);
   const ts = Number.isFinite(p1?.ts) ? Number(p1.ts) : NaN;
   if (Number.isFinite(ts)) {
@@ -163,5 +158,4 @@ export async function verifyTx(opts: {
   };
 }
 
-// re-export util
 export { toJcsBytes, sha256Hex, jcsSha256 };

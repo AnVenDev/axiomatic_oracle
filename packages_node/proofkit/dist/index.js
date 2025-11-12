@@ -28,7 +28,7 @@ export function buildP1(opts) {
         u: [Number(uncertaintyLowEUR), Number(uncertaintyHighEUR)],
         ts: Number(timestampEpochSec),
     };
-    void toJcsBytes(p1); // ACJ-1 sanity
+    void toJcsBytes(p1);
     return p1;
 }
 export async function canonicalNoteBytesP1(p1) {
@@ -45,18 +45,15 @@ export async function assertNoteSizeOK(p1, max = NOTE_MAX_BYTES) {
 }
 export async function publishP1(opts) {
     const { p1, network = "testnet", pera, algod, from, sign, waitRounds = 4 } = opts;
-    // import dinamico (ESM friendly)
     const algosdkMod = await import("algosdk");
     const algosdk = algosdkMod.default ?? algosdkMod;
     await assertNoteSizeOK(p1);
     const { bytes: noteBytes } = await canonicalNoteBytesP1(p1);
-    // Algod client: usa Algonode di default se non viene passato dall'esterno
     const client = algod ??
         new algosdk.Algodv2("", network === "mainnet"
             ? "https://mainnet-api.algonode.cloud"
             : "https://testnet-api.algonode.cloud", "");
     const sp = await client.getTransactionParams().do();
-    // Mittente
     let sender = from;
     if (!sender && pera) {
         const accounts = await pera.connect();
@@ -68,7 +65,6 @@ export async function publishP1(opts) {
     if (!algosdk.isValidAddress(sender)) {
         throw new Error(`Invalid from address: ${sender}`);
     }
-    // Proviamo varianti compatibili con diverse versioni di algosdk
     const variants = [
         "senderReceiverString",
         "fromToString",
@@ -122,7 +118,6 @@ export async function publishP1(opts) {
                 }
             }
             if (txn) {
-                // variante ok, usciamo dal loop
                 break;
             }
         }
@@ -134,7 +129,6 @@ export async function publishP1(opts) {
     if (!txn) {
         throw new Error(`Unable to construct payment txn for this algosdk version. Last error: ${lastErr?.message || String(lastErr || "unknown")}`);
     }
-    // Firma
     const unsignedBytes = algosdk.encodeUnsignedTransaction(txn);
     let signed;
     if (pera) {
@@ -147,11 +141,9 @@ export async function publishP1(opts) {
     else {
         throw new Error("Provide `pera` or a custom `sign` function to sign the transaction");
     }
-    // Invio & conferma
     const sendRes = await client.sendRawTransaction(signed).do();
     const txid = sendRes.txId || sendRes.txid;
     await algosdk.waitForConfirmation(client, txid, waitRounds);
-    // URL explorer (usiamo Pera, come da fix)
     const explorerUrl = network === "mainnet"
         ? `https://explorer.perawallet.app/tx/${txid}`
         : `https://testnet.explorer.perawallet.app/tx/${txid}`;

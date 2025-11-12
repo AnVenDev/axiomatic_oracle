@@ -1,60 +1,51 @@
-# @axiomatic/verifier
+`@axiomatic_oracle/verifier` is the TypeScript/JavaScript SDK to independently verify **p1** attestations (and selected legacy formats) published on Algorand.
 
-`@axiomatic/verifier` is a tiny TypeScript/Node.js SDK to **trustlessly verify p1 attestations on Algorand**.
+Given a transaction ID, it:
 
-It lets you:
+1. Fetches the transaction via an Algorand indexer.
+2. Reads and decodes the note.
+3. Re-canonicalizes the JSON (JCS-style).
+4. Recomputes the SHA-256.
+5. Applies basic validation rules (schema, hash, timestamp).
+6. Returns a structured result that you can feed into your own logic.
 
-- Fetch a transaction by `txid`
-- Decode the note
-- Rebuild canonical JSON bytes (JCS-style)
-- Recompute `sha256` and compare with on-chain data
-- Enforce a time window on `ts`
-- Get a clean `verified / reason / note / explorerUrl` result
+It is designed to work with notes produced by:
 
-No secrets, no backend required.  
-Works together with `@axiomatic/proofkit` and the Axiomatic backend.
+- `@axiomatic_oracle/proofkit` (Node),
+- `axiomatic_proofkit` (Python),
+- and compatible Axiomatic Oracle integrations.
 
 ---
 
-## Install
+## Installation
 
 ```bash
-npm install @axiomatic/verifier
-# or
-pnpm add @axiomatic/verifier
+npm install @axiomatic_oracle/verifier
 ```
 
 Requirements:
 
-* Node.js ≥ 18 (for built-in `fetch` & `TextEncoder`/`TextDecoder`)
-* Public Indexer endpoint (default uses AlgoExplorer-style; configurable)
+* Node.js **18+** or a runtime with:
+
+  * `fetch`
+  * `TextDecoder`
+  * `crypto.subtle` or a compatible SHA-256 implementation.
+
+If you run on older Node.js versions, you will need to polyfill `fetch` and related globals.
 
 ---
 
-## API
+## Exports
 
-```ts
-import {
-  verifyTx,
-  toJcsBytes,
-  sha256Hex,
-  jcsSha256,
-  type Network,
-} from "@axiomatic/verifier";
-```
+From `@axiomatic_oracle/verifier`:
 
-### `verifyTx(options)`
+* `verifyTx(options)` → `Promise<VerifyResult>`
+* `toJcsBytes(obj)` (utility)
+* `sha256Hex(bytes)` (utility)
+* `jcsSha256(obj)` (utility)
 
 ```ts
 type Network = "testnet" | "mainnet" | "betanet";
-
-interface VerifyOptions {
-  txid: string;
-  network?: Network;        // default: "testnet"
-  indexerUrl?: string;      // override default indexer
-  maxSkewPastSec?: number;  // default: 600  (10 min)
-  maxSkewFutureSec?: number;// default: 120  (2 min)
-}
 
 interface VerifyResult {
   verified: boolean;
@@ -64,127 +55,158 @@ interface VerifyResult {
   rebuiltSha256?: string;
   confirmedRound?: number;
   explorerUrl?: string;
-  note?: any;               // parsed JSON note (p1) for inspection/debug
+  note?: any;
 }
 ```
 
 ---
 
-## Basic usage
+## Indexer and explorer defaults
 
-Verify a `p1` attestation given its transaction id:
+* Indexer:
+
+  * mainnet: `https://mainnet-idx.algonode.cloud`
+  * testnet: `https://testnet-idx.algonode.cloud`
+  * betanet: `https://betanet-idx.algonode.cloud`
+* Explorer:
+
+  * mainnet: `https://explorer.perawallet.app/tx/{txid}`
+  * testnet: `https://testnet.explorer.perawallet.app/tx/{txid}`
+
+You can override `indexerUrl` if you run your own infrastructure.
+
+---
+
+## Quickstart: verify a p1 from Node.js
 
 ```ts
-import { verifyTx } from "@axiomatic/verifier";
+import "dotenv/config";
+import { verifyTx } from "@axiomatic_oracle/verifier";
 
-const txid = "ZBDWDAILCTKDXINHUVJCXN2VKNIDTQREGOQ6HB3OHIO6ED6ATBIQ";
+async function main() {
+  const txid = process.argv[2];
+  if (!txid) {
+    console.error("Usage: node verify_p1.js <TXID>");
+    process.exit(1);
+  }
 
-const res = await verifyTx({
-  txid,
-  network: "testnet",
-  // indexerUrl: "https://testnet-idx.algonode.cloud", // optional override
+  const network = (process.env.ALGORAND_NETWORK || "testnet").trim();
+  const indexerUrl =
+    process.env.INDEXER_URL ||
+    (network === "mainnet"
+      ? "https://mainnet-idx.algonode.cloud"
+      : "https://testnet-idx.algonode.cloud");
+
+  const res = await verifyTx({
+    txid,
+    network,
+    indexerUrl,
+    // Example: accept attestations up to 1 hour old,
+    // and up to 5 minutes in the future (clock skew).
+    maxSkewPastSec: 3600,
+    maxSkewFutureSec: 300,
+  });
+
+  console.log(JSON.stringify(res, null, 2));
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
 });
+```
 
-if (res.verified && res.mode === "p1") {
-  console.log("✅ Verified p1 attestation");
-  console.log("Note hash:", res.noteSha256);
-  console.log("Explorer:", res.explorerUrl);
-  console.log("Decoded note:", res.note);
-} else {
-  console.log("❌ Not verified");
-  console.log("Mode:", res.mode);
-  console.log("Reason:", res.reason);
+Use a `txid` produced by `@axiomatic/proofkit` (or the Python ProofKit) on the same network.
+
+---
+
+## Result semantics
+
+`verifyTx` always returns a `VerifyResult`:
+
+### Valid and fresh p1
+
+```json
+{
+  "verified": true,
+  "mode": "p1",
+  "reason": null,
+  "noteSha256": "...",
+  "rebuiltSha256": "...",
+  "confirmedRound": 57318625,
+  "explorerUrl": "https://testnet.explorer.perawallet.app/tx/...",
+  "note": {
+    "s": "p1",
+    "a": "re:EUR",
+    "mv": "v2",
+    "mh": "",
+    "ih": "...",
+    "v": 550000,
+    "u": [520000, 580000],
+    "ts": 1762609210
+  }
 }
 ```
 
-This will:
+### p1 structurally valid but stale / outside time window
 
-1. Fetch the transaction from the configured indexer
-2. Read the `note` field (base64)
-3. Parse JSON
-4. Check `s === "p1"` (otherwise `mode: "legacy" | "unknown"`)
-5. Rebuild canonical bytes via JCS helper
-6. Recompute `sha256`
-7. If the note contains a `note_sha256`/`sha256` field, compare against the rebuilt hash
-8. Optionally enforce a time window on `ts`
-9. Return a structured `VerifyResult`
-
----
-
-## Modes
-
-* `mode: "p1"`
-
-  * Note has `s: "p1"` and passes structural checks
-* `mode: "legacy"`
-
-  * Note looks like an old / non-p1 schema (best-effort, implementation-dependent)
-* `mode: "unknown"`
-
-  * Missing note, invalid JSON, unsupported format, or fetch issue
-
-You can use this to **progressively migrate** to `p1` while still handling legacy data if needed.
-
----
-
-## Explorer URL
-
-`verifyTx` returns an `explorerUrl` convenience link, e.g.:
-
-```txt
-https://testnet.explorer.perawallet.app/tx/<TXID>
+```json
+{
+  "verified": false,
+  "mode": "p1",
+  "reason": "ts_out_of_window",
+  "noteSha256": "...",
+  "rebuiltSha256": "...",
+  "explorerUrl": "..."
+}
 ```
 
-(or equivalent explorer domain depending on configuration/version).
+This means: the attestation is well-formed and hash-consistent, but its `ts` is outside the allowed window (`maxSkewPastSec` / `maxSkewFutureSec`). You can tune these thresholds according to your policy.
 
-This is only for humans; verification logic does **not** depend on it.
+### Unsupported or empty note
+
+```json
+{
+  "verified": false,
+  "mode": "unknown",
+  "reason": "unsupported_or_empty_note",
+  "explorerUrl": "..."
+}
+```
+
+### Legacy notes
+
+If the note matches selected legacy formats (`ref`, `schema_version`, etc.), the verifier will return:
+
+```json
+{
+  "verified": true,
+  "mode": "legacy",
+  "reason": null,
+  "note": { ... }
+}
+```
+
+This allows you to keep backward compatibility while progressively migrating to p1.
 
 ---
 
-## JCS / Hash Utilities
+## Canonical JSON helpers
 
-The same helpers used internally are exported for your own checks:
+You can also use the bundled helpers to validate your own canonicalization:
 
 ```ts
-import { toJcsBytes, sha256Hex, jcsSha256 } from "@axiomatic/verifier";
+import { toJcsBytes, jcsSha256 } from "@axiomatic_oracle/verifier";
 
-const obj = { a: 1, b: ["x", 2], z: 3 };
-const bytes = toJcsBytes(obj);       // canonical JSON bytes
-const hash = await sha256Hex(bytes); // hex string
-const hash2 = await jcsSha256(obj);  // convenience: JCS(obj) then sha256
+const obj = { b: 2, a: 1 };
+const bytes = toJcsBytes(obj);
+const hash = await jcsSha256(obj);
+
+console.log(hash);
 ```
 
-Properties:
-
-* Deterministic (sorted keys, no whitespace)
-* Rejects non-finite numbers (NaN/Inf)
-* Aligned with:
-
-  * `@axiomatic/proofkit`
-  * `axiomatic_proofkit` (Python)
-  * `axiomatic_verifier` (Python)
-  * Axiomatic backend `canon.py`
+They implement the same JCS-style normalization used by the p1 verifier and the ProofKit SDKs.
 
 ---
 
-## Typical Flow with ProofKit
-
-1. **Producer** (valuation engine / platform):
-
-   * Builds canonical input
-   * Computes `input_hash`
-   * Builds `p1`
-   * Publishes on-chain via `@axiomatic/proofkit`
-
-2. **Verifier** (investor, bank, marketplace, auditor):
-
-   * Calls `@axiomatic/verifier.verifyTx({ txid })`
-   * Confirms:
-
-     * Note is well-formed `p1`
-     * Hash matches canonical bytes
-     * Timestamp is sane
-   * Optionally replays the valuation off-chain using provided inputs
-
-No need to trust Axiomatic’s servers.
-Everything needed to verify is on-chain + in your stack.
+`@axiomatic_oracle/verifier` is intended as a low-level, auditable building block. Integrators are encouraged to layer their own business rules (e.g. allowed models, assets, issuers) on top of the returned `VerifyResult`.

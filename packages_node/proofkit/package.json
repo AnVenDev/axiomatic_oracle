@@ -1,6 +1,6 @@
 {
-  "name": "@axiomatic/proofkit",
-  "version": "1.0.0",
+  "name": "@axiomatic_oracle/proofkit",
+  "version": "1.0.1",
   "description": "Proofkit SDK for building and publishing PoVal p1 notes",
   "type": "module",
   "main": "dist/index.js",
@@ -15,6 +15,9 @@
   "sideEffects": false,
   "scripts": {
     "build": "tsc -p tsconfig.json"
+  },
+  "engines": {
+  "node": ">=18"
   },
   "keywords": [],
   "author": "",

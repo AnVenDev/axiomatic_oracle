@@ -62,7 +62,7 @@ export function buildP1(opts: BuildP1Opts): P1 {
     ts: Number(timestampEpochSec),
   };
 
-  void toJcsBytes(p1); // ACJ-1 sanity
+  void toJcsBytes(p1);
   return p1;
 }
 
@@ -81,24 +81,22 @@ export async function assertNoteSizeOK(p1: P1, max = NOTE_MAX_BYTES): Promise<vo
 export interface PublishOpts {
   p1: P1;
   network?: Network;
-  pera?: any; // PeraWalletConnect (browser)
-  algod?: any; // algosdk.Algodv2
+  pera?: any;
+  algod?: any;
   from?: string;
-  sign?: (txnBytes: Uint8Array) => Promise<Uint8Array>; // custom signer (Node)
+  sign?: (txnBytes: Uint8Array) => Promise<Uint8Array>;
   waitRounds?: number;
 }
 
 export async function publishP1(opts: PublishOpts): Promise<{ txid: string; explorerUrl: string }> {
   const { p1, network = "testnet", pera, algod, from, sign, waitRounds = 4 } = opts;
 
-  // import dinamico (ESM friendly)
   const algosdkMod = await import("algosdk");
   const algosdk: any = (algosdkMod as any).default ?? algosdkMod;
 
   await assertNoteSizeOK(p1);
   const { bytes: noteBytes } = await canonicalNoteBytesP1(p1);
 
-  // Algod client: usa Algonode di default se non viene passato dall'esterno
   const client =
     algod ??
     new algosdk.Algodv2(
@@ -111,7 +109,6 @@ export async function publishP1(opts: PublishOpts): Promise<{ txid: string; expl
 
   const sp = await client.getTransactionParams().do();
 
-  // Mittente
   let sender: string | undefined = from;
   if (!sender && pera) {
     const accounts = await pera.connect();
@@ -124,7 +121,6 @@ export async function publishP1(opts: PublishOpts): Promise<{ txid: string; expl
     throw new Error(`Invalid from address: ${sender}`);
   }
 
-  // Proviamo varianti compatibili con diverse versioni di algosdk
   const variants = [
     "senderReceiverString",
     "fromToString",
@@ -180,7 +176,6 @@ export async function publishP1(opts: PublishOpts): Promise<{ txid: string; expl
         }
       }
       if (txn) {
-        // variante ok, usciamo dal loop
         break;
       }
     } catch (e: any) {
@@ -197,7 +192,6 @@ export async function publishP1(opts: PublishOpts): Promise<{ txid: string; expl
     );
   }
 
-  // Firma
   const unsignedBytes: Uint8Array = algosdk.encodeUnsignedTransaction(txn);
   let signed: Uint8Array;
 
@@ -210,12 +204,10 @@ export async function publishP1(opts: PublishOpts): Promise<{ txid: string; expl
     throw new Error("Provide `pera` or a custom `sign` function to sign the transaction");
   }
 
-  // Invio & conferma
   const sendRes = await client.sendRawTransaction(signed).do();
   const txid: string = sendRes.txId || sendRes.txid;
   await algosdk.waitForConfirmation(client, txid, waitRounds);
 
-  // URL explorer (usiamo Pera, come da fix)
   const explorerUrl =
     network === "mainnet"
       ? `https://explorer.perawallet.app/tx/${txid}`
