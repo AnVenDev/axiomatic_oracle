@@ -79,7 +79,7 @@ jobs:
       - name: Ensure expected CSV is present
         run: |
           echo "Listing dataset contents:"
-          ls -lh notebooks/outputs/dataset_generated.csv
+          ls -lh outputs/
           test -f ${{env.DATA_PATH}}
 
       - name: Set up Python
