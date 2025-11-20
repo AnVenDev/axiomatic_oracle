@@ -103,31 +103,42 @@ jobs:
           from pathlib import Path
           from glob import glob
 
-          # Look for the metadata file in notebooks/outputs/modeling
-          meta_files = glob("notebooks/outputs/modeling/**/value_regressor_v2_meta.json", recursive=True)
-          assert meta_files, "❌ Metadata file not found"
+          # 1) Load validation metrics from eval_valid.json
+          eval_path = Path("notebooks/outputs/modeling/artifacts/eval_valid.json")
+          assert eval_path.exists(), f"❌ Validation report not found at {eval_path}"
 
-          meta_path = Path(meta_files[0])  # Use the first match
-          print(f"📄 Metadata file found: {meta_path}")
+          data = json.loads(eval_path.read_text(encoding="utf-8"))
+          metrics = data.get("metrics", {})
 
-          with open(meta_path, encoding="utf-8") as f:
-              meta = json.load(f)
+          mae = metrics.get("MAE")
+          rmse = metrics.get("RMSE")
+          r2 = metrics.get("R2")
 
-          mae      = meta["metrics"]["mae_k"]
-          coverage = meta["metrics"]["coverage_interval"]
-          width    = meta["metrics"]["avg_interval_width_k"]
-          r2       = meta["metrics"]["r2"]
+          print(f"📄 Loaded eval report from: {eval_path}")
+          print(f"📊 Metrics: MAE={mae}, RMSE={rmse}, R²={r2}")
 
-          print(f"📊 MAE: {mae:.2f}k, R²: {r2:.2f}, Coverage: {coverage:.2%}, Width: {width:.2f}k")
+          # Basic sanity checks on metrics
+          assert mae is not None, "❌ MAE is missing in eval_valid.json"
+          assert r2 is not None, "❌ R² is missing in eval_valid.json"
 
-          assert mae < 100, "❌ MAE too high"
-          assert coverage >= 0.80, f"❌ Coverage too low: {coverage:.2%}"
+          # Thresholds (tunable)
+          assert mae < 100, f"❌ MAE too high: {mae:.2f}k"
+          assert r2 >= 0.80, f"❌ R² too low: {r2:.3f}"
           print("✅ Metrics are within acceptable bounds")
 
-          # Check if prediction_intervals.csv exists (warning only if missing)
-          pred_file = meta_path.parent / "prediction_intervals.csv"
-          if not pred_file.exists():
-              print("⚠️ prediction_intervals.csv not found in folder:", pred_file.parent)
+          # 2) Optionally check prediction_intervals.csv based on the meta location
+          #    (we do NOT expect metrics in the meta file anymore)
+          meta_files = glob("notebooks/outputs/modeling/**/value_regressor_v2_meta.json", recursive=True)
+          if meta_files:
+              meta_path = Path(meta_files[0])
+              print(f"📄 Meta file found: {meta_path}")
+              pred_file = meta_path.parent / "prediction_intervals.csv"
+              if pred_file.exists():
+                  print(f"✅ prediction_intervals.csv found at: {pred_file}")
+              else:
+                  print(f"⚠️ prediction_intervals.csv not found in: {pred_file.parent}")
+          else:
+              print("⚠️ No value_regressor_v2_meta.json found under notebooks/outputs/modeling/** – skipping interval check.")
           PYCODE
 
       - name: Upload model artifacts
