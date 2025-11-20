@@ -41,34 +41,25 @@ jobs:
     strategy:
       matrix:
         node-version: ["18", "20"]
-
+  
     steps:
-      - name: Checkout code
+      - name: Checkout repo
         uses: actions/checkout@v4
-
+  
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-
+  
       - name: Test @axiomatic_oracle/proofkit
         run: |
           cd packages_node/proofkit
           npm install
-          echo "Checking for test script in @axiomatic_oracle/proofkit..."
-          if npm run | grep -q " test"; then
-            npm test
-          else
-            echo "No 'test' script found for @axiomatic_oracle/proofkit, skipping tests for now."
-          fi
-
+          npm test
+  
       - name: Test @axiomatic_oracle/verifier
         run: |
           cd packages_node/verifier
           npm install
-          echo "Checking for test script in @axiomatic_oracle/verifier..."
-          if npm run | grep -q " test"; then
-            npm test
-          else
-            echo "No 'test' script found for @axiomatic_oracle/verifier, skipping tests for now."
-          fi
+          npm test
+

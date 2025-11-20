@@ -4,7 +4,7 @@ import types
 import pytest
 
 from axiomatic_proofkit import build_p1
-import axiomatic_proofkit.publish as pub
+import axiomatic_proofkit.publish as pub #type: ignore
 
 
 class FakeAlgodClient:
