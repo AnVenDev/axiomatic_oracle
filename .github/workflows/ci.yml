@@ -11,7 +11,7 @@ env:
   AWS_REGION: us-east-1
   ECR_REPO: 035754837020.dkr.ecr.us-east-1.amazonaws.com/ai-oracle-api
   IMAGE_TAG: latest
-  DATA_PATH: notebooks/outputs/dataset_generated.csv
+  DATA_PATH: notebooks/outputs/modeling/dataset_generated.csv
 
 jobs:
   generate-dataset:
@@ -41,20 +41,21 @@ jobs:
 
       - name: Check data output
         run: |
-          ls -l notebooks/outputs/dataset_generated.csv
-          test -f ${{env.DATA_PATH}}
+          echo "Listing dataset contents at ${DATA_PATH}:"
+          ls -l "${DATA_PATH}"
+          test -f "${DATA_PATH}"
 
       - name: Upload cleaned dataset
         uses: actions/upload-artifact@v4
         with:
           name: cleaned-dataset
-          path: notebooks/outputs/dataset_generated.csv/**
+          path: notebooks/outputs/modeling/dataset_generated.csv
 
       - name: Upload data quality report
         uses: actions/upload-artifact@v4
         with:
           name: data-quality-report
-          path: logs/quality_report.json
+          path: notebooks/outputs/logs/quality_report.json
 
   train-and-evaluate:
     needs: generate-dataset
@@ -68,19 +69,13 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: cleaned-dataset
-          path: data
-
-      - name: Download cleaned dataset
-        uses: actions/download-artifact@v4
-        with:
-          name: cleaned-dataset
-          path: data
+          path: .
 
       - name: Ensure expected CSV is present
         run: |
-          echo "Listing dataset contents:"
-          ls -lh outputs/dataset_generated.csv
-          test -f ${{env.DATA_PATH}}
+          echo "Listing dataset contents at ${DATA_PATH}:"
+          ls -lh "${DATA_PATH}"
+          test -f "${DATA_PATH}"
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -99,20 +94,19 @@ jobs:
         run: |
           python notebooks/train_model_03.py
 
-      - name: Assert model quality & generate prediction intervals
+      - name: Assert model quality & check prediction intervals
         run: |
           python - <<'PYCODE'
           import json
-          import pandas as pd
           from pathlib import Path
           from glob import glob
 
-          # Cerca il metadata file partendo dalla root (models/)
-          meta_files = glob("models/**/value_regressor_v2_meta.json", recursive=True)
-          assert meta_files, "❌ Metadata file non trovato"
+          # Look for the metadata file in the new notebooks/outputs/modeling structure
+          meta_files = glob("notebooks/outputs/modeling/**/value_regressor_v2_meta.json", recursive=True)
+          assert meta_files, "❌ Metadata file not found"
 
-          meta_path = Path(meta_files[0])  # Usa il primo trovato (oppure scorri se ne hai più)
-          print(f"📄 Metadata file trovato: {meta_path}")
+          meta_path = Path(meta_files[0])  # Use the first match
+          print(f"📄 Metadata file found: {meta_path}")
 
           with open(meta_path, encoding="utf-8") as f:
               meta = json.load(f)
@@ -124,14 +118,14 @@ jobs:
 
           print(f"📊 MAE: {mae:.2f}k, R²: {r2:.2f}, Coverage: {coverage:.2%}, Width: {width:.2f}k")
 
-          assert mae < 100, "❌ MAE troppo alto"
-          assert coverage >= 0.80, f"❌ Coverage troppo basso: {coverage:.2%}"
-          print("✅ Metriche accettabili")
+          assert mae < 100, "❌ MAE too high"
+          assert coverage >= 0.80, f"❌ Coverage too low: {coverage:.2%}"
+          print("✅ Metrics are within acceptable bounds")
 
-          # Verifica se prediction_intervals.csv esiste
+          # Check if prediction_intervals.csv exists (warning only if missing)
           pred_file = meta_path.parent / "prediction_intervals.csv"
           if not pred_file.exists():
-              print("⚠️ prediction_intervals.csv non trovato nella cartella:", pred_file.parent)
+              print("⚠️ prediction_intervals.csv not found in folder:", pred_file.parent)
           PYCODE
 
       - name: Upload model artifacts
@@ -139,24 +133,8 @@ jobs:
         with:
           name: model-artifacts
           path: |
-            models/property/value_regressor_v2.joblib
-            models/property/value_regressor_v2_meta.json
-            models/property/prediction_intervals.csv
-
-            - name: Run unit tests & coverage
-              run: |
-                pytest --maxfail=1 --disable-warnings --cov=scripts --cov-fail-under=80
-
-            - name: Upload model artifacts
-              uses: actions/upload-artifact@v4
-              with:
-                name: model-artifacts
-                path: |
-                  models/final_model.pkl
-                  models/model_metadata.json
-                  models/prediction_intervals.csv
-                  models/monitoring_metadata.json
-                  models/shap_importance.csv
+            notebooks/outputs/modeling/property/value_regressor_v2.joblib
+            notebooks/outputs/modeling/property/value_regressor_v2_meta.json
 
   build-and-push-image:
     needs: train-and-evaluate
@@ -178,7 +156,9 @@ jobs:
 
       - name: Build and push Docker image
         run: |
+          echo "Building Docker image ${ECR_REPO}:${IMAGE_TAG}..."
           docker build -t $ECR_REPO:$IMAGE_TAG .
+          echo "Pushing Docker image to ECR..."
           docker push $ECR_REPO:$IMAGE_TAG
 
   deploy-to-prod:
@@ -200,14 +180,14 @@ jobs:
 
             set -e
 
-            echo "Inizio deploy su EC2"
-            echo "Pull da: $ECR_REPO:$IMAGE_TAG"
+            echo "Starting deploy on EC2"
+            echo "Pulling from: $ECR_REPO:$IMAGE_TAG"
 
             if command -v aws &> /dev/null; then
-              echo "Login a ECR..."
+              echo "Logging into ECR..."
               aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
             else
-              echo "aws CLI non trovato su EC2. Login non eseguito."
+              echo "aws CLI not found on EC2. Skipping ECR login."
             fi
 
             docker pull $ECR_REPO:$IMAGE_TAG
@@ -215,14 +195,83 @@ jobs:
             docker stop ai-oracle-api || true
             docker rm ai-oracle-api || true
 
-            echo "Eseguo: docker run -d --name ai-oracle-api -p 80:8000 $ECR_REPO:$IMAGE_TAG"
+            echo "Running: docker run -d --name ai-oracle-api -p 80:8000 $ECR_REPO:$IMAGE_TAG"
             docker run -d \
               --name ai-oracle-api \
               -p 80:8000 \
               $ECR_REPO:$IMAGE_TAG
 
-            # Verifica container attivi
             echo "==========================="
-            echo "Lista container in esecuzione:"
+            echo "Running containers:"
             docker ps --format "table {{.Names}}\t{{.Status}}"
             echo "==========================="
+
+  python-sdks:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install SDK dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest pytest-cov
+          python -m pip install ./packages_python/axiomatic_proofkit ./packages_python/axiomatic_verifier
+
+      - name: Run Python SDK tests (tolerant if no tests yet)
+        run: |
+          echo "🔎 Running pytest for Python SDKs (if tests exist)..."
+          pytest -q || status=$?
+          if [ "${status:-0}" = "5" ]; then
+            echo "ℹ️ No tests collected for Python SDKs (exit code 5). This is acceptable for now."
+            exit 0
+          elif [ -n "${status:-}" ] && [ "${status}" != "0" ]; then
+            echo "❌ Pytest failed with exit code ${status}"
+            exit "${status}"
+          fi
+
+  node-sdks:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: ["18", "20"]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Test @axiomatic_oracle/proofkit
+        run: |
+          cd packages_node/proofkit
+          npm install
+          echo "🔎 Checking for test script in @axiomatic_oracle/proofkit..."
+          if npm run | grep -q " test"; then
+            npm test
+          else
+            echo "ℹ️ No 'test' script found for @axiomatic_oracle/proofkit, skipping tests for now."
+          fi
+
+      - name: Test @axiomatic_oracle/verifier
+        run: |
+          cd packages_node/verifier
+          npm install
+          echo "🔎 Checking for test script in @axiomatic_oracle/verifier..."
+          if npm run | grep -q " test"; then
+            npm test
+          else
+            echo "ℹ️ No 'test' script found for @axiomatic_oracle/verifier, skipping tests for now."
+          fi
