@@ -1,6 +1,6 @@
-# AI Oracle for Real-World Assets (RWA) — Powered by Algorand (OLD VERSION!)
+# Axiomatic Oracle: AI Oracle for Real-World Assets (RWA)
 
-A production-ready, modular AI + Blockchain oracle for **automated valuation and certification of Real-World Assets** (RWA). Starting with real estate and designed to scale across multiple asset classes including art, logistics, agriculture, and energy.
+Axiomatic Oracle is a modular AI + Blockchain oracle for **automated valuation and certification of Real-World Assets** (RWA). Starting with real estate and designed to scale across multiple asset classes including art, logistics, agriculture, and energy.
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
@@ -10,7 +10,7 @@ A production-ready, modular AI + Blockchain oracle for **automated valuation and
 [![Docker](https://img.shields.io/badge/Docker-ready-blue.svg)](https://www.docker.com/)
 [![Coverage](https://img.shields.io/badge/coverage-83%25-brightgreen.svg)](#)
 
-## 1. Key Features
+## Key Features
 
 - **AI-Powered Valuation**: Machine learning models for accurate asset valuation with confidence intervals
 - **Blockchain Certification**: Cryptographically signed results published to Algorand blockchain
