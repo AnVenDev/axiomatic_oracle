@@ -1,0 +1,220 @@
+name: Core ML CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CI: "true"
+  AWS_REGION: us-east-1
+  ECR_REPO: 035754837020.dkr.ecr.us-east-1.amazonaws.com/ai-oracle-api
+  IMAGE_TAG: latest
+  DATA_PATH: notebooks/outputs/dataset_generated.csv
+
+jobs:
+  generate-dataset:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install jupyter pandas pyarrow tqdm
+
+      - name: Execute generate_dataset_01 notebook
+        run: |
+          jupyter nbconvert \
+            --to notebook \
+            --execute notebooks/generate_dataset_01.ipynb \
+            --output executed_generate_dataset_01.ipynb \
+            --ExecutePreprocessor.timeout=600
+
+      - name: Check data output
+        run: |
+          echo "Listing dataset contents at ${DATA_PATH}:"
+          ls -l "${DATA_PATH}"
+          test -f "${DATA_PATH}"
+
+      - name: Upload cleaned dataset
+        uses: actions/upload-artifact@v4
+        with:
+          name: cleaned-dataset
+          path: notebooks/outputs/dataset_generated.csv
+
+      - name: Upload data quality report
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-quality-report
+          path: notebooks/outputs/logs/quality_report.json
+
+  train-and-evaluate:
+    needs: generate-dataset
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Download cleaned dataset
+        uses: actions/download-artifact@v4
+        with:
+          name: cleaned-dataset
+          path: notebooks/outputs
+
+      - name: Ensure expected CSV is present
+        run: |
+          echo "Listing dataset contents at ${DATA_PATH}:"
+          ls -lh "${DATA_PATH}"
+          test -f "${DATA_PATH}"
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest pytest-cov shap
+
+      - name: Convert notebook to script
+        run: jupyter nbconvert --to script notebooks/train_model_03.ipynb
+
+      - name: Train model & save outputs
+        working-directory: notebooks
+        run: |
+          python train_model_03.py
+
+      - name: Assert model quality & check prediction intervals
+        run: |
+          python - <<'PYCODE'
+          import json
+          from pathlib import Path
+          from glob import glob
+
+          # 1) Load validation metrics from eval_valid.json
+          eval_path = Path("notebooks/outputs/modeling/artifacts/eval_valid.json")
+          assert eval_path.exists(), f"❌ Validation report not found at {eval_path}"
+
+          data = json.loads(eval_path.read_text(encoding="utf-8"))
+          metrics = data.get("metrics", {})
+
+          mae = metrics.get("MAE")
+          rmse = metrics.get("RMSE")
+          r2 = metrics.get("R2")
+
+          print(f"📄 Loaded eval report from: {eval_path}")
+          print(f"📊 Metrics: MAE={mae}, RMSE={rmse}, R²={r2}")
+
+          # Basic sanity checks on metrics
+          assert mae is not None, "❌ MAE is missing in eval_valid.json"
+          assert r2 is not None, "❌ R² is missing in eval_valid.json"
+
+          # Thresholds (tunable)
+          assert mae < 100, f"❌ MAE too high: {mae:.2f}k"
+          assert r2 >= 0.80, f"❌ R² too low: {r2:.3f}"
+          print("✅ Metrics are within acceptable bounds")
+
+          # 2) Optional: check prediction_intervals.csv near the meta file
+          meta_files = glob("notebooks/outputs/modeling/**/value_regressor_v2_meta.json", recursive=True)
+          if meta_files:
+              meta_path = Path(meta_files[0])
+              print(f"📄 Meta file found: {meta_path}")
+              pred_file = meta_path.parent / "prediction_intervals.csv"
+              if pred_file.exists():
+                  print(f"✅ prediction_intervals.csv found at: {pred_file}")
+              else:
+                  print(f"⚠️ prediction_intervals.csv not found in: {pred_file.parent}")
+          else:
+              print("⚠️ No value_regressor_v2_meta.json found under notebooks/outputs/modeling/** – skipping interval check.")
+          PYCODE
+
+      - name: Upload model artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-artifacts
+          path: |
+            notebooks/outputs/modeling/property/value_regressor_v2.joblib
+            notebooks/outputs/modeling/property/value_regressor_v2_meta.json
+
+  # Temporarily disabled: AWS image build & deploy
+  build-and-push-image:
+    needs: train-and-evaluate
+    if: ${{ false }} # Enable later when AWS credentials are configured
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build and push Docker image
+        run: |
+          echo "Building Docker image ${ECR_REPO}:${IMAGE_TAG}..."
+          docker build -t $ECR_REPO:$IMAGE_TAG .
+          echo "Pushing Docker image to ECR..."
+          docker push $ECR_REPO:$IMAGE_TAG
+
+  deploy-to-prod:
+    needs: build-and-push-image
+    if: ${{ false }} # Enable later when deploy flow is ready
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            export ECR_REPO=${{ env.ECR_REPO }}
+            export IMAGE_TAG=${{ env.IMAGE_TAG }}
+            export AWS_REGION=${{ env.AWS_REGION }}
+
+            set -e
+
+            echo "Starting deploy on EC2"
+            echo "Pulling from: $ECR_REPO:$IMAGE_TAG"
+
+            if command -v aws &> /dev/null; then
+              echo "Logging into ECR..."
+              aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
+            else:
+              echo "aws CLI not found on EC2. Skipping ECR login."
+            fi
+
+            docker pull $ECR_REPO:$IMAGE_TAG
+
+            docker stop ai-oracle-api || true
+            docker rm ai-oracle-api || true
+
+            echo "Running: docker run -d --name ai-oracle-api -p 80:8000 $ECR_REPO:$IMAGE_TAG"
+            docker run -d \
+              --name ai-oracle-api \
+              -p 80:8000 \
+              $ECR_REPO:$IMAGE_TAG
+
+            echo "==========================="
+            echo "Running containers:"
+            docker ps --format "table {{.Names}}\t{{.Status}}"
+            echo "==========================="

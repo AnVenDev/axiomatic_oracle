@@ -8,7 +8,6 @@ on:
 
 env:
   CI: "true"
-  # Force open mode for tests (auth is disabled when API_KEY is empty)
   API_KEY: ""
 
 jobs:
