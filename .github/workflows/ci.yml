@@ -11,7 +11,6 @@ env:
   AWS_REGION: us-east-1
   ECR_REPO: 035754837020.dkr.ecr.us-east-1.amazonaws.com/ai-oracle-api
   IMAGE_TAG: latest
-  # Current canonical location for the generated dataset
   DATA_PATH: notebooks/outputs/dataset_generated.csv
 
 jobs:
@@ -126,7 +125,7 @@ jobs:
           assert r2 >= 0.80, f"❌ R² too low: {r2:.3f}"
           print("✅ Metrics are within acceptable bounds")
 
-          # 2) Optionally check prediction_intervals.csv based on the meta location
+          # 2) Optional: check prediction_intervals.csv near the meta file
           meta_files = glob("notebooks/outputs/modeling/**/value_regressor_v2_meta.json", recursive=True)
           if meta_files:
               meta_path = Path(meta_files[0])
@@ -148,8 +147,10 @@ jobs:
             notebooks/outputs/modeling/property/value_regressor_v2.joblib
             notebooks/outputs/modeling/property/value_regressor_v2_meta.json
 
+  # Temporarily disabled: AWS image build & deploy
   build-and-push-image:
     needs: train-and-evaluate
+    if: ${{ false }} # Enable later when AWS credentials are configured
     runs-on: ubuntu-latest
 
     steps:
@@ -175,7 +176,7 @@ jobs:
 
   deploy-to-prod:
     needs: build-and-push-image
-    if: github.ref == 'refs/heads/main'
+    if: ${{ false }} # Enable later when deploy flow is ready
     runs-on: ubuntu-latest
 
     steps:
@@ -198,7 +199,7 @@ jobs:
             if command -v aws &> /dev/null; then
               echo "Logging into ECR..."
               aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
-            else
+            else:
               echo "aws CLI not found on EC2. Skipping ECR login."
             fi
 
