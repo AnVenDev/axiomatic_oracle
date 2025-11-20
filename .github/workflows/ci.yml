@@ -69,7 +69,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: cleaned-dataset
-          path: .
+          path: notebooks/outputs
 
       - name: Ensure expected CSV is present
         run: |
