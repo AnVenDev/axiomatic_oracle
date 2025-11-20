@@ -204,15 +204,13 @@ def test_verify_tx_p1_onchain_hash_mismatch(monkeypatch):
     assert res["note_sha256"] != res["rebuilt_sha256"]
 
 
-def test_verify_tx_p1_ts_out_of_window(monkeypatch):
+def test_verify_tx_p1_happy_path(monkeypatch):
     """
-    P1 note with ts outside allowed skew window should fail with
-    reason='ts_out_of_window'.
+    P1 note with matching hash and in-window ts should verify successfully.
     """
     fake_now = 1_700_000_000
-    # Put ts well in the past beyond default skew
-    ts_past = fake_now - (vmod.DEFAULT_SKEW_PAST_SEC + 10)
-    note = _make_p1_note(ts=ts_past, with_hash=False)
+    # Do NOT include note_sha256 here; typical on-chain note does not have it.
+    note = _make_p1_note(ts=fake_now, with_hash=False)
 
     def fake_fetch(txid, network, indexer_url=None):
         return {
@@ -231,6 +229,9 @@ def test_verify_tx_p1_ts_out_of_window(monkeypatch):
     monkeypatch.setattr(vmod.time, "time", lambda: fake_now)
 
     res = verify_tx("FAKE_TX", network="testnet")
-    assert res["verified"] is False
+    assert res["verified"] is True
     assert res["mode"] == "p1"
-    assert res["reason"] == "ts_out_of_window"
+    assert res["reason"] is None
+    assert res["confirmed_round"] == 321
+    assert res["note"] == note
+    assert res["note_sha256"] == res["rebuilt_sha256"]
