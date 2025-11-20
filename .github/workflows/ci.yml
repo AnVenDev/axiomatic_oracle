@@ -11,7 +11,7 @@ env:
   AWS_REGION: us-east-1
   ECR_REPO: 035754837020.dkr.ecr.us-east-1.amazonaws.com/ai-oracle-api
   IMAGE_TAG: latest
-  DATA_PATH: notebooks/outputs/modeling/dataset_generated.csv
+  DATA_PATH: notebooks/outputs/dataset_generated.csv
 
 jobs:
   generate-dataset:
@@ -49,7 +49,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cleaned-dataset
-          path: notebooks/outputs/modeling/dataset_generated.csv
+          path: notebooks/outputs/dataset_generated.csv
 
       - name: Upload data quality report
         uses: actions/upload-artifact@v4
@@ -101,7 +101,7 @@ jobs:
           from pathlib import Path
           from glob import glob
 
-          # Look for the metadata file in the new notebooks/outputs/modeling structure
+          # Look for the metadata file in notebooks/outputs/modeling
           meta_files = glob("notebooks/outputs/modeling/**/value_regressor_v2_meta.json", recursive=True)
           assert meta_files, "❌ Metadata file not found"
 
@@ -229,13 +229,13 @@ jobs:
 
       - name: Run Python SDK tests (tolerant if no tests yet)
         run: |
-          echo "🔎 Running pytest for Python SDKs (if tests exist)..."
+          echo "Running pytest for Python SDKs (if tests exist)..."
           pytest -q || status=$?
           if [ "${status:-0}" = "5" ]; then
-            echo "ℹ️ No tests collected for Python SDKs (exit code 5). This is acceptable for now."
+            echo "No tests collected for Python SDKs (exit code 5). This is acceptable for now."
             exit 0
           elif [ -n "${status:-}" ] && [ "${status}" != "0" ]; then
-            echo "❌ Pytest failed with exit code ${status}"
+            echo "Pytest failed with exit code ${status}"
             exit "${status}"
           fi
 
@@ -258,20 +258,20 @@ jobs:
         run: |
           cd packages_node/proofkit
           npm install
-          echo "🔎 Checking for test script in @axiomatic_oracle/proofkit..."
+          echo "Checking for test script in @axiomatic_oracle/proofkit..."
           if npm run | grep -q " test"; then
             npm test
           else
-            echo "ℹ️ No 'test' script found for @axiomatic_oracle/proofkit, skipping tests for now."
+            echo "No 'test' script found for @axiomatic_oracle/proofkit, skipping tests for now."
           fi
 
       - name: Test @axiomatic_oracle/verifier
         run: |
           cd packages_node/verifier
           npm install
-          echo "🔎 Checking for test script in @axiomatic_oracle/verifier..."
+          echo "Checking for test script in @axiomatic_oracle/verifier..."
           if npm run | grep -q " test"; then
             npm test
           else
-            echo "ℹ️ No 'test' script found for @axiomatic_oracle/verifier, skipping tests for now."
+            echo "No 'test' script found for @axiomatic_oracle/verifier, skipping tests for now."
           fi
