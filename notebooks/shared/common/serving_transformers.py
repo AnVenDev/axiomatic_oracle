@@ -235,16 +235,28 @@ class EnsureDerivedFeatures(BaseEstimator, TransformerMixin):
 
     NOTE: This implementation is **self-contained** and does NOT import or call
     PropertyDerivedFeatures to avoid recursion/loops in saved pipelines.
+
+    Extra kwargs:
+    - region_index: optional mapping used by some pipelines; stored on self for
+      compatibility but not required by the core logic.
+    - city_base: optional mapping (e.g. city priors); stored on self for
+      compatibility but not required by the core logic.
     """
 
     def __init__(
         self,
         required_cols: Optional[List[str]] = None,
         zone_thresholds_km: Optional[Dict[str, float]] = None,  # optional helper for zone by distance
+        region_index: Optional[Dict[str, float]] = None,
+        city_base: Optional[Dict[str, Dict[str, float]]] = None,
     ) -> None:
         # if None -> compute a standard minimal set
         self.required_cols = required_cols
         self.zone_thresholds_km = zone_thresholds_km or {"center": 1.5, "semi_center": 5.0}
+
+        # extra, for compatibility with training/serving pipelines
+        self.region_index = region_index or {}
+        self.city_base = city_base or {}
 
     def fit(self, X: Any, y: Optional[pd.Series] = None) -> "EnsureDerivedFeatures":
         return self
@@ -264,7 +276,12 @@ class EnsureDerivedFeatures(BaseEstimator, TransformerMixin):
                     d = pd.to_numeric(out["distance_to_center_km"], errors="coerce")
                     zone = pd.Series("periphery", index=out.index, dtype="object")
                     zone = np.where(d <= float(th.get("center", 1.5)), "center", zone)
-                    zone = np.where((d > float(th.get("center", 1.5))) & (d <= float(th.get("semi_center", 5.0))), "semi_center", zone)
+                    zone = np.where(
+                        (d > float(th.get("center", 1.5)))
+                        & (d <= float(th.get("semi_center", 5.0))),
+                        "semi_center",
+                        zone,
+                    )
                     out["zone"] = pd.Series(zone, index=out.index, dtype="object")
                 except Exception:
                     out["zone"] = "semi_center"
@@ -278,7 +295,10 @@ class EnsureDerivedFeatures(BaseEstimator, TransformerMixin):
         # age_years
         if "age_years" not in out.columns:
             try:
-                yb = pd.to_numeric(out.get("year_built", pd.Series(np.nan, index=out.index)), errors="coerce")
+                yb = pd.to_numeric(
+                    out.get("year_built", pd.Series(np.nan, index=out.index)),
+                    errors="coerce",
+                )
                 out["age_years"] = (datetime.utcnow().year - yb).clip(lower=0)
             except Exception:
                 out["age_years"] = np.nan
@@ -291,23 +311,39 @@ class EnsureDerivedFeatures(BaseEstimator, TransformerMixin):
             if "garage" in out.columns:
                 ga = _coerce_bool01(out["garage"])
             else:
-                ga = _coerce_bool01(out.get("has_garage", pd.Series(np.nan, index=out.index)))
+                ga = _coerce_bool01(
+                    out.get("has_garage", pd.Series(np.nan, index=out.index))
+                )
             out["luxury_score"] = (g.fillna(0) + b.fillna(0) + ga.fillna(0)) / 3.0
 
         # env_score = (aq/100) * (1 - noise/100), clipped [0,1]
         if "env_score" not in out.columns:
             try:
-                aq = pd.to_numeric(out.get("air_quality_index", pd.Series(0, index=out.index)), errors="coerce").clip(lower=0)
-                nz = pd.to_numeric(out.get("noise_level", pd.Series(0, index=out.index)), errors="coerce").clip(lower=0)
-                out["env_score"] = np.clip((aq / 100.0) * (1.0 - nz / 100.0), 0.0, 1.0)
+                aq = pd.to_numeric(
+                    out.get("air_quality_index", pd.Series(0, index=out.index)),
+                    errors="coerce",
+                ).clip(lower=0)
+                nz = pd.to_numeric(
+                    out.get("noise_level", pd.Series(0, index=out.index)),
+                    errors="coerce",
+                ).clip(lower=0)
+                out["env_score"] = np.clip(
+                    (aq / 100.0) * (1.0 - nz / 100.0), 0.0, 1.0
+                )
             except Exception:
                 out["env_score"] = np.nan
 
         # is_top_floor
         if "is_top_floor" not in out.columns:
             try:
-                fl = pd.to_numeric(out.get("floor", pd.Series(np.nan, index=out.index)), errors="coerce")
-                bf = pd.to_numeric(out.get("building_floors", pd.Series(np.nan, index=out.index)), errors="coerce")
+                fl = pd.to_numeric(
+                    out.get("floor", pd.Series(np.nan, index=out.index)),
+                    errors="coerce",
+                )
+                bf = pd.to_numeric(
+                    out.get("building_floors", pd.Series(np.nan, index=out.index)),
+                    errors="coerce",
+                )
                 out["is_top_floor"] = (fl == bf).astype("float64")
             except Exception:
                 out["is_top_floor"] = np.nan
@@ -320,7 +356,14 @@ class EnsureDerivedFeatures(BaseEstimator, TransformerMixin):
                 out["listing_month"] = np.nan
 
         # normalize a few boolean-ish commonly used downstream
-        for k in ("public_transport_nearby", "has_elevator", "has_garden", "has_balcony", "has_garage", "garage"):
+        for k in (
+            "public_transport_nearby",
+            "has_elevator",
+            "has_garden",
+            "has_balcony",
+            "has_garage",
+            "garage",
+        ):
             if k in out.columns:
                 out[k] = _coerce_bool01(out[k])
 
@@ -337,7 +380,11 @@ class EnsureDerivedFeatures(BaseEstimator, TransformerMixin):
             # enforce only the new columns (idempotent add)
             cols_to_add = [c for c in derived.columns if c not in df.columns]
         else:
-            cols_to_add = [c for c in self.required_cols if c in derived.columns and c not in df.columns]
+            cols_to_add = [
+                c
+                for c in self.required_cols
+                if c in derived.columns and c not in df.columns
+            ]
 
         for c in cols_to_add:
             try:
