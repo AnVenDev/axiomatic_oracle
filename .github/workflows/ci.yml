@@ -11,6 +11,7 @@ env:
   AWS_REGION: us-east-1
   ECR_REPO: 035754837020.dkr.ecr.us-east-1.amazonaws.com/ai-oracle-api
   IMAGE_TAG: latest
+  # Current canonical location for the generated dataset
   DATA_PATH: notebooks/outputs/dataset_generated.csv
 
 jobs:
@@ -91,8 +92,9 @@ jobs:
         run: jupyter nbconvert --to script notebooks/train_model_03.ipynb
 
       - name: Train model & save outputs
+        working-directory: notebooks
         run: |
-          python notebooks/train_model_03.py
+          python train_model_03.py
 
       - name: Assert model quality & check prediction intervals
         run: |
