@@ -100,17 +100,24 @@ export async function verifyTx(opts: {
   const mode: VerifyResult["mode"] =
     p1?.s === "p1"
       ? "p1"
-      : (p1 && (p1.ref || p1.schema_version)) ? "legacy" : "unknown";
+      : p1 && (p1.ref || p1.schema_version)
+        ? "legacy"
+        : "unknown";
+
+  const confirmedRound =
+    typeof tx["confirmed-round"] === "number" ? tx["confirmed-round"] : undefined;
 
   if (mode !== "p1") {
     return {
       verified: mode === "legacy",
       reason: mode === "legacy" ? null : "unsupported_or_empty_note",
       mode,
+      confirmedRound,
       explorerUrl,
       note: p1,
     };
   }
+
 
   const rebuilt = await jcsSha256(p1);
   const onchain =
@@ -152,10 +159,11 @@ export async function verifyTx(opts: {
     mode: "p1",
     noteSha256: onchain ?? rebuilt,
     rebuiltSha256: rebuilt,
-    confirmedRound: tx["confirmed-round"],
+    confirmedRound,
     explorerUrl,
     note: p1,
   };
+
 }
 
 export { toJcsBytes, sha256Hex, jcsSha256 };
