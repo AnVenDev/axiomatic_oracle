@@ -127,7 +127,6 @@ jobs:
           print("✅ Metrics are within acceptable bounds")
 
           # 2) Optionally check prediction_intervals.csv based on the meta location
-          #    (we do NOT expect metrics in the meta file anymore)
           meta_files = glob("notebooks/outputs/modeling/**/value_regressor_v2_meta.json", recursive=True)
           if meta_files:
               meta_path = Path(meta_files[0])
