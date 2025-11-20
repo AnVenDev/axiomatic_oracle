@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from axiomatic_proofkit import to_jcs_bytes, sha256_hex
+from axiomatic_proofkit.jcs import to_jcs_bytes, sha256_hex
 
 
 def test_jcs_deterministic_order_and_hash():

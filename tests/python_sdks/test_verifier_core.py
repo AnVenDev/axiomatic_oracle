@@ -1,12 +1,11 @@
 import base64
 import json
-import time
 
 import pytest
 
 from axiomatic_verifier import verify_tx, to_jcs_bytes, sha256_hex
 import axiomatic_verifier.verifier as vmod
-from axiomatic_proofkit import to_jcs_bytes as pk_to_jcs_bytes  # for cross-check
+from axiomatic_proofkit.jcs import to_jcs_bytes as pk_to_jcs_bytes  # for cross-check
 
 
 def test_jcs_consistency_between_proofkit_and_verifier():

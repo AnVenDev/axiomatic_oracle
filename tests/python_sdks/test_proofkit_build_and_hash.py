@@ -5,8 +5,6 @@ import time
 import pytest
 
 from axiomatic_proofkit import (
-    NOTE_MAX_BYTES,
-    DEFAULT_ASSET_TAG,
     build_p1,
     canonical_note_bytes_p1,
     assert_note_size_ok,
@@ -144,11 +142,11 @@ def test_assert_note_size_ok_passes_for_small_note():
         uncertainty_high_eur=11_000.0,
     )
 
-    # Should not raise for standard NOTE_MAX_BYTES
-    assert_note_size_ok(p1, max_bytes=NOTE_MAX_BYTES)
+    # Use default max_bytes (internal constant) – should not raise
+    assert_note_size_ok(p1)
 
 
-def test_assert_note_size_ok_raises_when_too_large(monkeypatch):
+def test_assert_note_size_ok_raises_when_too_large():
     input_hash = "66" * 32
     p1 = build_p1(
         model_version="v1",
